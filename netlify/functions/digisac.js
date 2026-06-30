@@ -40,11 +40,19 @@ exports.handler = async (event) => {
     serviceId: serviceId,
   });
 
-  console.log("[Digisac] payload:", JSON.stringify({ number: tel, body: "(msg)", serviceId }));
+  console.log("[Digisac] enviando para:", tel, "| serviceId:", serviceId);
 
   try {
     const result = await request(BASE + "/messages", token, payload);
-    console.log("[Digisac] status:", result.status, "body:", result.body.slice(0, 300));
+    console.log("[Digisac] status:", result.status, "resposta:", result.body.slice(0, 500));
+    if (!String(result.status).startsWith("2")) {
+      // Devolve resposta completa do Digisac para o front-end mostrar no alerta
+      return {
+        statusCode: result.status,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ error: result.body, numero: tel, status: result.status }),
+      };
+    }
     return {
       statusCode: result.status,
       headers: { "Content-Type": "application/json" },
