@@ -410,8 +410,14 @@
           </div>
         </div>
         <div class="fu-card__editarea" hidden>
-          <textarea class="input fu-msg-textarea" rows="4">${esc(card.msg)}</textarea>
-          <div class="fu-editarea-hint">Edite a mensagem acima e clique em Enviar quando estiver pronto.</div>
+          <div class="fu-phone-row">
+            <label class="fu-phone-label">📱 Telefone</label>
+            <input type="tel" class="input fu-phone-input" value="${esc(card.tel || "")}"
+              placeholder="Ex: 85999997092" style="flex:1" />
+            <span class="fu-phone-hint">DDD + número, só dígitos — ex: 85999997092</span>
+          </div>
+          <textarea class="input fu-msg-textarea" rows="4" style="margin-top:8px">${esc(card.msg)}</textarea>
+          <div class="fu-editarea-hint">Edite o telefone e/ou a mensagem e clique em Enviar.</div>
         </div>
       </div>`;
   }
@@ -523,16 +529,32 @@
       renderSecao("🔄", "Reativação de inativos",        secoes.reativacao,        "fu-s6"),
     ].join("");
 
-    // Botões Digisac — usa textarea se estiver aberta
+    // Botões Digisac — usa telefone/mensagem editados se a área estiver aberta
     wrap.querySelectorAll(".fu-btn-dg").forEach(btn => {
-      if (btn.disabled) return;
       btn.addEventListener("click", () => {
-        const card = btn.closest(".fu-card");
-        const textarea = card?.querySelector(".fu-msg-textarea");
-        const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
+        const card      = btn.closest(".fu-card");
+        const editArea  = card.querySelector(".fu-card__editarea");
+        const aberta    = editArea && !editArea.hidden;
+        const telInput  = card.querySelector(".fu-phone-input");
+        const textarea  = card.querySelector(".fu-msg-textarea");
+
+        const tel = aberta && telInput?.value.trim()
+          ? telInput.value.trim()
+          : btn.dataset.tel;
+        const msg = aberta && textarea?.value.trim()
           ? textarea.value
           : card.querySelector(".fu-btn-edit").dataset.msg;
-        enviarDigisac(btn, btn.dataset.tel, msg, btn.dataset.secao, btn.dataset.nome);
+
+        if (!tel) {
+          alert("Informe o telefone no campo acima antes de enviar.\nFormato: DDD + número, ex: 85999997092");
+          if (!aberta && editArea) {
+            editArea.hidden = false;
+            card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo");
+          }
+          telInput?.focus();
+          return;
+        }
+        enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
       });
     });
 
@@ -638,14 +660,20 @@
         if (!novos.length) sec.querySelector(".fu-badge").classList.add("fu-badge--zero");
         // Re-ativa botões
         sec.querySelectorAll(".fu-btn-dg").forEach(btn => {
-          if (btn.disabled) return;
           btn.addEventListener("click", () => {
-            const card = btn.closest(".fu-card");
-            const textarea = card?.querySelector(".fu-msg-textarea");
-            const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
-              ? textarea.value
-              : card.querySelector(".fu-btn-edit").dataset.msg;
-            enviarDigisac(btn, btn.dataset.tel, msg, btn.dataset.secao, btn.dataset.nome);
+            const card     = btn.closest(".fu-card");
+            const editArea = card.querySelector(".fu-card__editarea");
+            const aberta   = editArea && !editArea.hidden;
+            const telInput = card.querySelector(".fu-phone-input");
+            const textarea = card.querySelector(".fu-msg-textarea");
+            const tel = aberta && telInput?.value.trim() ? telInput.value.trim() : btn.dataset.tel;
+            const msg = aberta && textarea?.value.trim() ? textarea.value : card.querySelector(".fu-btn-edit").dataset.msg;
+            if (!tel) {
+              alert("Informe o telefone no campo acima antes de enviar.\nFormato: DDD + número, ex: 85999997092");
+              if (!aberta && editArea) { editArea.hidden = false; card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo"); }
+              telInput?.focus(); return;
+            }
+            enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
           });
         });
         sec.querySelectorAll(".fu-btn-edit").forEach(btn => {
