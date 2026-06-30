@@ -1628,3 +1628,61 @@ textarea.input {
   gap: 8px;
   margin-bottom: 8px;
 }
+
+/* Cabeçalho do mês no painel de vendas */
+.vendas-mes-heading {
+  font-family: var(--font-title);
+  font-size: 1.9rem;
+  font-weight: 600;
+  color: var(--navy);
+  line-height: 1;
+}
+
+.vendas-dias-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+/* Sugestão abaixo dos valores */
+.vendas-empresa-sugestao {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.vendas-func-sugestao {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  line-height: 1.7;
+}
+
+.vendas-meta-ok {
+  color: #1f8a4c;
+  font-weight: 600;
+}
+
+/* Toggle do calendário */
+.cal-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  transition: color 0.14s;
+}
+
+.cal-toggle-btn:hover {
+  color: var(--navy);
+}

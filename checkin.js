@@ -23,6 +23,19 @@
   const calPrev    = document.getElementById("cal-prev");
   const calNext    = document.getElementById("cal-next");
   const calHoje    = document.getElementById("cal-hoje");
+  const calToggle  = document.getElementById("cal-toggle");
+  const calTogIcon = document.getElementById("cal-toggle-icon");
+  const calBody    = document.getElementById("cal-body");
+
+  const CAL_VIS_KEY = "lolek_cal_visible";
+  function setCalVisible(v) {
+    calBody.hidden = !v;
+    calTogIcon.textContent = v ? "▲" : "▼";
+    localStorage.setItem(CAL_VIS_KEY, v ? "1" : "0");
+    if (!v && selectedDate) { selectedDate = null; renderSections(); }
+  }
+  calToggle.addEventListener("click", () => setCalVisible(calBody.hidden));
+  setCalVisible(localStorage.getItem(CAL_VIS_KEY) === "1");
 
   // ===== Utilidades =====
   function escapeHtml(str) {

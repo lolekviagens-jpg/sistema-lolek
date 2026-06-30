@@ -63,18 +63,24 @@
           <button class="btn btn--ghost" id="checkin-refresh" type="button">↻ Atualizar</button>
         </div>
 
-        <!-- Calendário -->
+        <!-- Calendário (colapsável) -->
         <div class="cal-wrap">
-          <div class="cal-nav">
-            <button class="btn btn--ghost btn--icon" id="cal-prev">‹</button>
-            <span id="cal-title" class="cal-nav-title"></span>
-            <button class="btn btn--ghost btn--icon" id="cal-next">›</button>
-            <button class="btn btn--ghost btn--icon" id="cal-hoje" style="margin-left:auto">Hoje / Amanhã</button>
-          </div>
-          <div class="cal-grid" id="cal-grid"></div>
-          <div class="cal-legend">
-            <span class="cal-dot cal-dot--ida"></span> Embarques &nbsp;
-            <span class="cal-dot cal-dot--volta"></span> Chegadas
+          <button class="cal-toggle-btn" id="cal-toggle" type="button">
+            <span>📅 Calendário de embarques</span>
+            <span id="cal-toggle-icon">▼</span>
+          </button>
+          <div id="cal-body" hidden>
+            <div class="cal-nav" style="margin-top:12px">
+              <button class="btn btn--ghost btn--icon" id="cal-prev">‹</button>
+              <span id="cal-title" class="cal-nav-title"></span>
+              <button class="btn btn--ghost btn--icon" id="cal-next">›</button>
+              <button class="btn btn--ghost btn--icon" id="cal-hoje" style="margin-left:auto">Hoje</button>
+            </div>
+            <div class="cal-grid" id="cal-grid"></div>
+            <div class="cal-legend">
+              <span class="cal-dot cal-dot--ida"></span> Embarques &nbsp;
+              <span class="cal-dot cal-dot--volta"></span> Chegadas
+            </div>
           </div>
         </div>
 
@@ -144,104 +150,63 @@
       <section class="panel" data-panel="vendas">
 
         <div class="toolbar">
-          <div style="display:flex;align-items:center;gap:6px">
-            <button class="btn btn--ghost btn--icon" id="vendas-prev-mes">‹</button>
-            <span id="vendas-mes-title" class="vendas-mes-label"></span>
-            <button class="btn btn--ghost btn--icon" id="vendas-next-mes">›</button>
-            <button class="btn btn--ghost btn--icon" id="vendas-mes-hoje" style="margin-left:4px">Mês atual</button>
+          <div>
+            <div id="vendas-mes-label" class="vendas-mes-heading"></div>
+            <div id="vendas-dias-uteis" class="vendas-dias-label"></div>
           </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn--ghost" id="vendas-config-btn" type="button">⚙ Metas</button>
-            <button class="btn btn--gold" id="vendas-add-btn" type="button">+ Registrar venda</button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="vendas-updated" class="toolbar__info"></span>
+            <button class="btn btn--ghost btn--icon" id="vendas-refresh-btn" type="button">↻ Atualizar</button>
+            <button class="btn btn--gold" id="vendas-metas-btn" type="button">⚙ Metas</button>
           </div>
         </div>
 
-        <!-- Empresa -->
+        <div id="vendas-status"></div>
+
+        <!-- Card empresa -->
         <div class="vendas-empresa-card">
           <div class="vendas-empresa-top">
             <div>
               <div class="vendas-empresa-label">Total da empresa</div>
-              <div id="vendas-total" class="vendas-empresa-total">R$ 0,00</div>
+              <div id="vendas-empresa-total" class="vendas-empresa-total">—</div>
+              <div id="vendas-empresa-sugestao" class="vendas-empresa-sugestao"></div>
             </div>
-            <div id="vendas-pct" class="vendas-pct-badge"></div>
+            <div id="vendas-empresa-pct" class="vendas-pct-badge"></div>
             <div style="text-align:right">
               <div class="vendas-empresa-label">Meta mensal</div>
-              <div id="vendas-meta" class="vendas-empresa-meta">—</div>
+              <div id="vendas-empresa-meta" class="vendas-empresa-meta">—</div>
             </div>
           </div>
           <div class="vendas-bar">
-            <div id="vendas-bar-fill" class="vendas-bar__fill" style="width:0%"></div>
+            <div id="vendas-empresa-bar" class="vendas-bar__fill" style="width:0%"></div>
           </div>
         </div>
 
-        <!-- Funcionárias -->
+        <!-- Cards funcionárias -->
         <div class="vendas-section-title">Funcionárias</div>
         <div id="vendas-func-grid" class="vendas-func-grid"></div>
 
-        <!-- Histórico -->
-        <div class="vendas-section-title" style="margin-top:24px">Vendas do mês</div>
-        <div class="card">
-          <div id="vendas-historico"></div>
-        </div>
-
-        <!-- Modal: adicionar venda -->
-        <div class="modal" id="vendas-modal" hidden>
+        <!-- Modal: metas -->
+        <div class="modal" id="metas-modal" hidden>
           <div class="modal__backdrop"></div>
           <div class="modal__dialog">
             <div class="modal__header">
-              <span class="modal__title">Registrar venda</span>
-              <button class="modal__close" id="vendas-modal-close">✕</button>
-            </div>
-            <div class="form">
-              <div class="form__grid">
-                <label class="field">
-                  <span class="field__label">Data</span>
-                  <input type="date" id="vendas-modal-data" class="input" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Funcionária *</span>
-                  <select id="vendas-modal-func" class="input"><option value="">Selecione</option></select>
-                </label>
-                <label class="field">
-                  <span class="field__label">Cliente</span>
-                  <input type="text" id="vendas-modal-cliente" class="input" placeholder="Nome do cliente" />
-                </label>
-                <label class="field">
-                  <span class="field__label">Destino</span>
-                  <input type="text" id="vendas-modal-destino" class="input" placeholder="Ex: Lisboa, Portugal" />
-                </label>
-                <label class="field field--full">
-                  <span class="field__label">Valor da venda (R$) *</span>
-                  <input type="number" id="vendas-modal-valor" class="input" placeholder="0,00" step="0.01" min="0" />
-                </label>
-              </div>
-              <div class="modal__footer">
-                <button class="btn btn--ghost" id="vendas-modal-cancel">Cancelar</button>
-                <button class="btn btn--gold" id="vendas-modal-save">Salvar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modal: configurar metas -->
-        <div class="modal" id="vendas-cfg-modal" hidden>
-          <div class="modal__backdrop"></div>
-          <div class="modal__dialog">
-            <div class="modal__header">
-              <span class="modal__title">Metas e funcionárias</span>
-              <button class="modal__close" id="vendas-cfg-close">✕</button>
+              <span class="modal__title">Metas do mês</span>
+              <button class="modal__close" id="metas-modal-close">✕</button>
             </div>
             <div class="form">
               <label class="field" style="margin-bottom:20px">
-                <span class="field__label">Meta mensal da empresa (R$)</span>
-                <input type="number" id="vendas-cfg-meta-emp" class="input" placeholder="Ex: 50000" step="100" />
+                <span class="field__label">Meta total da empresa (R$)</span>
+                <input type="number" id="metas-meta-emp" class="input" placeholder="Ex: 42000" step="100" />
               </label>
-              <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Funcionárias</div>
-              <div id="vendas-cfg-funcs"></div>
-              <button type="button" class="btn btn--ghost" id="vendas-cfg-add-func" style="margin-top:10px;width:100%">+ Adicionar funcionária</button>
+              <div class="field__label" style="margin-bottom:10px">
+                Funcionárias <span class="field__optional">(nome exato como aparece na planilha)</span>
+              </div>
+              <div id="metas-funcs"></div>
+              <button type="button" class="btn btn--ghost" id="metas-add-func" style="margin-top:10px;width:100%">+ Adicionar funcionária</button>
               <div class="modal__footer">
-                <button class="btn btn--ghost" id="vendas-cfg-cancel">Cancelar</button>
-                <button class="btn btn--gold" id="vendas-cfg-save">Salvar</button>
+                <button class="btn btn--ghost" id="metas-modal-cancel">Cancelar</button>
+                <button class="btn btn--gold" id="metas-modal-save">Salvar metas</button>
               </div>
             </div>
           </div>
