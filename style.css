@@ -1777,6 +1777,206 @@ textarea.input {
   color: var(--text-muted);
 }
 
+/* ===== Logo real no preview ===== */
+.orc-prev-logo-img {
+  height: 64px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* ===== Cartão de voo ===== */
+.orc-prev-flight-card {
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.orc-prev-flight-card-header {
+  background: var(--navy);
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.orc-prev-flight-label {
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.orc-prev-flight-card-date {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.orc-prev-flight-card-voo {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+.orc-prev-flight-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  gap: 12px;
+  background: #fff;
+}
+
+.orc-prev-airport {
+  text-align: center;
+  min-width: 80px;
+}
+
+.orc-prev-airport--right {
+  text-align: center;
+}
+
+.orc-prev-iata {
+  font-family: var(--font-title);
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1;
+}
+
+.orc-prev-time {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--navy);
+  margin-top: 4px;
+}
+
+.orc-prev-city {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.orc-prev-flight-middle {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.orc-prev-duration {
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.orc-prev-dash-line {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+
+.orc-prev-dash-seg {
+  flex: 1;
+  height: 1px;
+  border-top: 1.5px dashed #cbd5e1;
+}
+
+.orc-prev-plane-icon {
+  font-size: 1rem;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+.orc-prev-direto {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* ===== Tabela de valores flat ===== */
+.orc-prev-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0 0;
+  font-family: var(--font-body);
+}
+
+.orc-prev-table thead tr th {
+  background: #f1f5f9;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 8px 14px;
+  text-align: left;
+}
+
+.orc-prev-table thead tr th:last-child {
+  text-align: right;
+}
+
+.orc-prev-table tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.orc-prev-table tbody tr td {
+  padding: 11px 14px;
+  font-size: 0.85rem;
+  color: #1e293b;
+  vertical-align: middle;
+}
+
+.orc-prev-table tbody tr td:last-child {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.orc-prev-table-row--taxa td {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+.orc-prev-table-desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.orc-prev-table-fotos-row td {
+  padding: 6px 14px 14px;
+}
+
+.orc-prev-table tfoot .orc-prev-table-total td {
+  background: var(--navy);
+  color: var(--gold);
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 14px 16px;
+  text-transform: uppercase;
+}
+
+.orc-prev-table tfoot .orc-prev-table-total td:last-child {
+  text-align: right;
+  font-size: 1.2rem;
+}
+
 /* Toggle do calendário */
 .cal-toggle-btn {
   display: flex;

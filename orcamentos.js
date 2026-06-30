@@ -23,6 +23,8 @@
         { id: "horario_chegada", label: "Horário de chegada",   type: "text",   placeholder: "Ex: 22:15 (+1)",    cols: 1 },
         { id: "conexoes",        label: "Paradas / escalas",    type: "text",   placeholder: "Ex: Voo direto",    cols: 1 },
         { id: "duracao",         label: "Duração total",        type: "text",   placeholder: "Ex: 9h30",          cols: 1 },
+        { id: "cidade_orig",     label: "Cidade de origem",     type: "text",   placeholder: "Ex: Fortaleza",     cols: 1 },
+        { id: "cidade_dest",     label: "Cidade de destino",    type: "text",   placeholder: "Ex: Lisboa",        cols: 1 },
         { id: "_div",            label: "Valores internos — não aparecem para o cliente", type: "divider", cols: 4 },
         { id: "milhas",          label: "Qtd. milhas",          type: "number", placeholder: "Ex: 60000",         cols: 1 },
         { id: "milheiro",        label: "Valor do milheiro (R$)", type: "number", placeholder: "Ex: 18",          cols: 1, step: "0.01" },
@@ -106,6 +108,18 @@
   function diffD(a, b) {
     if (!a || !b) return 0;
     return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
+  }
+
+  // Extrai siglas IATA do campo trecho ("FOR → LIS")
+  function parseTrecho(trecho) {
+    if (!trecho) return { orig: "", dest: "" };
+    const m = trecho.match(/([A-Za-z]{2,3})\s*[→>\-]\s*([A-Za-z]{2,3})/);
+    if (m) return { orig: m[1].toUpperCase(), dest: m[2].toUpperCase() };
+    const parts = trecho.split(/\s*[→>\-]\s*/);
+    return {
+      orig: (parts[0] || "").trim().toUpperCase().substring(0, 3),
+      dest: (parts[1] || "").trim().toUpperCase().substring(0, 3),
+    };
   }
 
   // ===== Cálculo milhas =====
@@ -335,6 +349,8 @@
               { type: "text", text: `Analise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
 {
   "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",
+  "cidade_orig": "nome da cidade de origem (ex: Fortaleza)",
+  "cidade_dest": "nome da cidade de destino (ex: Lisboa)",
   "companhia": "nome da companhia aérea",
   "voo": "número do voo",
   "horario_partida": "HH:MM",
@@ -368,6 +384,8 @@
       };
 
       fill("trecho",          ex.trecho);
+      fill("cidade_orig",     ex.cidade_orig);
+      fill("cidade_dest",     ex.cidade_dest);
       fill("companhia",       ex.companhia);
       fill("voo",             ex.voo);
       fill("horario_partida", ex.horario_partida);
@@ -484,6 +502,8 @@
 
       let totalDest = 0;
       const itens   = [];
+      const FLIGHT_LABELS = ["IDA", "VOLTA", "IDA 2", "VOLTA 2"];
+      let passagemIdx = 0;
 
       dest.produtos.forEach((p) => {
         const cfg = PROD_CFG[p.tipo];
@@ -497,16 +517,23 @@
           venda    = totalPassagem + totalTaxa;
           nomeItem = gV(dest.id + "-" + p.pid + "-trecho") || "Passagem aérea";
 
+          const flightLabel = FLIGHT_LABELS[passagemIdx] || ("TRECHO " + (passagemIdx + 1));
+          const flightDate  = passagemIdx === 0 ? fData(ciVal) : (fData(coVal) || fData(ciVal));
+          passagemIdx++;
+
           itens.push({
             nomeItem, venda, tipo: "passagem",
-            fotos: [], // prints de passagem não aparecem para o cliente
+            fotos: [],
             valorPax, adultos, taxaEmbarque, totalPassagem, totalTaxa,
-            companhia: gV(dest.id + "-" + p.pid + "-companhia"),
-            voo:       gV(dest.id + "-" + p.pid + "-voo"),
-            partida:   gV(dest.id + "-" + p.pid + "-horario_partida"),
-            chegada:   gV(dest.id + "-" + p.pid + "-horario_chegada"),
-            conexoes:  gV(dest.id + "-" + p.pid + "-conexoes"),
-            duracao:   gV(dest.id + "-" + p.pid + "-duracao"),
+            flightLabel, flightDate,
+            companhia:    gV(dest.id + "-" + p.pid + "-companhia"),
+            voo:          gV(dest.id + "-" + p.pid + "-voo"),
+            partida:      gV(dest.id + "-" + p.pid + "-horario_partida"),
+            chegada:      gV(dest.id + "-" + p.pid + "-horario_chegada"),
+            conexoes:     gV(dest.id + "-" + p.pid + "-conexoes"),
+            duracao:      gV(dest.id + "-" + p.pid + "-duracao"),
+            cidadeOrigem: gV(dest.id + "-" + p.pid + "-cidade_orig"),
+            cidadeDestino:gV(dest.id + "-" + p.pid + "-cidade_dest"),
           });
         } else {
           const custo  = gN(dest.id + "-" + p.pid + "-custo");
@@ -544,34 +571,42 @@
     return { nome, roteiro, adultos, criancas, obs, totalGeral, destsData, porPessoa: totalGeral / (adultos || 1) };
   }
 
-  // ===== HTML do item de passagem no preview (sem dados internos) =====
-  function passagemItemHtml(it, j) {
-    const metaParts = [
-      it.companhia && it.voo ? it.companhia + " · " + it.voo : (it.companhia || it.voo || ""),
-      it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
-      it.conexoes || "",
-      it.duracao  || "",
-    ].filter(Boolean);
-    const metaStr = metaParts.join("&nbsp;&nbsp;·&nbsp;&nbsp;");
-
-    const paxLabel = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
+  // ===== Cartão visual de voo =====
+  function renderFlightCard(it) {
+    const iata    = parseTrecho(it.nomeItem);
+    const origCity = it.cidadeOrigem  || "";
+    const destCity = it.cidadeDestino || "";
+    const vooInfo  = [it.companhia, it.voo].filter(Boolean).join(" · ");
+    const isDireto = it.conexoes && /direto/i.test(it.conexoes);
+    const stops    = isDireto ? "Voo direto" : (it.conexoes || "");
 
     return `
-      <div class="orc-prev-item orc-prev-item--passagem${j % 2 === 1 ? " orc-prev-item--alt" : ""}">
-        <div class="orc-prev-flight-left">
-          <div class="orc-prev-item-nome">✈ ${escapeHtml(it.nomeItem)}</div>
-          ${metaStr ? `<div class="orc-prev-flight-meta">${metaStr}</div>` : ""}
+      <div class="orc-prev-flight-card">
+        <div class="orc-prev-flight-card-header">
+          <span class="orc-prev-flight-label">${escapeHtml(it.flightLabel || "VOO")}</span>
+          ${it.flightDate ? `<span class="orc-prev-flight-card-date">${escapeHtml(it.flightDate)}</span>` : ""}
+          ${vooInfo ? `<span class="orc-prev-flight-card-voo">${escapeHtml(vooInfo)}</span>` : ""}
         </div>
-        <div class="orc-prev-flight-right">
-          <div class="orc-prev-flight-price-row">
-            <span class="orc-prev-flight-price-label">Passagem (${paxLabel})</span>
-            <span class="orc-prev-item-valor">${fBRL(it.totalPassagem)}</span>
+        <div class="orc-prev-flight-card-body">
+          <div class="orc-prev-airport">
+            <div class="orc-prev-iata">${escapeHtml(iata.orig || "—")}</div>
+            ${it.partida  ? `<div class="orc-prev-time">${escapeHtml(it.partida)}</div>`  : ""}
+            ${origCity    ? `<div class="orc-prev-city">${escapeHtml(origCity)}</div>`    : ""}
           </div>
-          ${it.taxaEmbarque > 0 ? `
-          <div class="orc-prev-flight-price-row orc-prev-flight-price-row--taxa">
-            <span class="orc-prev-flight-price-label">Taxa de embarque (${paxLabel})</span>
-            <span>${fBRL(it.taxaEmbarque * it.adultos)}</span>
-          </div>` : ""}
+          <div class="orc-prev-flight-middle">
+            ${it.duracao  ? `<div class="orc-prev-duration">${escapeHtml(it.duracao)}</div>` : ""}
+            <div class="orc-prev-dash-line">
+              <span class="orc-prev-dash-seg"></span>
+              <span class="orc-prev-plane-icon">✈</span>
+              <span class="orc-prev-dash-seg"></span>
+            </div>
+            ${stops ? `<div class="orc-prev-direto">${escapeHtml(stops)}</div>` : ""}
+          </div>
+          <div class="orc-prev-airport orc-prev-airport--right">
+            <div class="orc-prev-iata">${escapeHtml(iata.dest || "—")}</div>
+            ${it.chegada  ? `<div class="orc-prev-time">${escapeHtml(it.chegada)}</div>`  : ""}
+            ${destCity    ? `<div class="orc-prev-city">${escapeHtml(destCity)}</div>`    : ""}
+          </div>
         </div>
       </div>`;
   }
@@ -584,62 +619,66 @@
     const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
       (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "");
 
-    const destsHtml = d.destsData.map((dest, i) => {
-      const itensHtml = dest.itens.map((it, j) => {
-        if (it.tipo === "passagem") return passagemItemHtml(it, j);
-        return `
-          <div class="orc-prev-item${j % 2 === 1 ? " orc-prev-item--alt" : ""}">
-            <div>
-              <div class="orc-prev-item-nome">${escapeHtml(it.nomeItem)}</div>
-              ${it.desc ? `<div class="orc-prev-item-desc">${escapeHtml(it.desc)}</div>` : ""}
-              ${it.fotos.length ? `<div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div>` : ""}
-            </div>
-            <div class="orc-prev-item-valor">${fBRL(it.venda)}</div>
-          </div>`;
-      }).join("");
+    // Cartões de voo (todos os trechos de todas as passagens)
+    let flightCardsHtml = "";
+    const tableRows = [];
 
-      return `
-        <div class="orc-prev-destino">
-          <div class="orc-prev-dest-header">
-            <span>${i + 1}. ${escapeHtml(dest.nome)}</span>
-            ${dest.periodo ? `<span class="orc-prev-dest-periodo">${escapeHtml(dest.periodo)}</span>` : ""}
-          </div>
-          ${itensHtml || '<div class="orc-prev-empty">Nenhum serviço adicionado</div>'}
-        </div>`;
-    }).join("");
-
-    const subHtml = d.destsData.map((dest, i) => `
-      <div class="orc-prev-sub-row${i % 2 === 0 ? " orc-prev-sub-row--alt" : ""}">
-        <span>${i + 1}. ${escapeHtml(dest.nome)}</span>
-        <span>${fBRL(dest.totalDest)}</span>
-      </div>`).join("");
+    d.destsData.forEach((dest) => {
+      dest.itens.forEach((it) => {
+        if (it.tipo === "passagem") {
+          flightCardsHtml += renderFlightCard(it);
+          const paxLbl = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
+          tableRows.push(`<tr>
+            <td>Passagem aérea — ${escapeHtml(it.flightLabel)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
+            <td>${fBRL(it.totalPassagem)}</td>
+          </tr>`);
+          if (it.taxaEmbarque > 0) {
+            tableRows.push(`<tr class="orc-prev-table-row--taxa">
+              <td>Taxa de embarque — ${escapeHtml(it.flightLabel)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
+              <td>${fBRL(it.taxaEmbarque * it.adultos)}</td>
+            </tr>`);
+          }
+        } else {
+          let label = escapeHtml(it.nomeItem);
+          if (it.desc) label += `<span class="orc-prev-table-desc"> · ${escapeHtml(it.desc)}</span>`;
+          tableRows.push(`<tr>
+            <td>${label}</td>
+            <td>${fBRL(it.venda)}</td>
+          </tr>`);
+          if (it.fotos && it.fotos.length) {
+            tableRows.push(`<tr class="orc-prev-table-fotos-row"><td colspan="2"><div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div></td></tr>`);
+          }
+        }
+      });
+    });
 
     document.getElementById("orc-preview-wrap").innerHTML = `
       <div class="orc-prev-wrap">
         <div class="orc-prev-header">
-          <div class="orc-prev-logo">
-            <div class="orc-prev-logo-mark">LV</div>
-            <div>
-              <div class="orc-prev-logo-nome">Lolek Viagens</div>
-              <div class="orc-prev-logo-sub">agência de viagens</div>
-            </div>
-          </div>
+          <img src="Lolek_logotipo_3.png" class="orc-prev-logo-img" alt="Lolek Viagens">
           <div class="orc-prev-contatos">${escapeHtml(LOLEK_EMAIL)}<br>${escapeHtml(LOLEK_TEL)}<br>${escapeHtml(LOLEK_END)}</div>
         </div>
         <div class="orc-prev-divider"></div>
         <div class="orc-prev-titulo">PROPOSTA PERSONALIZADA DE VIAGEM</div>
         <div class="orc-prev-subtitulo">Para: <strong>${escapeHtml(d.nome)}</strong> &nbsp;·&nbsp; ${escapeHtml(paxStr)}</div>
-        ${destsHtml}
-        <div class="orc-prev-sub-header"><span>Resumo por destino</span><span>Subtotal</span></div>
-        ${subHtml}
-        <div class="orc-prev-por-pessoa">
-          <span>Por pessoa (${d.adultos} adulto${d.adultos !== 1 ? "s" : ""})</span>
-          <span>${fBRL(d.porPessoa)}</span>
-        </div>
-        <div class="orc-prev-total">
-          <span class="orc-prev-total-lbl">VALOR TOTAL</span>
-          <span class="orc-prev-total-val">${fBRL(d.totalGeral)}</span>
-        </div>
+        ${flightCardsHtml}
+        <table class="orc-prev-table">
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows.join("")}
+          </tbody>
+          <tfoot>
+            <tr class="orc-prev-table-total">
+              <td>VALOR TOTAL</td>
+              <td>${fBRL(d.totalGeral)}</td>
+            </tr>
+          </tfoot>
+        </table>
         <div class="orc-prev-pag">
           <strong>Formas de pagamento</strong>
           ◆ PIX &nbsp;&nbsp; ▬ Cartão de crédito em até 12x (mediante taxas)
