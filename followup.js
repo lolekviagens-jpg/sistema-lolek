@@ -298,17 +298,44 @@
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }
 
-  // ===== Renderização =====
-  function btnWA(tel, msg) {
-    if (!tel) {
-      return `<button class="btn btn--ghost fu-btn-wa" disabled title="Telefone não cadastrado">💬 WhatsApp</button>`;
+  // ===== Envio via Digisac =====
+  async function enviarDigisac(btn, tel, msg) {
+    const phone = formatarTelWA(tel);
+    if (!phone) return;
+    btn.disabled = true;
+    btn.textContent = "⏳";
+    try {
+      const resp = await fetch("/.netlify/functions/digisac", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, message: msg }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok) {
+        btn.textContent = "✓ Enviado";
+        btn.style.cssText = "background:#22c55e;color:#fff;border-color:#22c55e";
+      } else {
+        throw new Error(data.error || "Erro " + resp.status);
+      }
+    } catch (err) {
+      btn.textContent = "✕ Erro";
+      btn.title = err.message;
+      btn.style.cssText = "background:#ef4444;color:#fff;border-color:#ef4444";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = "💬 Enviar";
+        btn.style.cssText = "";
+      }, 3000);
     }
-    const num = formatarTelWA(tel);
-    const link = `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-    return `<a class="btn btn--gold fu-btn-wa" href="${esc(link)}" target="_blank" rel="noopener">💬 WhatsApp</a>`;
   }
 
+  // ===== Renderização =====
   function renderCard(card) {
+    const telNorm = card.tel ? formatarTelWA(card.tel) : null;
+    const btnEnviar = telNorm
+      ? `<button class="btn btn--gold fu-btn-dg" data-tel="${esc(card.tel)}" data-msg="${esc(card.msg)}" title="Enviar via Digisac">💬 Enviar</button>`
+      : `<button class="btn btn--ghost fu-btn-dg" disabled title="Telefone não cadastrado">💬 Enviar</button>`;
+
     return `
       <div class="fu-card">
         <div class="fu-card__info">
@@ -316,7 +343,7 @@
           <div class="fu-card__sub">${esc(card.sub)}</div>
         </div>
         <div class="fu-card__actions">
-          ${btnWA(card.tel, card.msg)}
+          ${btnEnviar}
           <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
         </div>
       </div>`;
@@ -429,6 +456,12 @@
       renderSecao("🔄", "Reativação de inativos",        secoes.reativacao,        "fu-s6"),
     ].join("");
 
+    // Botões Digisac
+    wrap.querySelectorAll(".fu-btn-dg").forEach(btn => {
+      if (btn.disabled) return;
+      btn.addEventListener("click", () => enviarDigisac(btn, btn.dataset.tel, btn.dataset.msg));
+    });
+
     // Botões de copiar mensagem
     wrap.querySelectorAll(".fu-btn-copy").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -517,7 +550,10 @@
           : `<p class="fu-vazio">Nenhum contato nesta categoria hoje.</p>`;
         sec.querySelector(".fu-badge").textContent = novos.length || "0";
         if (!novos.length) sec.querySelector(".fu-badge").classList.add("fu-badge--zero");
-        // Re-ativa botões de copiar
+        // Re-ativa botões
+        sec.querySelectorAll(".fu-btn-dg").forEach(btn => {
+          if (!btn.disabled) btn.addEventListener("click", () => enviarDigisac(btn, btn.dataset.tel, btn.dataset.msg));
+        });
         sec.querySelectorAll(".fu-btn-copy").forEach(btn => {
           btn.addEventListener("click", () => {
             navigator.clipboard.writeText(btn.dataset.msg).then(() => {

@@ -12,7 +12,7 @@
     orcamentos: "Orçamentos",
     vendas:     "Vendas",
     clientes:    "Clientes",
-    confirmacao: "Confirmação de Reserva",
+    confirmacao: "Confirmação de Emissão",
     followup:    "Follow-up",
   };
 

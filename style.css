@@ -2452,3 +2452,71 @@ textarea.input {
   padding: 5px 12px;
   font-size: 0.78rem;
 }
+
+/* ===== Confirmação de Emissão — trechos dinâmicos ===== */
+.conf-trecho-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--bg);
+}
+
+.conf-trecho-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+  gap: 6px;
+}
+
+.conf-trecho-num {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--navy);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+/* ===== Observações formatadas ===== */
+.conf-obs-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.conf-obs-title {
+  font-family: var(--font-title);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 10px;
+}
+
+.conf-obs-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.conf-obs-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  border-left: 3px solid var(--gold);
+}
+
+.conf-obs-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
