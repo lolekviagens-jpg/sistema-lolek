@@ -2328,3 +2328,127 @@ textarea.input {
 .cal-toggle-btn:hover {
   color: var(--navy);
 }
+
+/* ===== Follow-up ===== */
+.fu-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.fu-secao {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.fu-secao__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--navy);
+  color: #fff;
+}
+
+.fu-secao__titulo {
+  font-family: var(--font-title);
+  font-size: 1.1rem;
+  font-weight: 600;
+  flex: 1;
+}
+
+.fu-badge {
+  background: var(--gold);
+  color: var(--navy);
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 10px;
+  min-width: 26px;
+  text-align: center;
+}
+
+.fu-badge--zero {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.fu-secao__body {
+  padding: 12px 16px;
+}
+
+.fu-vazio {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 6px 0;
+  padding: 8px 0;
+}
+
+.fu-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.fu-card:last-child { margin-bottom: 0; }
+
+.fu-card__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fu-card__nome {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--navy);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fu-card__sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.fu-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.fu-btn-wa {
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.fu-btn-copy {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.fu-evento-form {
+  background: #fffde7;
+  border: 1px solid var(--gold-soft);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.btn--sm {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+}

@@ -48,6 +48,10 @@
           <span class="nav__icon">📋</span>
           <span class="nav__label">Confirmação</span>
         </button>
+        <button class="nav__item" data-tab="followup">
+          <span class="nav__icon">💬</span>
+          <span class="nav__label">Follow-up</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -441,6 +445,74 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL FOLLOW-UP ===== -->
+      <section class="panel" data-panel="followup">
+
+        <div class="toolbar">
+          <span class="toolbar__info">Alertas automáticos do dia com base na planilha e nos clientes cadastrados</span>
+          <button class="btn btn--ghost" id="fu-refresh" type="button">↻ Atualizar</button>
+        </div>
+
+        <!-- Seções automáticas -->
+        <div id="fu-secoes">
+          <div class="fu-loading">Clique na aba para carregar os dados.</div>
+        </div>
+
+        <!-- Bloco de viagens especiais (gestão manual) -->
+        <div class="orc-card" style="margin-top:24px">
+          <div class="orc-card__header" style="display:flex;justify-content:space-between;align-items:center">
+            <span>💍 Gerenciar viagens especiais</span>
+            <button type="button" class="btn btn--gold btn--sm" id="fu-ev-adicionar">+ Adicionar</button>
+          </div>
+          <div class="orc-card__body">
+            <p style="font-size:13px;color:var(--navy-light);margin:0 0 10px">
+              Cadastre aqui viagens de lua de mel, aniversários e ocasiões especiais. Você será lembrado 7 dias antes.
+            </p>
+
+            <!-- Formulário inline (oculto por padrão) -->
+            <div class="fu-evento-form" id="fu-evento-form" hidden>
+              <div class="form__grid" style="margin-bottom:10px">
+                <label class="field">
+                  <span class="field__label">Nome do cliente</span>
+                  <input type="text" id="fu-ev-nome" class="input" placeholder="Ex: Maria Silva" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Ocasião</span>
+                  <select id="fu-ev-ocasiao" class="input">
+                    <option value="Lua de mel">Lua de mel</option>
+                    <option value="Aniversário de casamento">Aniversário de casamento</option>
+                    <option value="Aniversário de 15 anos">Aniversário de 15 anos</option>
+                    <option value="Formatura">Formatura</option>
+                    <option value="Viagem em família">Viagem em família</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field__label">Data da viagem</span>
+                  <input type="text" id="fu-ev-data" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Destino</span>
+                  <input type="text" id="fu-ev-destino" class="input" placeholder="Ex: Paris" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Telefone (opcional)</span>
+                  <input type="text" id="fu-ev-tel" class="input" placeholder="Ex: 85 99999-9999" />
+                </label>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end">
+                <button type="button" class="btn btn--ghost" id="fu-ev-cancelar">Cancelar</button>
+                <button type="button" class="btn btn--gold" id="fu-ev-salvar">Salvar evento</button>
+              </div>
+            </div>
+
+            <!-- Lista de eventos cadastrados -->
+            <div id="fu-lista-eventos"></div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
@@ -450,5 +522,6 @@
   <script src="vendas.js"></script>
   <script src="clientes.js"></script>
   <script src="confirmacao.js"></script>
+  <script src="followup.js"></script>
 </body>
 </html>

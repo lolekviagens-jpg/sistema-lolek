@@ -13,6 +13,7 @@
     vendas:     "Vendas",
     clientes:    "Clientes",
     confirmacao: "Confirmação de Reserva",
+    followup:    "Follow-up",
   };
 
   function activateTab(tab) {
