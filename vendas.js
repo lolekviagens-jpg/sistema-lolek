@@ -6,9 +6,10 @@
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
   const CFG_KEY   = "lolek_vendas_cfg2";
 
-  const COL_FUNC  = 2;  // coluna C — nome da funcionária
-  const COL_SEP   = 4;  // coluna E — separador de mês (ex: "junho")
-  const COL_LUCRO = 15; // coluna P — lucro
+  const COL_SITUACAO = 1;  // coluna B — tipo de produto
+  const COL_FUNC     = 2;  // coluna C — nome da funcionária
+  const COL_SEP      = 4;  // coluna E — separador de mês (ex: "junho")
+  const COL_LUCRO    = 15; // coluna P — lucro
 
   const MESES_PT    = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
   const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -20,8 +21,9 @@
     );
   }
   function fBRL(v) {
-    return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  function fPct(v) { return v.toFixed(1).replace(".", ",") + "%"; }
   function gel(id) { return document.getElementById(id); }
 
   function parseNum(s) {
@@ -30,11 +32,37 @@
     return isNaN(n) ? 0 : n;
   }
 
-  // Retorna índice do mês (0-11) se o texto for (ou contiver) um nome de mês, senão -1
   function detectaMes(text) {
     const t = (text || "").trim().toLowerCase();
     if (!t) return -1;
     return MESES_PT.findIndex(m => t === m || t.startsWith(m + " ") || t.endsWith(" " + m) || t.includes(" " + m + " "));
+  }
+
+  // Classifica produto pela coluna B
+  function tipoProduto(situacao) {
+    const s = (situacao || "").toLowerCase().trim();
+    if (!s) return null;
+    if (s === "aguardando viagem" || s === "viagem concluida") return "Passagem aérea";
+    if (s.includes("hospedagem"))   return "Hospedagem";
+    if (s.includes("seguro"))       return "Seguro viagem";
+    if (s.includes("mala"))         return "Adicional de mala";
+    // Capitaliza primeira letra do valor original
+    return situacao.trim().charAt(0).toUpperCase() + situacao.trim().slice(1);
+  }
+
+  // Comissão: 5% até a meta, 10% no excedente
+  function calcComissao(total, meta) {
+    if (meta <= 0) return { valor: total * 0.05, taxaSimples: 5, bateuMeta: false, excedente: 0 };
+    if (total <= meta) {
+      return { valor: total * 0.05, taxaSimples: 5, bateuMeta: false, excedente: 0 };
+    }
+    const excedente = total - meta;
+    return {
+      valor: meta * 0.05 + excedente * 0.10,
+      taxaSimples: null, // taxa mista
+      bateuMeta: true,
+      excedente,
+    };
   }
 
   // ===== Dias úteis =====
@@ -70,7 +98,6 @@
     const now = new Date();
     const currentMonth = now.getMonth();
 
-    // Encontra separadores de mês pela coluna E
     const separadores = [];
     rows.forEach((cols, i) => {
       const sep = (cols[COL_SEP] || "").trim();
@@ -80,25 +107,31 @@
 
     if (separadores.length === 0) return { porFunc: {}, month: currentMonth, year: now.getFullYear(), aviso: "sem-separador" };
 
-    // Separador do mês atual
     let sep = separadores.find(s => s.month === currentMonth);
-    // Se não encontrou o mês atual, usa o último separador encontrado
     if (!sep) sep = separadores[separadores.length - 1];
 
     const proxSep = separadores.find(s => s.rowIdx > sep.rowIdx);
     const fim     = proxSep ? proxSep.rowIdx : rows.length;
 
-    // Linhas do mês
     const linhasMes = rows.slice(sep.rowIdx + 1, fim);
 
-    // Agrupa por coluna C (nome da funcionária)
+    // porFunc[nome] = { total, count, produtos: { tipo: n } }
     const porFunc = {};
     linhasMes.forEach(cols => {
-      const func  = (cols[COL_FUNC] || "").trim();
+      const func = (cols[COL_FUNC] || "").trim();
       if (!func) return;
-      const lucro = parseNum(cols[COL_LUCRO]);
-      if (!lucro) return;
-      porFunc[func] = (porFunc[func] || 0) + lucro;
+
+      const lucro    = parseNum(cols[COL_LUCRO]);
+      const situacao = (cols[COL_SITUACAO] || "").trim();
+      const tipo     = tipoProduto(situacao);
+
+      if (!porFunc[func]) porFunc[func] = { total: 0, count: 0, produtos: {} };
+
+      porFunc[func].total += lucro;
+      porFunc[func].count++;
+      if (tipo) {
+        porFunc[func].produtos[tipo] = (porFunc[func].produtos[tipo] || 0) + 1;
+      }
     });
 
     return { porFunc, month: sep.month, year: now.getFullYear() };
@@ -106,8 +139,6 @@
 
   // ===== Configuração (metas) =====
   let cfg = { funcs: [], metas: {} };
-  // funcs: [{id, nome}]  — nome exato como aparece na planilha
-  // metas: { "YYYY-MM": { "nome": valor, _empresa: valor } }
 
   function loadCfg()  { try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{"funcs":[],"metas":{}}'); } catch { return { funcs: [], metas: {} }; } }
   function saveCfg()  { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
@@ -133,9 +164,8 @@
     const chave = d.year + "-" + String(d.month + 1).padStart(2, "0");
     const metas = cfg.metas[chave] || {};
 
-    // Total geral das funcionárias configuradas
     let totalGeral = 0;
-    cfg.funcs.forEach(f => { totalGeral += d.porFunc[f.nome] || 0; });
+    cfg.funcs.forEach(f => { totalGeral += (d.porFunc[f.nome] || {}).total || 0; });
 
     const metaEmp  = metas._empresa || 0;
     const pctEmp   = metaEmp > 0 ? Math.min(100, (totalGeral / metaEmp) * 100) : 0;
@@ -169,34 +199,75 @@
       return;
     }
     grid.innerHTML = cfg.funcs.map(f => {
-      const total = d.porFunc[f.nome] || 0;
-      const meta  = metas[f.nome] || 0;
-      const pct   = meta > 0 ? Math.min(100, (total / meta) * 100) : 0;
-      const falta = Math.max(0, meta - total);
-      const sug   = diasR > 0 && falta > 0 ? falta / diasR : 0;
-      const barCls = "vendas-bar__fill" + (pct >= 100 ? " vendas-bar__fill--ok" : pct >= 70 ? " vendas-bar__fill--warn" : "");
+      const fd      = d.porFunc[f.nome] || { total: 0, count: 0, produtos: {} };
+      const total   = fd.total;
+      const count   = fd.count;
+      const prods   = fd.produtos;
+      const meta    = metas[f.nome] || 0;
+      const pct     = meta > 0 ? Math.min(100, (total / meta) * 100) : 0;
+      const falta   = Math.max(0, meta - total);
+      const sug     = diasR > 0 && falta > 0 ? falta / diasR : 0;
+      const barCls  = "vendas-bar__fill" + (pct >= 100 ? " vendas-bar__fill--ok" : pct >= 70 ? " vendas-bar__fill--warn" : "");
+      const com     = calcComissao(total, meta);
 
+      // Linha de progresso / meta
       let infoMeta = "";
       if (meta > 0) {
         if (falta > 0) {
           infoMeta = `
-            <div class="vendas-bar" style="margin:10px 0 5px">
+            <div class="vendas-bar" style="margin:10px 0 4px">
               <div class="${barCls}" style="width:${pct}%"></div>
             </div>
             <div class="vendas-func-pct">${pct.toFixed(0)}% de ${fBRL(meta)}</div>
             <div class="vendas-func-sugestao">
-              Faltam <strong>${fBRL(falta)}</strong><br>
-              ${diasR > 0 ? "Sugestão: <strong>" + fBRL(sug) + "</strong>/dia útil" : ""}
+              Faltam <strong>${fBRL(falta)}</strong>
+              ${diasR > 0 ? "&nbsp;·&nbsp; sugestão: <strong>" + fBRL(sug) + "/dia útil</strong>" : ""}
             </div>`;
         } else {
+          const excPct = meta > 0 ? ((com.excedente / meta) * 100) : 0;
           infoMeta = `
-            <div class="vendas-bar" style="margin:10px 0 5px">
+            <div class="vendas-bar" style="margin:10px 0 4px">
               <div class="${barCls}" style="width:100%"></div>
             </div>
-            <div class="vendas-func-pct vendas-meta-ok">✅ Meta atingida!</div>`;
+            <div class="vendas-func-pct vendas-meta-ok">✅ Meta atingida!</div>
+            <div class="vendas-func-excedente">
+              Superou em <strong>${fBRL(com.excedente)}</strong>
+              &nbsp;·&nbsp; <strong>+${fPct(excPct)}</strong> acima da meta
+            </div>`;
         }
       } else {
         infoMeta = `<div class="vendas-func-meta">Sem meta definida</div>`;
+      }
+
+      // Comissão
+      let comissaoHtml;
+      if (com.bateuMeta) {
+        comissaoHtml = `
+          <div class="vendas-func-comissao vendas-func-comissao--dupla">
+            <span class="vendas-comissao-label">💰 Comissão estimada</span>
+            <span class="vendas-comissao-valor">${fBRL(com.valor)}</span>
+          </div>
+          <div class="vendas-comissao-detalhe">5% até meta + 10% no excedente</div>`;
+      } else {
+        comissaoHtml = `
+          <div class="vendas-func-comissao">
+            <span class="vendas-comissao-label">💰 Comissão estimada <span class="vendas-comissao-taxa">(5%)</span></span>
+            <span class="vendas-comissao-valor">${fBRL(com.valor)}</span>
+          </div>`;
+      }
+
+      // Produtos vendidos
+      let prodsHtml = "";
+      if (count > 0) {
+        const tiposList = Object.entries(prods)
+          .sort((a, b) => b[1] - a[1])
+          .map(([tipo, n]) => `${n} ${escHtml(tipo.toLowerCase())}`)
+          .join(" · ");
+        prodsHtml = `
+          <div class="vendas-func-produtos">
+            <span class="vendas-prod-total">${count} produto${count !== 1 ? "s" : ""} vendido${count !== 1 ? "s" : ""}</span>
+            ${tiposList ? `<span class="vendas-prod-lista">${tiposList}</span>` : ""}
+          </div>`;
       }
 
       return `
@@ -204,6 +275,8 @@
           <div class="vendas-func-nome">${escHtml(f.nome)}</div>
           <div class="vendas-func-valor">${fBRL(total)}</div>
           ${infoMeta}
+          ${comissaoHtml}
+          ${prodsHtml}
         </div>`;
     }).join("");
   }

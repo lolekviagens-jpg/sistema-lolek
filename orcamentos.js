@@ -420,12 +420,16 @@
       for (const f of (e.dataTransfer?.files || []))
         if (f.type.startsWith("image/")) readFoto(pid, f, zoneId, tipo, destId);
     });
-    zone.addEventListener("click", () => {
-      const inp = document.createElement("input");
-      inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
-      inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId, tipo, destId); };
-      inp.click();
-    });
+    // Para fotos de hotel/outros: abre o seletor de arquivo ao clicar
+    // Para passagem: somente Ctrl+V, sem dialog de arquivo
+    if (tipo !== "passagem") {
+      zone.addEventListener("click", () => {
+        const inp = document.createElement("input");
+        inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+        inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId, tipo, destId); };
+        inp.click();
+      });
+    }
   }
 
   function readFoto(pid, file, zoneId, tipo, destId) {
@@ -483,6 +487,7 @@
   function coletarDados() {
     const adultos  = parseInt(gV("o-adultos")) || 2;
     const criancas = parseInt(gV("o-criancas")) || 0;
+    const bebes    = parseInt(gV("o-bebes"))    || 0;
     const nome     = gV("o-nome") || "Cliente";
     const obs      = gV("o-obs");
 
@@ -568,7 +573,7 @@
     });
 
     const roteiro = destinos.map((d, i) => gV("o-nome-" + d.id) || "Destino " + (i + 1)).join(" · ");
-    return { nome, roteiro, adultos, criancas, obs, totalGeral, destsData, porPessoa: totalGeral / (adultos || 1) };
+    return { nome, roteiro, adultos, criancas, bebes, obs, totalGeral, destsData, porPessoa: totalGeral / (adultos || 1) };
   }
 
   // ===== Cartão visual de voo =====
@@ -617,7 +622,8 @@
 
     const d = coletarDados();
     const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
-      (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "");
+      (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
+      (d.bebes    > 0 ? " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "") : "");
 
     // Cartões de voo (todos os trechos de todas as passagens)
     let flightCardsHtml = "";
@@ -719,7 +725,8 @@
       doc.setFontSize(12); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
       doc.text("PROPOSTA PERSONALIZADA DE VIAGEM", W / 2, y, { align: "center" }); y += 5;
       const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
-        (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "");
+        (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
+        (d.bebes    > 0 ? " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "") : "");
       doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
       doc.text("Para: " + d.nome + "   ·   " + paxStr, W / 2, y, { align: "center" }); y += 10;
 
@@ -878,6 +885,7 @@
     let txt = "🌍 PROPOSTA LOLEK VIAGENS\n";
     txt += "Cliente: " + d.nome + " · " + d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "");
     if (d.criancas > 0) txt += " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "");
+    if (d.bebes    > 0) txt += " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "");
     txt += "\n\n";
     d.destsData.forEach((dest, i) => {
       txt += "📍 " + (i + 1) + ". " + dest.nome + (dest.periodo ? " (" + dest.periodo + ")" : "") + "\n";

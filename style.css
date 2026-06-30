@@ -1622,6 +1622,79 @@ textarea.input {
   margin-top: 2px;
 }
 
+.vendas-func-excedente {
+  font-size: 0.8rem;
+  color: #1f8a4c;
+  margin-top: 5px;
+  line-height: 1.6;
+}
+
+/* Comissão estimada */
+.vendas-func-comissao {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 9px 12px;
+  margin-top: 12px;
+  gap: 8px;
+}
+
+.vendas-func-comissao--dupla {
+  background: #fefce8;
+  border-color: #fde68a;
+}
+
+.vendas-comissao-label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.vendas-comissao-taxa {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.vendas-comissao-valor {
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--navy);
+  white-space: nowrap;
+}
+
+.vendas-comissao-detalhe {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+  text-align: right;
+}
+
+/* Produtos vendidos */
+.vendas-func-produtos {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vendas-prod-total {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.vendas-prod-lista {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .vendas-cfg-row {
   display: flex;
   align-items: center;
