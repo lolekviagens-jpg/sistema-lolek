@@ -5,6 +5,10 @@
   const SHEET_ID   = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
   const LS_CLI     = "lolek_clientes";
   const LS_EVENTOS = "lolek_eventos_especiais";
+  const LS_ENVIADOS = "lolek_fu_enviados";
+
+  // Quantos dias o item fica oculto após envio (por seção)
+  const DIAS_OCULTAR = { upsell: 30, reativacao: 60 };
 
   // Abas da planilha "passagens emitidas"
   const ABAS = [
@@ -184,7 +188,7 @@
       .map(c => {
         const idade = calcIdade(c.nascimento);
         return {
-          nome: c.nome,
+          nome: c.nome, secao: "aniversario",
           sub: `🎂 Aniversário hoje${idade ? " — " + idade + " anos" : ""}`,
           tel: c.telefone,
           msg: msgAniversario(c.nome),
@@ -194,18 +198,19 @@
 
   function calcAnivViagem(viagens, clientes) {
     const h = hoje0();
+    const umAno = new Date(h); umAno.setFullYear(umAno.getFullYear() - 1);
     return viagens
       .filter(v => {
         if (!v.ida) return false;
-        const idaMs  = v.ida.getTime();
-        const umAno  = new Date(h); umAno.setFullYear(umAno.getFullYear() - 1);
-        const diff   = Math.abs(idaMs - umAno.getTime()) / 86400000;
-        return diff <= 3;
+        // Somente no dia exato (1 ano)
+        return v.ida.getDate() === umAno.getDate() &&
+               v.ida.getMonth() === umAno.getMonth() &&
+               v.ida.getFullYear() === umAno.getFullYear();
       })
       .map(v => {
         const cli = encontrarCliente(v.nome, clientes);
         return {
-          nome: v.nome,
+          nome: v.nome, secao: "anivViagem",
           sub: `✈️ 1 ano da viagem${v.destino ? " para " + v.destino : ""} (${fmtDate(v.ida)})`,
           tel: cli ? cli.telefone : null,
           msg: msgAnivViagem(v.nome, v.destino),
@@ -217,22 +222,23 @@
     const h   = hoje0();
     const ini = addDias(h, 1);
     const fim = addDias(h, 30);
-    // Deduplica por nome (pega só a próxima viagem de cada um)
     const porNome = {};
     viagens.forEach(v => {
       if (!v.ida || v.ida < ini || v.ida > fim) return;
       if (!porNome[normNome(v.nome)] || v.ida < porNome[normNome(v.nome)].ida)
         porNome[normNome(v.nome)] = v;
     });
-    return Object.values(porNome).map(v => {
-      const cli = encontrarCliente(v.nome, clientes);
-      return {
-        nome: v.nome,
-        sub: `✈️ Parte em ${fmtDate(v.ida)}${v.destino ? " → " + v.destino : ""} — ofereça extras!`,
-        tel: cli ? cli.telefone : null,
-        msg: msgUpsell(v.nome, fmtDate(v.ida)),
-      };
-    });
+    return Object.values(porNome)
+      .filter(v => !foiEnviadoRecente("upsell", v.nome))
+      .map(v => {
+        const cli = encontrarCliente(v.nome, clientes);
+        return {
+          nome: v.nome, secao: "upsell",
+          sub: `✈️ Parte em ${fmtDate(v.ida)}${v.destino ? " → " + v.destino : ""} — ofereça extras!`,
+          tel: cli ? cli.telefone : null,
+          msg: msgUpsell(v.nome, fmtDate(v.ida)),
+        };
+      });
   }
 
   function calcPosViagem(viagens, clientes) {
@@ -248,7 +254,7 @@
     return Object.values(porNome).map(v => {
       const cli = encontrarCliente(v.nome, clientes);
       return {
-        nome: v.nome,
+        nome: v.nome, secao: "posViagem",
         sub: `🏡 Voltou${v.destino ? " de " + v.destino : ""} em ${fmtDate(v.volta)}`,
         tel: cli ? cli.telefone : null,
         msg: msgPosViagem(v.nome, v.destino),
@@ -265,7 +271,7 @@
         return d && d >= h && d <= fim;
       })
       .map(e => ({
-        nome: e.nomeCliente,
+        nome: e.nomeCliente, secao: "especial",
         sub: `💍 ${e.ocasiao || "Viagem especial"} — ${e.dataViagem}${e.destino ? " em " + e.destino : ""}`,
         tel: e.telefone || null,
         msg: msgEspecial(e.nomeCliente, e.ocasiao),
@@ -274,8 +280,7 @@
 
   function calcReativacao(viagens, clientes) {
     const h      = hoje0();
-    const limite = addDias(h, -180); // 6 meses
-    // Última data de viagem (ida ou volta) por nome normalizado
+    const limite = addDias(h, -180);
     const ultima = {};
     viagens.forEach(v => {
       const data = v.volta || v.ida;
@@ -285,11 +290,11 @@
         ultima[k] = { nome: v.nome, data };
     });
     return Object.values(ultima)
-      .filter(v => v.data < limite)
+      .filter(v => v.data < limite && !foiEnviadoRecente("reativacao", v.nome))
       .map(v => {
         const cli = encontrarCliente(v.nome, clientes);
         return {
-          nome: v.nome,
+          nome: v.nome, secao: "reativacao",
           sub: `🔄 Última viagem em ${fmtDate(v.data)} — inativo há mais de 6 meses`,
           tel: cli ? cli.telefone : null,
           msg: msgReativacao(v.nome),
@@ -298,8 +303,41 @@
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }
 
+  // ===== Controle de enviados =====
+  function getEnviados() {
+    try { return JSON.parse(localStorage.getItem(LS_ENVIADOS) || "{}"); }
+    catch { return {}; }
+  }
+
+  function marcarEnviado(secao, nome) {
+    const env = getEnviados();
+    env[secao + ":" + normNome(nome)] = new Date().toISOString();
+    localStorage.setItem(LS_ENVIADOS, JSON.stringify(env));
+  }
+
+  function getEnvio(secao, nome) {
+    const env = getEnviados();
+    return env[secao + ":" + normNome(nome)] || null;
+  }
+
+  function foiEnviadoRecente(secao, nome) {
+    const ts = getEnvio(secao, nome);
+    if (!ts) return false;
+    const diasLimite = DIAS_OCULTAR[secao];
+    if (!diasLimite) return false;
+    const limite = new Date(); limite.setDate(limite.getDate() - diasLimite);
+    return new Date(ts) > limite;
+  }
+
+  function fmtEnvio(isoTs) {
+    if (!isoTs) return "";
+    const d = new Date(isoTs);
+    return d.toLocaleDateString("pt-BR") + " às " +
+      d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  }
+
   // ===== Envio via Digisac =====
-  async function enviarDigisac(btn, tel, msg) {
+  async function enviarDigisac(btn, tel, msg, secao, nome) {
     const phone = formatarTelWA(tel);
     if (!phone) return;
     btn.disabled = true;
@@ -312,8 +350,18 @@
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok) {
-        btn.textContent = "✓ Enviado";
-        btn.style.cssText = "background:#22c55e;color:#fff;border-color:#22c55e";
+        marcarEnviado(secao, nome);
+        // Atualiza o card com o badge de enviado
+        const card = btn.closest(".fu-card");
+        const actions = card?.querySelector(".fu-card__actions");
+        if (actions) {
+          const badge = document.createElement("span");
+          badge.className = "fu-enviado-badge";
+          badge.textContent = "✓ Enviado " + fmtEnvio(getEnvio(secao, nome));
+          actions.insertBefore(badge, actions.firstChild);
+        }
+        btn.textContent = "✓";
+        btn.style.cssText = "background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px";
       } else {
         throw new Error(data.error || "Erro " + resp.status);
       }
@@ -331,9 +379,20 @@
 
   // ===== Renderização =====
   function renderCard(card) {
-    const temTel = card.tel && formatarTelWA(card.tel);
+    const temTel   = card.tel && formatarTelWA(card.tel);
+    const secao    = card.secao || "geral";
+    const envioTs  = getEnvio(secao, card.nome);
+    const jaEnviei = !!envioTs;
+
+    const badgeEnviado = jaEnviei
+      ? `<span class="fu-enviado-badge">✓ Enviado ${fmtEnvio(envioTs)}</span>`
+      : "";
+
     const btnEnviar = temTel
-      ? `<button class="btn btn--gold fu-btn-dg" data-tel="${esc(card.tel)}" title="Enviar via Digisac">💬 Enviar</button>`
+      ? `<button class="btn ${jaEnviei ? "fu-btn-dg--sent" : "btn--gold"} fu-btn-dg"
+           data-tel="${esc(card.tel)}" data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
+           ${jaEnviei ? 'style="background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px"' : ""}
+           title="Enviar via Digisac">${jaEnviei ? "✓" : "💬 Enviar"}</button>`
       : `<button class="btn btn--ghost fu-btn-dg" disabled title="Telefone não cadastrado">💬 Enviar</button>`;
 
     return `
@@ -344,6 +403,7 @@
             <div class="fu-card__sub">${esc(card.sub)}</div>
           </div>
           <div class="fu-card__actions">
+            ${badgeEnviado}
             ${btnEnviar}
             <button class="btn btn--ghost fu-btn-edit" data-msg="${esc(card.msg)}" title="Editar mensagem antes de enviar">✏️</button>
             <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
@@ -471,8 +531,8 @@
         const textarea = card?.querySelector(".fu-msg-textarea");
         const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
           ? textarea.value
-          : btn.closest(".fu-card__main").querySelector(".fu-btn-edit").dataset.msg;
-        enviarDigisac(btn, btn.dataset.tel, msg);
+          : card.querySelector(".fu-btn-edit").dataset.msg;
+        enviarDigisac(btn, btn.dataset.tel, msg, btn.dataset.secao, btn.dataset.nome);
       });
     });
 
@@ -584,8 +644,8 @@
             const textarea = card?.querySelector(".fu-msg-textarea");
             const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
               ? textarea.value
-              : btn.closest(".fu-card__main").querySelector(".fu-btn-edit").dataset.msg;
-            enviarDigisac(btn, btn.dataset.tel, msg);
+              : card.querySelector(".fu-btn-edit").dataset.msg;
+            enviarDigisac(btn, btn.dataset.tel, msg, btn.dataset.secao, btn.dataset.nome);
           });
         });
         sec.querySelectorAll(".fu-btn-edit").forEach(btn => {
