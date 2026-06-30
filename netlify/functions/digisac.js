@@ -36,7 +36,7 @@ exports.handler = async (event) => {
 
   const payload = JSON.stringify({
     number:    tel,
-    body:      message,
+    text:      message,
     serviceId: serviceId,
   });
 
