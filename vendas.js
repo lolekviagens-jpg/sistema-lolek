@@ -50,18 +50,15 @@
     return situacao.trim().charAt(0).toUpperCase() + situacao.trim().slice(1);
   }
 
-  // Comissão: 5% até a meta, 10% no excedente
+  // Comissão: 5% sobre tudo enquanto não bate a meta; 10% sobre tudo ao bater
   function calcComissao(total, meta) {
-    if (meta <= 0) return { valor: total * 0.05, taxaSimples: 5, bateuMeta: false, excedente: 0 };
-    if (total <= meta) {
-      return { valor: total * 0.05, taxaSimples: 5, bateuMeta: false, excedente: 0 };
-    }
-    const excedente = total - meta;
+    const bateuMeta = meta > 0 && total >= meta;
+    const taxa      = bateuMeta ? 10 : 5;
     return {
-      valor: meta * 0.05 + excedente * 0.10,
-      taxaSimples: null, // taxa mista
-      bateuMeta: true,
-      excedente,
+      valor: total * (taxa / 100),
+      taxa,
+      bateuMeta,
+      excedente: bateuMeta ? total - meta : 0,
     };
   }
 
@@ -240,21 +237,11 @@
       }
 
       // Comissão
-      let comissaoHtml;
-      if (com.bateuMeta) {
-        comissaoHtml = `
-          <div class="vendas-func-comissao vendas-func-comissao--dupla">
-            <span class="vendas-comissao-label">💰 Comissão estimada</span>
-            <span class="vendas-comissao-valor">${fBRL(com.valor)}</span>
-          </div>
-          <div class="vendas-comissao-detalhe">5% até meta + 10% no excedente</div>`;
-      } else {
-        comissaoHtml = `
-          <div class="vendas-func-comissao">
-            <span class="vendas-comissao-label">💰 Comissão estimada <span class="vendas-comissao-taxa">(5%)</span></span>
-            <span class="vendas-comissao-valor">${fBRL(com.valor)}</span>
-          </div>`;
-      }
+      const comissaoHtml = `
+        <div class="vendas-func-comissao${com.bateuMeta ? " vendas-func-comissao--dupla" : ""}">
+          <span class="vendas-comissao-label">💰 Comissão estimada <span class="vendas-comissao-taxa">(${com.taxa}%)</span></span>
+          <span class="vendas-comissao-valor">${fBRL(com.valor)}</span>
+        </div>`;
 
       // Produtos vendidos
       let prodsHtml = "";
