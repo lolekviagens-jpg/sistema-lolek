@@ -404,8 +404,7 @@
     const envioTs  = getEnvio(secao, card.nome);
     const jaEnviei = !!envioTs;
 
-    // Sem telefone → área de edição já começa aberta
-    const editAberta = !temTel;
+    const editAberta = false;
 
     const badgeEnviado = jaEnviei
       ? `<span class="fu-enviado-badge">✓ Enviado ${fmtEnvio(envioTs)}</span>`
