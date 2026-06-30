@@ -2520,3 +2520,37 @@ textarea.input {
   font-size: 1rem;
   line-height: 1.5;
 }
+
+/* ===== Follow-up — edição inline de mensagem ===== */
+.fu-card__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fu-card__editarea {
+  margin-top: 10px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.fu-msg-textarea {
+  width: 100%;
+  resize: vertical;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+
+.fu-editarea-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.fu-btn-edit--ativo {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}

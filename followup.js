@@ -331,20 +331,27 @@
 
   // ===== Renderização =====
   function renderCard(card) {
-    const telNorm = card.tel ? formatarTelWA(card.tel) : null;
-    const btnEnviar = telNorm
-      ? `<button class="btn btn--gold fu-btn-dg" data-tel="${esc(card.tel)}" data-msg="${esc(card.msg)}" title="Enviar via Digisac">💬 Enviar</button>`
+    const temTel = card.tel && formatarTelWA(card.tel);
+    const btnEnviar = temTel
+      ? `<button class="btn btn--gold fu-btn-dg" data-tel="${esc(card.tel)}" title="Enviar via Digisac">💬 Enviar</button>`
       : `<button class="btn btn--ghost fu-btn-dg" disabled title="Telefone não cadastrado">💬 Enviar</button>`;
 
     return `
       <div class="fu-card">
-        <div class="fu-card__info">
-          <div class="fu-card__nome">${esc(card.nome)}</div>
-          <div class="fu-card__sub">${esc(card.sub)}</div>
+        <div class="fu-card__main">
+          <div class="fu-card__info">
+            <div class="fu-card__nome">${esc(card.nome)}</div>
+            <div class="fu-card__sub">${esc(card.sub)}</div>
+          </div>
+          <div class="fu-card__actions">
+            ${btnEnviar}
+            <button class="btn btn--ghost fu-btn-edit" data-msg="${esc(card.msg)}" title="Editar mensagem antes de enviar">✏️</button>
+            <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
+          </div>
         </div>
-        <div class="fu-card__actions">
-          ${btnEnviar}
-          <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
+        <div class="fu-card__editarea" hidden>
+          <textarea class="input fu-msg-textarea" rows="4">${esc(card.msg)}</textarea>
+          <div class="fu-editarea-hint">Edite a mensagem acima e clique em Enviar quando estiver pronto.</div>
         </div>
       </div>`;
   }
@@ -456,10 +463,29 @@
       renderSecao("🔄", "Reativação de inativos",        secoes.reativacao,        "fu-s6"),
     ].join("");
 
-    // Botões Digisac
+    // Botões Digisac — usa textarea se estiver aberta
     wrap.querySelectorAll(".fu-btn-dg").forEach(btn => {
       if (btn.disabled) return;
-      btn.addEventListener("click", () => enviarDigisac(btn, btn.dataset.tel, btn.dataset.msg));
+      btn.addEventListener("click", () => {
+        const card = btn.closest(".fu-card");
+        const textarea = card?.querySelector(".fu-msg-textarea");
+        const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
+          ? textarea.value
+          : btn.closest(".fu-card__main").querySelector(".fu-btn-edit").dataset.msg;
+        enviarDigisac(btn, btn.dataset.tel, msg);
+      });
+    });
+
+    // Botões de editar
+    wrap.querySelectorAll(".fu-btn-edit").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card     = btn.closest(".fu-card");
+        const editArea = card.querySelector(".fu-card__editarea");
+        const aberto   = !editArea.hidden;
+        editArea.hidden = aberto;
+        btn.classList.toggle("fu-btn-edit--ativo", !aberto);
+        if (!aberto) card.querySelector(".fu-msg-textarea").focus();
+      });
     });
 
     // Botões de copiar mensagem
@@ -552,7 +578,25 @@
         if (!novos.length) sec.querySelector(".fu-badge").classList.add("fu-badge--zero");
         // Re-ativa botões
         sec.querySelectorAll(".fu-btn-dg").forEach(btn => {
-          if (!btn.disabled) btn.addEventListener("click", () => enviarDigisac(btn, btn.dataset.tel, btn.dataset.msg));
+          if (btn.disabled) return;
+          btn.addEventListener("click", () => {
+            const card = btn.closest(".fu-card");
+            const textarea = card?.querySelector(".fu-msg-textarea");
+            const msg = (textarea && !card.querySelector(".fu-card__editarea").hidden)
+              ? textarea.value
+              : btn.closest(".fu-card__main").querySelector(".fu-btn-edit").dataset.msg;
+            enviarDigisac(btn, btn.dataset.tel, msg);
+          });
+        });
+        sec.querySelectorAll(".fu-btn-edit").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const card = btn.closest(".fu-card");
+            const editArea = card.querySelector(".fu-card__editarea");
+            const aberto = !editArea.hidden;
+            editArea.hidden = aberto;
+            btn.classList.toggle("fu-btn-edit--ativo", !aberto);
+            if (!aberto) card.querySelector(".fu-msg-textarea").focus();
+          });
         });
         sec.querySelectorAll(".fu-btn-copy").forEach(btn => {
           btn.addEventListener("click", () => {
