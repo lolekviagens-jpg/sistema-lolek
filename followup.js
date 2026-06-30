@@ -75,16 +75,15 @@
     const wb = normNome(b).split(" ").filter(w => w.length > 2 && !stopwords.has(w));
     if (!wa.length || !wb.length) return 0;
 
-    // Sobrenome (última palavra significativa) precisa coincidir
-    const sobrenomeA = wa[wa.length - 1];
-    const sobrenomeB = wb[wb.length - 1];
-    if (sobrenomeA !== sobrenomeB) return 0;
-
-    // Com sobrenome igual, calcula Jaccard das demais palavras
     const setA = new Set(wa), setB = new Set(wb);
-    let matches = 0;
-    setA.forEach(w => { if (setB.has(w)) matches++; });
-    return matches / Math.max(setA.size, setB.size);
+    const comuns = [...setA].filter(w => setB.has(w));
+
+    // Precisa ter ao menos uma palavra em comum que não seja o primeiro nome de nenhum dos dois
+    // (evita casar "Bruna Burlamaqui" com "Bruna Marquesini" pelo primeiro nome)
+    const sobrenomesComuns = comuns.filter(w => w !== wa[0] && w !== wb[0]);
+    if (sobrenomesComuns.length === 0) return 0;
+
+    return comuns.length / Math.max(setA.size, setB.size);
   }
 
   // Retorna { cliente, score } ou null
@@ -92,7 +91,7 @@
     let melhor = null, melhorScore = 0;
     clientes.forEach(c => {
       const s = similaridade(c.nome || "", nome);
-      if (s > melhorScore && s >= 0.67) { melhorScore = s; melhor = c; }
+      if (s > melhorScore && s >= 0.5) { melhorScore = s; melhor = c; }
     });
     return melhor ? { cliente: melhor, score: melhorScore } : null;
   }
