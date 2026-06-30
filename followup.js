@@ -5,7 +5,8 @@
   const SHEET_ID   = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
   const LS_CLI     = "lolek_clientes";
   const LS_EVENTOS = "lolek_eventos_especiais";
-  const LS_ENVIADOS = "lolek_fu_enviados";
+  const LS_ENVIADOS    = "lolek_fu_enviados";
+  const LS_DESCARTADOS = "lolek_fu_descartados";
 
   // Quantos dias o item fica oculto após envio (por seção)
   const DIAS_OCULTAR = { upsell: 30, reativacao: 60 };
@@ -197,6 +198,7 @@
         const p = c.nascimento.split(/[\/\-\.]/);
         return parseInt(p[0]) === d && parseInt(p[1]) === m;
       })
+      .filter(c => !foiDescartado("aniversario", c.nome))
       .map(c => {
         const idade = calcIdade(c.nascimento);
         return {
@@ -219,6 +221,7 @@
                v.ida.getMonth() === umAno.getMonth() &&
                v.ida.getFullYear() === umAno.getFullYear();
       })
+      .filter(v => !foiDescartado("anivViagem", v.nome))
       .map(v => {
         const cli = encontrarCliente(v.nome, clientes);
         return {
@@ -242,7 +245,7 @@
         porNome[normNome(v.nome)] = v;
     });
     return Object.values(porNome)
-      .filter(v => !foiEnviadoRecente("upsell", v.nome))
+      .filter(v => !foiEnviadoRecente("upsell", v.nome) && !foiDescartado("upsell", v.nome))
       .map(v => {
         const cli = encontrarCliente(v.nome, clientes);
         return {
@@ -265,7 +268,9 @@
       if (!porNome[normNome(v.nome)] || v.volta > porNome[normNome(v.nome)].volta)
         porNome[normNome(v.nome)] = v;
     });
-    return Object.values(porNome).map(v => {
+    return Object.values(porNome)
+      .filter(v => !foiDescartado("posViagem", v.nome))
+      .map(v => {
       const cli = encontrarCliente(v.nome, clientes);
       return {
         nome: v.nome, secao: "posViagem",
@@ -285,6 +290,7 @@
         const d = parseDateBR(e.dataViagem);
         return d && d >= h && d <= fim;
       })
+      .filter(e => !foiDescartado("especial", e.nomeCliente))
       .map(e => ({
         nome: e.nomeCliente, secao: "especial", clienteNome: null,
         sub: `💍 ${e.ocasiao || "Viagem especial"} — ${e.dataViagem}${e.destino ? " em " + e.destino : ""}`,
@@ -305,7 +311,7 @@
         ultima[k] = { nome: v.nome, data };
     });
     return Object.values(ultima)
-      .filter(v => v.data < limite && !foiEnviadoRecente("reativacao", v.nome))
+      .filter(v => v.data < limite && !foiEnviadoRecente("reativacao", v.nome) && !foiDescartado("reativacao", v.nome))
       .map(v => {
         const cli = encontrarCliente(v.nome, clientes);
         return {
@@ -343,6 +349,21 @@
     if (!diasLimite) return false;
     const limite = new Date(); limite.setDate(limite.getDate() - diasLimite);
     return new Date(ts) > limite;
+  }
+
+  function getDescartados() {
+    try { return JSON.parse(localStorage.getItem(LS_DESCARTADOS) || "{}"); }
+    catch { return {}; }
+  }
+
+  function descartar(secao, nome) {
+    const d = getDescartados();
+    d[secao + ":" + normNome(nome)] = true;
+    localStorage.setItem(LS_DESCARTADOS, JSON.stringify(d));
+  }
+
+  function foiDescartado(secao, nome) {
+    return !!getDescartados()[secao + ":" + normNome(nome)];
   }
 
   function fmtEnvio(isoTs) {
@@ -433,6 +454,9 @@
             <button class="btn btn--ghost fu-btn-edit ${editAberta ? "fu-btn-edit--ativo" : ""}"
               data-msg="${esc(card.msg)}" title="Editar mensagem">✏️</button>
             <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
+            <button class="btn btn--ghost fu-btn-descartar"
+              data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
+              title="Remover da lista" style="color:#94a3b8;font-size:0.8rem">✕</button>
           </div>
         </div>
         <div class="fu-card__editarea"${editAberta ? "" : " hidden"}>
@@ -597,6 +621,27 @@
         editArea.hidden = aberto;
         btn.classList.toggle("fu-btn-edit--ativo", !aberto);
         if (!aberto) card.querySelector(".fu-msg-textarea").focus();
+      });
+    });
+
+    // Botões de descartar card
+    wrap.querySelectorAll(".fu-btn-descartar").forEach(btn => {
+      btn.addEventListener("click", () => {
+        descartar(btn.dataset.secao, btn.dataset.nome);
+        const card = btn.closest(".fu-card");
+        const secaoEl = btn.closest(".fu-secao");
+        card.remove();
+        // Atualiza badge da seção
+        const restantes = secaoEl.querySelectorAll(".fu-card").length;
+        const badge = secaoEl.querySelector(".fu-badge");
+        if (badge) {
+          badge.textContent = restantes || "0";
+          badge.classList.toggle("fu-badge--zero", !restantes);
+        }
+        if (!restantes) {
+          secaoEl.querySelector(".fu-secao__body").innerHTML =
+            `<p class="fu-vazio">Nenhum contato nesta categoria hoje.</p>`;
+        }
       });
     });
 
