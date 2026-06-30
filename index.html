@@ -36,6 +36,10 @@
           <span class="nav__icon">✦</span>
           <span class="nav__label">Orçamentos</span>
         </button>
+        <button class="nav__item" data-tab="vendas">
+          <span class="nav__icon">📊</span>
+          <span class="nav__label">Vendas</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -135,11 +139,121 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL VENDAS ===== -->
+      <section class="panel" data-panel="vendas">
+
+        <div class="toolbar">
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="btn btn--ghost btn--icon" id="vendas-prev-mes">‹</button>
+            <span id="vendas-mes-title" class="vendas-mes-label"></span>
+            <button class="btn btn--ghost btn--icon" id="vendas-next-mes">›</button>
+            <button class="btn btn--ghost btn--icon" id="vendas-mes-hoje" style="margin-left:4px">Mês atual</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn--ghost" id="vendas-config-btn" type="button">⚙ Metas</button>
+            <button class="btn btn--gold" id="vendas-add-btn" type="button">+ Registrar venda</button>
+          </div>
+        </div>
+
+        <!-- Empresa -->
+        <div class="vendas-empresa-card">
+          <div class="vendas-empresa-top">
+            <div>
+              <div class="vendas-empresa-label">Total da empresa</div>
+              <div id="vendas-total" class="vendas-empresa-total">R$ 0,00</div>
+            </div>
+            <div id="vendas-pct" class="vendas-pct-badge"></div>
+            <div style="text-align:right">
+              <div class="vendas-empresa-label">Meta mensal</div>
+              <div id="vendas-meta" class="vendas-empresa-meta">—</div>
+            </div>
+          </div>
+          <div class="vendas-bar">
+            <div id="vendas-bar-fill" class="vendas-bar__fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- Funcionárias -->
+        <div class="vendas-section-title">Funcionárias</div>
+        <div id="vendas-func-grid" class="vendas-func-grid"></div>
+
+        <!-- Histórico -->
+        <div class="vendas-section-title" style="margin-top:24px">Vendas do mês</div>
+        <div class="card">
+          <div id="vendas-historico"></div>
+        </div>
+
+        <!-- Modal: adicionar venda -->
+        <div class="modal" id="vendas-modal" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog">
+            <div class="modal__header">
+              <span class="modal__title">Registrar venda</span>
+              <button class="modal__close" id="vendas-modal-close">✕</button>
+            </div>
+            <div class="form">
+              <div class="form__grid">
+                <label class="field">
+                  <span class="field__label">Data</span>
+                  <input type="date" id="vendas-modal-data" class="input" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Funcionária *</span>
+                  <select id="vendas-modal-func" class="input"><option value="">Selecione</option></select>
+                </label>
+                <label class="field">
+                  <span class="field__label">Cliente</span>
+                  <input type="text" id="vendas-modal-cliente" class="input" placeholder="Nome do cliente" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Destino</span>
+                  <input type="text" id="vendas-modal-destino" class="input" placeholder="Ex: Lisboa, Portugal" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Valor da venda (R$) *</span>
+                  <input type="number" id="vendas-modal-valor" class="input" placeholder="0,00" step="0.01" min="0" />
+                </label>
+              </div>
+              <div class="modal__footer">
+                <button class="btn btn--ghost" id="vendas-modal-cancel">Cancelar</button>
+                <button class="btn btn--gold" id="vendas-modal-save">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: configurar metas -->
+        <div class="modal" id="vendas-cfg-modal" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog">
+            <div class="modal__header">
+              <span class="modal__title">Metas e funcionárias</span>
+              <button class="modal__close" id="vendas-cfg-close">✕</button>
+            </div>
+            <div class="form">
+              <label class="field" style="margin-bottom:20px">
+                <span class="field__label">Meta mensal da empresa (R$)</span>
+                <input type="number" id="vendas-cfg-meta-emp" class="input" placeholder="Ex: 50000" step="100" />
+              </label>
+              <div style="font-size:0.72rem;font-weight:700;letter-spacing:0.6px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Funcionárias</div>
+              <div id="vendas-cfg-funcs"></div>
+              <button type="button" class="btn btn--ghost" id="vendas-cfg-add-func" style="margin-top:10px;width:100%">+ Adicionar funcionária</button>
+              <div class="modal__footer">
+                <button class="btn btn--ghost" id="vendas-cfg-cancel">Cancelar</button>
+                <button class="btn btn--gold" id="vendas-cfg-save">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
   <script src="navigation.js"></script>
   <script src="checkin.js"></script>
   <script src="orcamentos.js"></script>
+  <script src="vendas.js"></script>
 </body>
 </html>

@@ -178,16 +178,23 @@
         idaHoje:     lastPassengers.filter((p) => p.dataIda   === hoje),
         voltaHoje:   lastPassengers.filter((p) => p.dataVolta === hoje),
       };
-      sectionsEl.appendChild(renderSection("🔴", "Check-in de IDA — voam amanhã",   groups.idaAmanha,   "ida",   amanha));
-      sectionsEl.appendChild(renderSection("🟣", "Check-in de VOLTA — voltam amanhã",groups.voltaAmanha, "volta", amanha));
-      sectionsEl.appendChild(renderSection("🟡", "Atenção — voam hoje",              groups.idaHoje,     "ida",   hoje));
-      sectionsEl.appendChild(renderSection("🟡", "Atenção — voltam hoje",            groups.voltaHoje,   "volta", hoje));
+      sectionsEl.appendChild(renderSection("✅", "Check-in de ida — fazer hoje (voo amanhã)",      groups.idaAmanha,   "ida",   amanha));
+      sectionsEl.appendChild(renderSection("✅", "Check-in de volta — fazer hoje (retorno amanhã)", groups.voltaAmanha, "volta", amanha));
+
+      if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0) {
+        const divEl = document.createElement("div");
+        divEl.className = "ci-divider";
+        divEl.innerHTML = "<span>Embarques e chegadas de hoje</span>";
+        sectionsEl.appendChild(divEl);
+        sectionsEl.appendChild(renderSection("🛫", "Embarcam hoje", groups.idaHoje,   "ida",   hoje, true));
+        sectionsEl.appendChild(renderSection("🛬", "Retornam hoje", groups.voltaHoje, "volta", hoje, true));
+      }
     }
   }
 
-  function renderSection(emoji, title, items, leg, legDate) {
+  function renderSection(emoji, title, items, leg, legDate, secondary = false) {
     const wrap = document.createElement("div");
-    wrap.className = "ci-section";
+    wrap.className = "ci-section" + (secondary ? " ci-section--secondary" : "");
 
     const sorted = items.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     const confirms = loadConfirms();
@@ -274,7 +281,7 @@
       const btn = document.createElement("button");
       btn.className = "btn btn--gold btn--icon";
       btn.type      = "button";
-      btn.textContent = "✅ Confirmar";
+      btn.textContent = "Check-in feito ✅";
       btn.addEventListener("click", () => {
         setConfirmed(key, true);
         renderSections();

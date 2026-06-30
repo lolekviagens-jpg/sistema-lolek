@@ -230,7 +230,7 @@
               <input id="o-ci-${dest.id}" type="date" class="input">
             </label>
             <label class="field">
-              <span class="field__label">Data de volta</span>
+              <span class="field__label">Data de volta <span class="field__optional">(opcional)</span></span>
               <input id="o-co-${dest.id}" type="date" class="input">
             </label>
           </div>
@@ -341,7 +341,11 @@
       const ciVal  = gV("o-ci-" + dest.id);
       const coVal  = gV("o-co-" + dest.id);
       const noites = diffD(ciVal, coVal);
-      const periodo= ciVal ? fData(ciVal) + " → " + fData(coVal) + (noites > 0 ? " · " + noites + " noite" + (noites !== 1 ? "s" : "") : "") : "";
+      const periodo = ciVal
+        ? (coVal
+            ? fData(ciVal) + " → " + fData(coVal) + (noites > 0 ? " · " + noites + " noite" + (noites !== 1 ? "s" : "") : "")
+            : "Ida: " + fData(ciVal) + " (somente ida)")
+        : "";
 
       let totalDest = 0;
       const itens   = [];

@@ -8,8 +8,9 @@
 
   // Título exibido na topbar para cada aba
   const TITLES = {
-    checkin: "Check-in do dia",
+    checkin:    "Check-in do dia",
     orcamentos: "Orçamentos",
+    vendas:     "Vendas",
   };
 
   function activateTab(tab) {
