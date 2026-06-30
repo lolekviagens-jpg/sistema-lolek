@@ -6,8 +6,9 @@
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
   const CFG_KEY   = "lolek_vendas_cfg2";
 
-  const COL_NOME  = 4;  // coluna E (índice 0)
-  const COL_LUCRO = 15; // coluna P (índice 0)
+  const COL_FUNC  = 2;  // coluna C — nome da funcionária
+  const COL_SEP   = 4;  // coluna E — separador de mês (ex: "junho")
+  const COL_LUCRO = 15; // coluna P — lucro
 
   const MESES_PT    = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
   const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -29,11 +30,11 @@
     return isNaN(n) ? 0 : n;
   }
 
-  // Retorna índice do mês (0-11) se o texto contiver um nome de mês, senão -1
+  // Retorna índice do mês (0-11) se o texto for (ou contiver) um nome de mês, senão -1
   function detectaMes(text) {
     const t = (text || "").trim().toLowerCase();
     if (!t) return -1;
-    return MESES_PT.findIndex(m => t === m || t.startsWith(m + " ") || t.endsWith(" " + m));
+    return MESES_PT.findIndex(m => t === m || t.startsWith(m + " ") || t.endsWith(" " + m) || t.includes(" " + m + " "));
   }
 
   // ===== Dias úteis =====
@@ -69,11 +70,11 @@
     const now = new Date();
     const currentMonth = now.getMonth();
 
-    // Encontra separadores de mês (coluna E com nome de mês)
+    // Encontra separadores de mês pela coluna E
     const separadores = [];
     rows.forEach((cols, i) => {
-      const nome = (cols[COL_NOME] || "").trim();
-      const m = detectaMes(nome);
+      const sep = (cols[COL_SEP] || "").trim();
+      const m = detectaMes(sep);
       if (m >= 0) separadores.push({ rowIdx: i, month: m });
     });
 
@@ -90,14 +91,14 @@
     // Linhas do mês
     const linhasMes = rows.slice(sep.rowIdx + 1, fim);
 
-    // Agrupa por coluna E (nome da funcionária)
+    // Agrupa por coluna C (nome da funcionária)
     const porFunc = {};
     linhasMes.forEach(cols => {
-      const nome  = (cols[COL_NOME] || "").trim();
-      if (!nome || detectaMes(nome) >= 0) return;
+      const func  = (cols[COL_FUNC] || "").trim();
+      if (!func) return;
       const lucro = parseNum(cols[COL_LUCRO]);
       if (!lucro) return;
-      porFunc[nome] = (porFunc[nome] || 0) + lucro;
+      porFunc[func] = (porFunc[func] || 0) + lucro;
     });
 
     return { porFunc, month: sep.month, year: now.getFullYear() };
