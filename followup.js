@@ -71,27 +71,40 @@
 
   function similaridade(a, b) {
     const stopwords = new Set(["de", "da", "do", "dos", "das", "e"]);
-    const wa = new Set(normNome(a).split(" ").filter(w => w.length > 1 && !stopwords.has(w)));
-    const wb = new Set(normNome(b).split(" ").filter(w => w.length > 1 && !stopwords.has(w)));
-    if (!wa.size || !wb.size) return 0;
+    const wa = normNome(a).split(" ").filter(w => w.length > 2 && !stopwords.has(w));
+    const wb = normNome(b).split(" ").filter(w => w.length > 2 && !stopwords.has(w));
+    if (!wa.length || !wb.length) return 0;
+
+    // Sobrenome (última palavra significativa) precisa coincidir
+    const sobrenomeA = wa[wa.length - 1];
+    const sobrenomeB = wb[wb.length - 1];
+    if (sobrenomeA !== sobrenomeB) return 0;
+
+    // Com sobrenome igual, calcula Jaccard das demais palavras
+    const setA = new Set(wa), setB = new Set(wb);
     let matches = 0;
-    wa.forEach(w => { if (wb.has(w)) matches++; });
-    return matches / Math.max(wa.size, wb.size);
+    setA.forEach(w => { if (setB.has(w)) matches++; });
+    return matches / Math.max(setA.size, setB.size);
   }
 
+  // Retorna { cliente, score } ou null
   function encontrarCliente(nome, clientes) {
     let melhor = null, melhorScore = 0;
     clientes.forEach(c => {
       const s = similaridade(c.nome || "", nome);
-      if (s > melhorScore && s >= 0.5) { melhorScore = s; melhor = c; }
+      if (s > melhorScore && s >= 0.67) { melhorScore = s; melhor = c; }
     });
-    return melhor;
+    return melhor ? { cliente: melhor, score: melhorScore } : null;
   }
 
   function formatarTelWA(tel) {
-    const d = (tel || "").replace(/\D/g, "");
+    // Remove tudo que não é dígito (exceto + que pode vir no começo)
+    let d = (tel || "").trim().replace(/^\+/, "").replace(/\D/g, "");
     if (!d) return null;
-    return d.startsWith("55") ? d : "55" + d;
+    // Brasileiro sem código de país: 10 (fixo) ou 11 (celular) dígitos
+    if (d.length === 10 || d.length === 11) return "55" + d;
+    // Internacional: assume que já tem código de país (12+ dígitos)
+    return d;
   }
 
   // ===== CSV parser =====
@@ -188,7 +201,7 @@
       .map(c => {
         const idade = calcIdade(c.nascimento);
         return {
-          nome: c.nome, secao: "aniversario",
+          nome: c.nome, secao: "aniversario", clienteNome: null,
           sub: `🎂 Aniversário hoje${idade ? " — " + idade + " anos" : ""}`,
           tel: c.telefone,
           msg: msgAniversario(c.nome),
@@ -212,7 +225,8 @@
         return {
           nome: v.nome, secao: "anivViagem",
           sub: `✈️ 1 ano da viagem${v.destino ? " para " + v.destino : ""} (${fmtDate(v.ida)})`,
-          tel: cli ? cli.telefone : null,
+          tel: cli ? cli.cliente.telefone : null,
+          clienteNome: cli ? cli.cliente.nome : null,
           msg: msgAnivViagem(v.nome, v.destino),
         };
       });
@@ -235,7 +249,8 @@
         return {
           nome: v.nome, secao: "upsell",
           sub: `✈️ Parte em ${fmtDate(v.ida)}${v.destino ? " → " + v.destino : ""} — ofereça extras!`,
-          tel: cli ? cli.telefone : null,
+          tel: cli ? cli.cliente.telefone : null,
+          clienteNome: cli ? cli.cliente.nome : null,
           msg: msgUpsell(v.nome, fmtDate(v.ida)),
         };
       });
@@ -271,7 +286,7 @@
         return d && d >= h && d <= fim;
       })
       .map(e => ({
-        nome: e.nomeCliente, secao: "especial",
+        nome: e.nomeCliente, secao: "especial", clienteNome: null,
         sub: `💍 ${e.ocasiao || "Viagem especial"} — ${e.dataViagem}${e.destino ? " em " + e.destino : ""}`,
         tel: e.telefone || null,
         msg: msgEspecial(e.nomeCliente, e.ocasiao),
@@ -296,7 +311,8 @@
         return {
           nome: v.nome, secao: "reativacao",
           sub: `🔄 Última viagem em ${fmtDate(v.data)} — inativo há mais de 6 meses`,
-          tel: cli ? cli.telefone : null,
+          tel: cli ? cli.cliente.telefone : null,
+          clienteNome: cli ? cli.cliente.nome : null,
           msg: msgReativacao(v.nome),
         };
       })
@@ -348,10 +364,12 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone, message: msg }),
       });
-      const data = await resp.json().catch(() => ({}));
+      const rawText = await resp.text();
+      let data = {};
+      try { data = JSON.parse(rawText); } catch { /* não era JSON */ }
+
       if (resp.ok) {
         marcarEnviado(secao, nome);
-        // Atualiza o card com o badge de enviado
         const card = btn.closest(".fu-card");
         const actions = card?.querySelector(".fu-card__actions");
         if (actions) {
@@ -363,17 +381,19 @@
         btn.textContent = "✓";
         btn.style.cssText = "background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px";
       } else {
-        throw new Error(data.error || "Erro " + resp.status);
+        const errMsg = data.error || data.message || rawText || "Erro " + resp.status;
+        throw new Error("Digisac retornou erro " + resp.status + ":\n" + errMsg);
       }
     } catch (err) {
       btn.textContent = "✕ Erro";
-      btn.title = err.message;
       btn.style.cssText = "background:#ef4444;color:#fff;border-color:#ef4444";
       setTimeout(() => {
         btn.disabled = false;
         btn.textContent = "💬 Enviar";
         btn.style.cssText = "";
       }, 3000);
+      // Mostra o erro completo para facilitar o diagnóstico
+      alert("Erro ao enviar para " + nome + ":\n\n" + err.message);
     }
   }
 
@@ -388,12 +408,13 @@
       ? `<span class="fu-enviado-badge">✓ Enviado ${fmtEnvio(envioTs)}</span>`
       : "";
 
-    const btnEnviar = temTel
-      ? `<button class="btn ${jaEnviei ? "fu-btn-dg--sent" : "btn--gold"} fu-btn-dg"
-           data-tel="${esc(card.tel)}" data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
-           ${jaEnviei ? 'style="background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px"' : ""}
-           title="Enviar via Digisac">${jaEnviei ? "✓" : "💬 Enviar"}</button>`
-      : `<button class="btn btn--ghost fu-btn-dg" disabled title="Telefone não cadastrado">💬 Enviar</button>`;
+    const btnStyle  = jaEnviei ? "background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px" : "";
+    const btnClass  = jaEnviei ? "" : (temTel ? "btn--gold" : "btn--ghost");
+    const btnLabel  = jaEnviei ? "✓" : "💬 Enviar";
+    const btnTitle  = temTel ? "Enviar via Digisac" : "Clique em ✏️ para informar o telefone";
+    const btnEnviar = `<button class="btn ${btnClass} fu-btn-dg"
+        data-tel="${esc(card.tel || "")}" data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
+        style="${btnStyle}" title="${btnTitle}">${btnLabel}</button>`;
 
     return `
       <div class="fu-card">
@@ -401,6 +422,9 @@
           <div class="fu-card__info">
             <div class="fu-card__nome">${esc(card.nome)}</div>
             <div class="fu-card__sub">${esc(card.sub)}</div>
+            ${card.clienteNome && card.clienteNome !== card.nome
+              ? `<div class="fu-card__matched">📞 Tel. buscado via cadastro: <strong>${esc(card.clienteNome)}</strong></div>`
+              : ""}
           </div>
           <div class="fu-card__actions">
             ${badgeEnviado}
@@ -414,7 +438,7 @@
             <label class="fu-phone-label">📱 Telefone</label>
             <input type="tel" class="input fu-phone-input" value="${esc(card.tel || "")}"
               placeholder="Ex: 85999997092" style="flex:1" />
-            <span class="fu-phone-hint">DDD + número, só dígitos — ex: 85999997092</span>
+            <span class="fu-phone-hint">Brasil: DDD + número (ex: 85999997092) · Internacional: código do país + número sem o + (ex: 351912345678 para Portugal)</span>
           </div>
           <textarea class="input fu-msg-textarea" rows="4" style="margin-top:8px">${esc(card.msg)}</textarea>
           <div class="fu-editarea-hint">Edite o telefone e/ou a mensagem e clique em Enviar.</div>

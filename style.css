@@ -2591,3 +2591,14 @@ textarea.input {
   color: var(--text-muted);
   width: 100%;
 }
+
+.fu-card__matched {
+  font-size: 0.72rem;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 4px;
+  display: inline-block;
+}
