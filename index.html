@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lolek Viagens — Sistema Interno</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@300;400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ===== Barra lateral ===== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand__logo">LV</div>
+        <div class="brand__text">
+          <span class="brand__name">Lolek</span>
+          <span class="brand__sub">Viagens</span>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav__item is-active" data-tab="checkin">
+          <span class="nav__icon">✈</span>
+          <span class="nav__label">Check-in do dia</span>
+        </button>
+        <button class="nav__item" data-tab="orcamentos">
+          <span class="nav__icon">✦</span>
+          <span class="nav__label">Orçamentos</span>
+        </button>
+      </nav>
+
+      <div class="sidebar__footer">
+        <span>Sistema Interno</span>
+        <span class="sidebar__version">v0.2</span>
+      </div>
+    </aside>
+
+    <!-- ===== Conteúdo ===== -->
+    <main class="content">
+      <header class="topbar">
+        <h1 class="topbar__title" id="page-title">Check-in do dia</h1>
+        <div class="topbar__date" id="page-date"></div>
+      </header>
+
+      <!-- ===== PAINEL CHECK-IN ===== -->
+      <section class="panel is-active" data-panel="checkin">
+
+        <div class="toolbar">
+          <span class="toolbar__info" id="checkin-updated"></span>
+          <button class="btn btn--ghost" id="checkin-refresh" type="button">↻ Atualizar</button>
+        </div>
+
+        <!-- Calendário -->
+        <div class="cal-wrap">
+          <div class="cal-nav">
+            <button class="btn btn--ghost btn--icon" id="cal-prev">‹</button>
+            <span id="cal-title" class="cal-nav-title"></span>
+            <button class="btn btn--ghost btn--icon" id="cal-next">›</button>
+            <button class="btn btn--ghost btn--icon" id="cal-hoje" style="margin-left:auto">Hoje / Amanhã</button>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <div class="cal-legend">
+            <span class="cal-dot cal-dot--ida"></span> Embarques &nbsp;
+            <span class="cal-dot cal-dot--volta"></span> Chegadas
+          </div>
+        </div>
+
+        <div id="checkin-status"></div>
+        <div id="checkin-sections"></div>
+      </section>
+
+      <!-- ===== PAINEL ORÇAMENTOS ===== -->
+      <section class="panel" data-panel="orcamentos">
+
+        <!-- FORMULÁRIO -->
+        <div id="orc-form-wrap">
+
+          <div class="orc-card">
+            <div class="orc-card__header">Dados do cliente</div>
+            <div class="orc-card__body">
+              <div class="form__grid">
+                <label class="field">
+                  <span class="field__label">Nome completo *</span>
+                  <input type="text" id="o-nome" class="input" placeholder="Nome do cliente" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Adultos</span>
+                  <input type="number" id="o-adultos" class="input" value="2" min="1" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Crianças</span>
+                  <input type="number" id="o-criancas" class="input" value="0" min="0" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Observações gerais</span>
+                  <textarea id="o-obs" class="input" rows="2" placeholder="Ex: Todos os hotéis com café da manhã incluído."></textarea>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="orc-card">
+            <div class="orc-card__header">
+              <span>Destinos e serviços</span>
+              <span class="orc-header-hint">Adicione destinos e os produtos de cada um</span>
+            </div>
+            <div class="orc-card__body">
+              <div id="orc-destinos-list"></div>
+              <button type="button" id="orc-add-destino" class="orc-add-btn">+ Adicionar destino</button>
+            </div>
+          </div>
+
+          <button type="button" id="orc-gerar" class="btn btn--gold orc-gerar-btn">Gerar orçamento →</button>
+        </div>
+
+        <!-- OUTPUT -->
+        <div id="orc-output-wrap" hidden>
+          <div id="orc-preview-wrap"></div>
+          <div class="toolbar" style="margin-top:20px">
+            <button type="button" id="orc-edit-btn" class="btn btn--ghost">← Editar</button>
+            <div style="display:flex;gap:10px">
+              <button type="button" id="orc-pdf-btn" class="btn btn--gold">↓ Baixar PDF</button>
+              <button type="button" id="orc-copy-btn" class="btn btn--ghost">Copiar texto</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <script src="navigation.js"></script>
+  <script src="checkin.js"></script>
+  <script src="orcamentos.js"></script>
+</body>
+</html>
