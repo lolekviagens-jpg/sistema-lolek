@@ -40,6 +40,10 @@
           <span class="nav__icon">📊</span>
           <span class="nav__label">Vendas</span>
         </button>
+        <button class="nav__item" data-tab="clientes">
+          <span class="nav__icon">👥</span>
+          <span class="nav__label">Clientes</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -249,6 +253,77 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL CLIENTES ===== -->
+      <section class="panel" data-panel="clientes">
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <div style="display:flex;align-items:center;gap:12px;flex:1">
+            <input type="search" id="cli-busca" class="input cli-busca-input" placeholder="Buscar por nome, CPF, telefone, e-mail ou passaporte…" />
+            <span id="cli-count" class="toolbar__info"></span>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn--ghost" id="cli-exportar-btn" type="button">↓ Exportar CSV</button>
+            <button class="btn btn--gold" id="cli-novo-btn" type="button">+ Novo cliente</button>
+          </div>
+        </div>
+
+        <div id="cli-lista"></div>
+
+        <!-- Modal: detalhe do cliente -->
+        <div class="modal" id="cli-modal-detalhe" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:500px">
+            <div class="modal__header">
+              <span class="modal__title" id="cli-detalhe-nome"></span>
+              <button class="modal__close" id="cli-detalhe-fechar">✕</button>
+            </div>
+            <div id="cli-detalhe-campos" style="padding:0 24px 8px"></div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" id="cli-detalhe-editar">✏ Editar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: novo / editar cliente -->
+        <div class="modal" id="cli-modal-form" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:560px">
+            <div class="modal__header">
+              <span class="modal__title" id="cli-form-titulo">Novo cliente</span>
+              <button class="modal__close" id="cli-form-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <!-- Colar texto do WhatsApp -->
+              <div class="cli-ia-box">
+                <label class="field__label" style="margin-bottom:6px;display:block">Cole aqui o texto do WhatsApp para preenchimento automático</label>
+                <textarea id="cform-ia-paste" class="input" rows="4" placeholder="DADOS PARA EMISSÃO&#10;Nome Completo: ...&#10;CPF: ..."></textarea>
+                <button type="button" id="cform-ia-btn" class="btn btn--ghost" style="margin-top:8px">🤖 Extrair dados</button>
+              </div>
+              <div class="cli-form-divider">— ou preencha manualmente —</div>
+              <div class="form__grid">
+                <label class="field field--full"><span class="field__label">Nome completo *</span><input type="text"   id="cform-nome"           class="input" /></label>
+                <label class="field"><span class="field__label">Data de nascimento</span><input type="text"   id="cform-nascimento"     class="input" placeholder="DD/MM/AAAA" /></label>
+                <label class="field"><span class="field__label">RG</span>              <input type="text"   id="cform-rg"             class="input" /></label>
+                <label class="field"><span class="field__label">CPF</span>             <input type="text"   id="cform-cpf"            class="input" /></label>
+                <label class="field"><span class="field__label">Passaporte</span>      <input type="text"   id="cform-passaporte"     class="input" /></label>
+                <label class="field"><span class="field__label">Venc. passaporte</span><input type="text"   id="cform-venc_passaporte" class="input" placeholder="DD/MM/AAAA" /></label>
+                <label class="field field--full"><span class="field__label">E-mail</span><input type="email" id="cform-email"           class="input" /></label>
+                <label class="field field--full"><span class="field__label">Telefone</span><input type="tel"  id="cform-telefone"       class="input" /></label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost btn--danger" id="cli-form-excluir" hidden>Excluir</button>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="cli-form-cancelar">Cancelar</button>
+                <button class="btn btn--gold"  id="cli-form-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
@@ -256,5 +331,6 @@
   <script src="checkin.js"></script>
   <script src="orcamentos.js"></script>
   <script src="vendas.js"></script>
+  <script src="clientes.js"></script>
 </body>
 </html>
