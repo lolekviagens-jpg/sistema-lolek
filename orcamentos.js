@@ -1,6 +1,4 @@
 // ===== Orçamentos — Lolek Viagens =====
-// Passagem aérea é um produto adicionável como qualquer outro.
-// Cada destino pode ter múltiplos produtos de qualquer tipo.
 (function () {
   "use strict";
 
@@ -8,20 +6,23 @@
   const LOLEK_EMAIL = "thaynara@agencialolekviagens.com.br";
   const LOLEK_END   = "Av. Santos Dumont, 2789, Sala 402 — Fortaleza/CE";
 
-  // ===== Configuração dos produtos =====
-  // "passagem" é tipo especial: venda = valor_pax × adultos
   const PROD_CFG = {
     passagem: {
       label: "Passagem aérea", icon: "✈️",
       fields: [
-        { id: "trecho",    label: "Trecho",             type: "text",   placeholder: "Ex: FOR → LIS", cols: 2 },
-        { id: "companhia", label: "Companhia",           type: "text",   placeholder: "Ex: LATAM",    cols: 1 },
-        { id: "conexoes",  label: "Conexões / Escalas", type: "text",   placeholder: "Voo direto",   cols: 1 },
-        { id: "duracao",   label: "Duração",             type: "text",   placeholder: "Ex: 9h30",     cols: 1 },
-        { id: "milhas",    label: "Qtd. milhas",         type: "number", placeholder: "Ex: 60000",    cols: 1 },
-        { id: "milheiro",  label: "Valor milheiro (R$)", type: "number", placeholder: "Ex: 18",       cols: 1, step: "0.01" },
-        { id: "markup",    label: "Markup / pessoa (R$)",type: "number", placeholder: "Ex: 200",      cols: 1, step: "0.01" },
-        { id: "valor_pax", label: "Valor / pessoa (R$) ★", type: "number", placeholder: "Calculado ou manual", cols: 1, step: "0.01" },
+        { id: "trecho",          label: "Trecho",               type: "text",   placeholder: "Ex: FOR → LIS",    cols: 2 },
+        { id: "companhia",       label: "Companhia aérea",      type: "text",   placeholder: "Ex: LATAM",         cols: 1 },
+        { id: "voo",             label: "Nº do voo",            type: "text",   placeholder: "Ex: LA3504",        cols: 1 },
+        { id: "horario_partida", label: "Horário de partida",   type: "text",   placeholder: "Ex: 14:30",         cols: 1 },
+        { id: "horario_chegada", label: "Horário de chegada",   type: "text",   placeholder: "Ex: 22:15 (+1)",    cols: 1 },
+        { id: "conexoes",        label: "Paradas / escalas",    type: "text",   placeholder: "Ex: Voo direto",    cols: 1 },
+        { id: "duracao",         label: "Duração total",        type: "text",   placeholder: "Ex: 9h30",          cols: 1 },
+        { id: "_div",            label: "Valores internos — não aparecem para o cliente", type: "divider", cols: 4 },
+        { id: "milhas",          label: "Qtd. milhas",          type: "number", placeholder: "Ex: 60000",         cols: 1 },
+        { id: "milheiro",        label: "Valor do milheiro (R$)", type: "number", placeholder: "Ex: 18",          cols: 1, step: "0.01" },
+        { id: "markup",          label: "Markup / pax (R$)",    type: "number", placeholder: "Ex: 200",           cols: 1, step: "0.01" },
+        { id: "valor_pax",       label: "Passagem / pax (R$) ★", type: "number", placeholder: "Calculado ou manual", cols: 1, step: "0.01" },
+        { id: "taxa_embarque",   label: "Taxa de embarque / pax (R$)", type: "number", placeholder: "Ex: 150",   cols: 1, step: "0.01" },
       ],
     },
     hospedagem: {
@@ -101,7 +102,9 @@
     return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
   }
 
-  // ===== Cálculo milhas (para produtos de passagem) =====
+  // ===== Cálculo milhas =====
+  // valor_pax = (milhas / 1000) × milheiro + markup
+  // taxa_embarque é separada e não entra nesse cálculo
   function bindMilhasCalc(destId, pid) {
     const ids = ["milhas", "milheiro", "markup"].map((f) => `${destId}-${pid}-${f}`);
     const valorEl = document.getElementById(`${destId}-${pid}-valor_pax`);
@@ -164,12 +167,14 @@
       div.className = "orc-destino-card";
       div.id = dest.id;
 
-      // Produtos
       const prodHtml = dest.produtos.map((p) => {
         const cfg = PROD_CFG[p.tipo];
         const isPassagem = p.tipo === "passagem";
 
         const fieldsHtml = cfg.fields.map((f) => {
+          if (f.type === "divider") {
+            return `<div class="orc-cost-divider" style="grid-column:1/-1"><span>${escapeHtml(f.label)}</span></div>`;
+          }
           const span = f.cols === 2 ? "grid-column:span 2;" : "";
           let inp;
           if (f.type === "select") {
@@ -179,17 +184,16 @@
             const step = f.step ? `step="${f.step}"` : f.type === "number" ? 'step="0.01"' : "";
             inp = `<input id="${dest.id}-${p.pid}-${f.id}" type="${f.type}" class="input" placeholder="${escapeHtml(f.placeholder||"")}" ${step}>`;
           }
-          // Destaca o campo valor/pessoa da passagem
           const extra = (isPassagem && f.id === "valor_pax") ? " orc-field--highlight" : "";
           return `<label class="field${extra}" style="${span}"><span class="field__label">${escapeHtml(f.label)}</span>${inp}</label>`;
         }).join("");
 
-        // Hint de milhas só para passagem
-        const milhasHint = isPassagem
-          ? `<p class="orc-milhas-hint" style="margin-top:10px;grid-column:1/-1">Milhas ÷ 1000 × valor milheiro + markup = valor por pessoa</p>`
-          : "";
-
         const zoneId = "fotozone-" + p.pid;
+        const zoneClass = isPassagem ? "orc-foto-zone orc-print-zone" : "orc-foto-zone";
+        const zoneHint  = isPassagem
+          ? "📋 Cole aqui o print do bilhete (Ctrl+V) para extrair dados automaticamente"
+          : "📷 Cole (Ctrl+V), arraste ou clique para adicionar fotos";
+
         return `
           <div class="orc-produto-item" id="pi-${p.pid}">
             <div class="orc-produto-header">
@@ -200,10 +204,9 @@
             <div class="orc-produto-body">
               <div class="form__grid orc-produto-fields">
                 ${fieldsHtml}
-                ${milhasHint}
               </div>
-              <div class="orc-foto-zone" id="${zoneId}" tabindex="0">
-                <span class="orc-foto-hint">📷 Cole (Ctrl+V), arraste ou clique para adicionar fotos</span>
+              <div class="${zoneClass}" id="${zoneId}" tabindex="0">
+                <span class="orc-foto-hint">${zoneHint}</span>
               </div>
             </div>
           </div>`;
@@ -236,7 +239,7 @@
           </div>
           <div class="orc-noites-badge" id="o-noites-${dest.id}" hidden></div>
 
-          ${dest.produtos.length > 0 ? `<div id="orc-produtos-${dest.id}">${prodHtml}</div>` : `<div id="orc-produtos-${dest.id}"></div>`}
+          <div id="orc-produtos-${dest.id}">${prodHtml}</div>
 
           <div class="orc-add-prod-label">Adicionar serviço</div>
           <div class="orc-prod-toggles">${togglesHtml}</div>
@@ -244,30 +247,25 @@
 
       destinosList.appendChild(div);
 
-      // Restaura valores
       Object.entries(saved).forEach(([id, val]) => { const e = document.getElementById(id); if (e) e.value = val; });
 
-      // Eventos da cidade (atualiza nome no header)
       const nomeIn = div.querySelector("#o-nome-" + dest.id);
       nomeIn?.addEventListener("input", () => {
         const d = document.getElementById("o-nome-display-" + dest.id);
         if (d) d.textContent = nomeIn.value || "Destino " + (idx + 1);
       });
 
-      // Eventos de datas
       div.querySelector("#o-ci-" + dest.id)?.addEventListener("change", () => calcNoites(dest.id));
       div.querySelector("#o-co-" + dest.id)?.addEventListener("change", () => calcNoites(dest.id));
 
-      // Delegação dos botões de remover e adicionar
       div.querySelectorAll(".orc-destino-remove").forEach((b) => b.addEventListener("click", () => removeDestino(b.dataset.dest)));
       div.querySelectorAll(".orc-produto-remove").forEach((b) => b.addEventListener("click", () => removeProduto(b.dataset.dest, b.dataset.pid)));
       div.querySelectorAll(".orc-prod-toggle").forEach((b) => b.addEventListener("click", () => addProduto(b.dataset.dest, b.dataset.tipo)));
 
-      // Fotos e cálculo de milhas
       dest.produtos.forEach((p) => {
         const zoneId = "fotozone-" + p.pid;
-        setupFotoZone(p.pid, zoneId);
-        renderFotos(p.pid, zoneId);
+        setupFotoZone(p.pid, zoneId, p.tipo, dest.id);
+        renderFotos(p.pid, zoneId, p.tipo, dest.id);
         if (p.tipo === "passagem") bindMilhasCalc(dest.id, p.pid);
       });
 
@@ -275,54 +273,164 @@
     });
   }
 
-  // ===== Fotos =====
-  function setupFotoZone(pid, zoneId) {
+  // ===== Análise com IA (somente passagem) =====
+  async function analisarPassagem(pid, destId, imageSrc) {
+    let apiKey = localStorage.getItem("lolek_anthropic_key");
+    if (!apiKey) {
+      apiKey = prompt(
+        "Para extrair dados automaticamente, informe sua chave da API Anthropic (começa com sk-ant-).\nEla será salva localmente neste navegador."
+      );
+      if (!apiKey || !apiKey.trim()) return;
+      localStorage.setItem("lolek_anthropic_key", apiKey.trim());
+      apiKey = apiKey.trim();
+    }
+
+    const btn = document.querySelector(`[data-ai-pid="${pid}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Analisando..."; }
+
+    try {
+      const match = imageSrc.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) throw new Error("Imagem inválida");
+      const [, mime, b64] = match;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-allow-browser": "true",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1024,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
+              { type: "text", text: `Analise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
+{
+  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",
+  "companhia": "nome da companhia aérea",
+  "voo": "número do voo",
+  "horario_partida": "HH:MM",
+  "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte",
+  "conexoes": "Voo direto OU ex: 1 escala em GRU",
+  "duracao": "Xh Ymin",
+  "milhas": número_inteiro_ou_null,
+  "taxa_embarque": valor_numerico_em_reais_ou_null
+}` },
+            ],
+          }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Erro HTTP " + resp.status);
+      }
+
+      const data = await resp.json();
+      const text = data.content?.[0]?.text || "";
+      const jsonStr = text.match(/\{[\s\S]*\}/)?.[0];
+      if (!jsonStr) throw new Error("Resposta inesperada da IA");
+
+      const ex = JSON.parse(jsonStr);
+      const prefix = `${destId}-${pid}-`;
+      const fill = (field, val) => {
+        if (val == null || val === "") return;
+        const el = document.getElementById(prefix + field);
+        if (el) el.value = val;
+      };
+
+      fill("trecho",          ex.trecho);
+      fill("companhia",       ex.companhia);
+      fill("voo",             ex.voo);
+      fill("horario_partida", ex.horario_partida);
+      fill("horario_chegada", ex.horario_chegada);
+      fill("conexoes",        ex.conexoes);
+      fill("duracao",         ex.duracao);
+      fill("milhas",          ex.milhas);
+      fill("taxa_embarque",   ex.taxa_embarque);
+
+      // Recalcula valor_pax se tiver milhas
+      document.getElementById(prefix + "milhas")?.dispatchEvent(new Event("input"));
+
+      if (btn) { btn.disabled = false; btn.textContent = "✓ Dados extraídos!"; }
+      setTimeout(() => { if (btn) btn.textContent = "🤖 Extrair dados novamente"; }, 3000);
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = "🤖 Extrair dados do print"; }
+      alert("Erro ao analisar: " + err.message);
+    }
+  }
+
+  // ===== Fotos / Prints =====
+  function setupFotoZone(pid, zoneId, tipo, destId) {
     const zone = document.getElementById(zoneId);
     if (!zone) return;
     zone.addEventListener("paste", (e) => {
       for (const item of (e.clipboardData?.items || []))
-        if (item.type.startsWith("image/")) readFoto(pid, item.getAsFile(), zoneId);
+        if (item.type.startsWith("image/")) readFoto(pid, item.getAsFile(), zoneId, tipo, destId);
     });
     zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
     zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
     zone.addEventListener("drop", (e) => {
       e.preventDefault(); zone.classList.remove("dragover");
       for (const f of (e.dataTransfer?.files || []))
-        if (f.type.startsWith("image/")) readFoto(pid, f, zoneId);
+        if (f.type.startsWith("image/")) readFoto(pid, f, zoneId, tipo, destId);
     });
     zone.addEventListener("click", () => {
       const inp = document.createElement("input");
       inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
-      inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId); };
+      inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId, tipo, destId); };
       inp.click();
     });
   }
 
-  function readFoto(pid, file, zoneId) {
+  function readFoto(pid, file, zoneId, tipo, destId) {
     const r = new FileReader();
     r.onload = (e) => {
       if (!fotoStore[pid]) fotoStore[pid] = [];
       fotoStore[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
-      renderFotos(pid, zoneId);
+      renderFotos(pid, zoneId, tipo, destId);
     };
     r.readAsDataURL(file);
   }
 
-  function removeFoto(pid, fid, zoneId) {
+  function removeFoto(pid, fid, zoneId, tipo, destId) {
     fotoStore[pid] = (fotoStore[pid] || []).filter((f) => f.fid !== fid);
-    renderFotos(pid, zoneId);
+    renderFotos(pid, zoneId, tipo, destId);
   }
 
-  function renderFotos(pid, zoneId) {
+  function renderFotos(pid, zoneId, tipo, destId) {
     const zone = document.getElementById(zoneId);
     if (!zone) return;
     let prev = zone.querySelector(".orc-fotos-preview");
     if (!prev) { prev = document.createElement("div"); prev.className = "orc-fotos-preview"; zone.appendChild(prev); }
-    prev.innerHTML = (fotoStore[pid] || []).map((f) =>
-      `<div class="orc-foto-thumb"><img src="${f.src}"><button class="orc-foto-rm" data-pid="${pid}" data-fid="${f.fid}" data-zone="${zoneId}">✕</button></div>`
+
+    const fotos = fotoStore[pid] || [];
+    const isPassagem = tipo === "passagem";
+
+    prev.innerHTML = fotos.map((f) =>
+      `<div class="orc-foto-thumb"><img src="${f.src}"><button class="orc-foto-rm" data-pid="${pid}" data-fid="${f.fid}" data-zone="${zoneId}" data-tipo="${tipo||""}" data-dest="${destId||""}">✕</button></div>`
     ).join("");
+
+    // Para passagem: mostrar botão de análise com IA (fotos são apenas para extração, não para o cliente)
+    if (isPassagem && fotos.length > 0) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn--gold orc-ia-btn";
+      btn.dataset.aiPid = pid;
+      btn.textContent = "🤖 Extrair dados do print";
+      btn.addEventListener("click", () => analisarPassagem(pid, destId, fotos[fotos.length - 1].src));
+      prev.appendChild(btn);
+    }
+
     prev.querySelectorAll(".orc-foto-rm").forEach((b) =>
-      b.addEventListener("click", (e) => { e.stopPropagation(); removeFoto(b.dataset.pid, b.dataset.fid, b.dataset.zone); })
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFoto(b.dataset.pid, b.dataset.fid, b.dataset.zone, b.dataset.tipo, b.dataset.dest);
+      })
     );
   }
 
@@ -355,19 +463,24 @@
         let nomeItem = cfg.label, desc = "", venda = 0;
 
         if (p.tipo === "passagem") {
-          const valorPax = gN(dest.id + "-" + p.pid + "-valor_pax");
-          venda = valorPax * adultos;
+          const valorPax      = gN(dest.id + "-" + p.pid + "-valor_pax");
+          const taxaEmbarque  = gN(dest.id + "-" + p.pid + "-taxa_embarque");
+          const totalPassagem = valorPax * adultos;
+          const totalTaxa     = taxaEmbarque * adultos;
+          venda    = totalPassagem + totalTaxa;
           nomeItem = gV(dest.id + "-" + p.pid + "-trecho") || "Passagem aérea";
-          const info = [
-            gV(dest.id + "-" + p.pid + "-companhia"),
-            gV(dest.id + "-" + p.pid + "-conexoes"),
-            gV(dest.id + "-" + p.pid + "-duracao"),
-          ].filter(Boolean).join(" · ");
-          const milhas = gN(dest.id + "-" + p.pid + "-milhas");
-          const milheiroV = gN(dest.id + "-" + p.pid + "-milheiro");
-          desc = [info, milhas ? milhas.toLocaleString("pt-BR") + " milhas · R$ " + milheiroV + "/milh." : ""].filter(Boolean).join(" · ");
-          // Metadado extra para o preview
-          itens.push({ nomeItem, desc, venda, fotos: (fotoStore[p.pid] || []).map((f) => f.src), tipo: "passagem", valorPax, adultos });
+
+          itens.push({
+            nomeItem, venda, tipo: "passagem",
+            fotos: [], // prints de passagem não aparecem para o cliente
+            valorPax, adultos, taxaEmbarque, totalPassagem, totalTaxa,
+            companhia: gV(dest.id + "-" + p.pid + "-companhia"),
+            voo:       gV(dest.id + "-" + p.pid + "-voo"),
+            partida:   gV(dest.id + "-" + p.pid + "-horario_partida"),
+            chegada:   gV(dest.id + "-" + p.pid + "-horario_chegada"),
+            conexoes:  gV(dest.id + "-" + p.pid + "-conexoes"),
+            duracao:   gV(dest.id + "-" + p.pid + "-duracao"),
+          });
         } else {
           const custo  = gN(dest.id + "-" + p.pid + "-custo");
           const markup = gN(dest.id + "-" + p.pid + "-markup");
@@ -404,6 +517,38 @@
     return { nome, roteiro, adultos, criancas, obs, totalGeral, destsData, porPessoa: totalGeral / (adultos || 1) };
   }
 
+  // ===== HTML do item de passagem no preview (sem dados internos) =====
+  function passagemItemHtml(it, j) {
+    const metaParts = [
+      it.companhia && it.voo ? it.companhia + " · " + it.voo : (it.companhia || it.voo || ""),
+      it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
+      it.conexoes || "",
+      it.duracao  || "",
+    ].filter(Boolean);
+    const metaStr = metaParts.join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+
+    const paxLabel = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
+
+    return `
+      <div class="orc-prev-item orc-prev-item--passagem${j % 2 === 1 ? " orc-prev-item--alt" : ""}">
+        <div class="orc-prev-flight-left">
+          <div class="orc-prev-item-nome">✈ ${escapeHtml(it.nomeItem)}</div>
+          ${metaStr ? `<div class="orc-prev-flight-meta">${metaStr}</div>` : ""}
+        </div>
+        <div class="orc-prev-flight-right">
+          <div class="orc-prev-flight-price-row">
+            <span class="orc-prev-flight-price-label">Passagem (${paxLabel})</span>
+            <span class="orc-prev-item-valor">${fBRL(it.totalPassagem)}</span>
+          </div>
+          ${it.taxaEmbarque > 0 ? `
+          <div class="orc-prev-flight-price-row orc-prev-flight-price-row--taxa">
+            <span class="orc-prev-flight-price-label">Taxa de embarque (${paxLabel})</span>
+            <span>${fBRL(it.taxaEmbarque * it.adultos)}</span>
+          </div>` : ""}
+        </div>
+      </div>`;
+  }
+
   // ===== Preview =====
   function gerarOrcamento() {
     if (destinos.length === 0) { alert("Adicione pelo menos um destino."); return; }
@@ -414,15 +559,12 @@
 
     const destsHtml = d.destsData.map((dest, i) => {
       const itensHtml = dest.itens.map((it, j) => {
-        const passDetalhe = it.tipo === "passagem"
-          ? `<div class="orc-prev-item-desc">Por adulto: ${fBRL(it.valorPax)} × ${it.adultos} = ${fBRL(it.venda)}</div>`
-          : "";
+        if (it.tipo === "passagem") return passagemItemHtml(it, j);
         return `
           <div class="orc-prev-item${j % 2 === 1 ? " orc-prev-item--alt" : ""}">
             <div>
               <div class="orc-prev-item-nome">${escapeHtml(it.nomeItem)}</div>
               ${it.desc ? `<div class="orc-prev-item-desc">${escapeHtml(it.desc)}</div>` : ""}
-              ${passDetalhe}
               ${it.fotos.length ? `<div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div>` : ""}
             </div>
             <div class="orc-prev-item-valor">${fBRL(it.venda)}</div>
@@ -435,7 +577,6 @@
             <span>${i + 1}. ${escapeHtml(dest.nome)}</span>
             ${dest.periodo ? `<span class="orc-prev-dest-periodo">${escapeHtml(dest.periodo)}</span>` : ""}
           </div>
-          <div class="orc-prev-col-header"><span>Descrição</span><span>Valor</span></div>
           ${itensHtml || '<div class="orc-prev-empty">Nenhum serviço adicionado</div>'}
         </div>`;
     }).join("");
@@ -526,41 +667,83 @@
           doc.text(periodo, W - MR - 2, y + 5.5, { align: "right" });
         }
         y += 8;
-        doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, 6, "F");
-        doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(107, 114, 128);
-        doc.text("DESCRIÇÃO", ML + 3, y + 4); doc.text("VALOR", W - MR - 2, y + 4, { align: "right" }); y += 6;
 
         itens.forEach((it, j) => {
-          const linhasNome = doc.splitTextToSize(it.nomeItem || "", usableW - 40);
-          const descFull   = it.tipo === "passagem" && it.valorPax
-            ? [it.desc, "Por adulto: " + fBRL(it.valorPax) + " × " + it.adultos].filter(Boolean).join(" | ")
-            : it.desc;
-          const linhasDesc = descFull ? doc.splitTextToSize(descFull, usableW - 40) : [];
-          const nFotos     = (it.fotos || []).length;
-          const fotoH      = nFotos > 0 ? Math.ceil(nFotos / 3) * 22 + 4 : 0;
-          const rowH       = Math.max(10, linhasNome.length * 4 + linhasDesc.length * 3.5 + fotoH + 4);
-          checkPage(rowH + 2);
+          if (it.tipo === "passagem") {
+            // Monta linha de info de voo (sem dados internos)
+            const metaParts = [
+              it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
+              it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
+              it.conexoes || "",
+              it.duracao  || "",
+            ].filter(Boolean);
+            const metaLine = metaParts.join("  ·  ");
 
-          if (j % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, rowH, "F"); }
-          doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + rowH, W - MR, y + rowH);
+            const nomeLine = "✈ " + (it.nomeItem || "Passagem aérea");
+            const linhasNome = doc.splitTextToSize(nomeLine, usableW - 50);
+            const linhasMeta = metaLine ? doc.splitTextToSize(metaLine, usableW - 50) : [];
+            const paxLabel   = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
 
-          let iy = y + 4;
-          doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); doc.setTextColor(17, 24, 39);
-          doc.text(linhasNome, ML + 3, iy); iy += linhasNome.length * 4;
-          if (linhasDesc.length) {
-            doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-            doc.text(linhasDesc, ML + 3, iy);
-          }
-          if (nFotos > 0) {
-            let fx = ML + 3, fy = iy + linhasDesc.length * 3.5 + 1;
-            for (let k = 0; k < Math.min(nFotos, 6); k++) {
-              try { doc.addImage(it.fotos[k], "JPEG", fx, fy, 20, 15); }
-              catch { try { doc.addImage(it.fotos[k], "PNG", fx, fy, 20, 15); } catch {} }
-              fx += 22; if (fx > W - MR - 20) { fx = ML + 3; fy += 17; }
+            const passH = Math.max(10, linhasNome.length * 4.5 + linhasMeta.length * 3.5 + 4);
+            const taxaH = it.taxaEmbarque > 0 ? 6 : 0;
+            checkPage(passH + taxaH + 2);
+
+            // Linha da passagem
+            if (j % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, passH, "F"); }
+            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + passH, W - MR, y + passH);
+
+            let iy = y + 4;
+            doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); doc.setTextColor(17, 24, 39);
+            doc.text(linhasNome, ML + 3, iy); iy += linhasNome.length * 4.5;
+            if (linhasMeta.length) {
+              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(linhasMeta, ML + 3, iy);
             }
+            doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+            doc.text("Passagem (" + paxLabel + ")", W - MR - 2 - 30, y + 4, { align: "left" });
+            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+            doc.text(fBRL(it.totalPassagem), W - MR - 2, y + 5.5, { align: "right" });
+            y += passH;
+
+            // Linha da taxa de embarque (se houver)
+            if (it.taxaEmbarque > 0) {
+              doc.setFillColor(249, 250, 251); doc.rect(ML, y, usableW, 6, "F");
+              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text("   Taxa de embarque (" + paxLabel + ")", ML + 3, y + 4);
+              doc.text(fBRL(it.taxaEmbarque * it.adultos), W - MR - 2, y + 4, { align: "right" });
+              doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + 6, W - MR, y + 6);
+              y += 6;
+            }
+          } else {
+            // Produtos normais
+            const linhasNome = doc.splitTextToSize(it.nomeItem || "", usableW - 40);
+            const linhasDesc = it.desc ? doc.splitTextToSize(it.desc, usableW - 40) : [];
+            const nFotos     = (it.fotos || []).length;
+            const fotoH      = nFotos > 0 ? Math.ceil(nFotos / 3) * 22 + 4 : 0;
+            const rowH       = Math.max(10, linhasNome.length * 4 + linhasDesc.length * 3.5 + fotoH + 4);
+            checkPage(rowH + 2);
+
+            if (j % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, rowH, "F"); }
+            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + rowH, W - MR, y + rowH);
+
+            let iy = y + 4;
+            doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); doc.setTextColor(17, 24, 39);
+            doc.text(linhasNome, ML + 3, iy); iy += linhasNome.length * 4;
+            if (linhasDesc.length) {
+              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(linhasDesc, ML + 3, iy); iy += linhasDesc.length * 3.5;
+            }
+            if (nFotos > 0) {
+              let fx = ML + 3, fy = iy + 1;
+              for (let k = 0; k < Math.min(nFotos, 6); k++) {
+                try { doc.addImage(it.fotos[k], "JPEG", fx, fy, 20, 15); }
+                catch { try { doc.addImage(it.fotos[k], "PNG", fx, fy, 20, 15); } catch {} }
+                fx += 22; if (fx > W - MR - 20) { fx = ML + 3; fy += 17; }
+              }
+            }
+            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+            doc.text(fBRL(it.venda), W - MR - 2, y + 5.5, { align: "right" }); y += rowH;
           }
-          doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-          doc.text(fBRL(it.venda), W - MR - 2, y + 5.5, { align: "right" }); y += rowH;
         });
         y += 5;
       }
@@ -633,9 +816,21 @@
     d.destsData.forEach((dest, i) => {
       txt += "📍 " + (i + 1) + ". " + dest.nome + (dest.periodo ? " (" + dest.periodo + ")" : "") + "\n";
       dest.itens.forEach((it) => {
-        txt += "   • " + it.nomeItem + (it.desc ? " — " + it.desc : "");
-        if (it.tipo === "passagem" && it.valorPax) txt += " (R$ " + it.valorPax.toFixed(2) + "/pessoa)";
-        txt += ": " + fBRL(it.venda) + "\n";
+        if (it.tipo === "passagem") {
+          txt += "   ✈ " + it.nomeItem;
+          const meta = [
+            it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
+            it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
+            it.conexoes || "",
+            it.duracao  || "",
+          ].filter(Boolean).join(" · ");
+          if (meta) txt += " — " + meta;
+          txt += "\n";
+          txt += "     Passagem: " + fBRL(it.totalPassagem) + "\n";
+          if (it.taxaEmbarque > 0) txt += "     Taxa de embarque: " + fBRL(it.taxaEmbarque * it.adultos) + "\n";
+        } else {
+          txt += "   • " + it.nomeItem + (it.desc ? " — " + it.desc : "") + ": " + fBRL(it.venda) + "\n";
+        }
       });
       txt += "   Subtotal: " + fBRL(dest.totalDest) + "\n\n";
     });

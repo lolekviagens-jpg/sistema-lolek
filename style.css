@@ -1664,6 +1664,103 @@ textarea.input {
   font-weight: 600;
 }
 
+/* ===== Print zone (passagem — extração de dados interna) ===== */
+.orc-print-zone {
+  border-color: rgba(201, 168, 76, 0.45);
+  background: rgba(253, 248, 238, 0.55);
+}
+
+/* ===== Botão de análise IA ===== */
+.orc-ia-btn {
+  margin-top: 8px;
+  width: 100%;
+  justify-content: center;
+  font-size: 0.82rem;
+  padding: 8px 14px;
+}
+
+.orc-ia-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ===== Divisor de campos internos no formulário ===== */
+.orc-cost-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 2px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.orc-cost-divider::before,
+.orc-cost-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ===== Item de passagem no preview ===== */
+.orc-prev-item--passagem {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 10px 12px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+}
+
+.orc-prev-flight-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.orc-prev-flight-meta {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.orc-prev-flight-right {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.orc-prev-flight-price-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.orc-prev-flight-price-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.orc-prev-flight-price-row--taxa {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
+.orc-prev-flight-price-row--taxa .orc-prev-item-valor {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 /* Toggle do calendário */
 .cal-toggle-btn {
   display: flex;
