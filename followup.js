@@ -270,8 +270,9 @@
       const cli = encontrarCliente(v.nome, clientes);
       return {
         nome: v.nome, secao: "posViagem",
+        clienteNome: cli ? cli.cliente.nome : null,
         sub: `🏡 Voltou${v.destino ? " de " + v.destino : ""} em ${fmtDate(v.volta)}`,
-        tel: cli ? cli.telefone : null,
+        tel: cli ? cli.cliente.telefone : null,
         msg: msgPosViagem(v.nome, v.destino),
       };
     });
@@ -399,22 +400,24 @@
 
   // ===== Renderização =====
   function renderCard(card) {
-    const temTel   = card.tel && formatarTelWA(card.tel);
+    const temTel   = !!(card.tel && formatarTelWA(card.tel));
     const secao    = card.secao || "geral";
     const envioTs  = getEnvio(secao, card.nome);
     const jaEnviei = !!envioTs;
+
+    // Sem telefone → área de edição já começa aberta
+    const editAberta = !temTel;
 
     const badgeEnviado = jaEnviei
       ? `<span class="fu-enviado-badge">✓ Enviado ${fmtEnvio(envioTs)}</span>`
       : "";
 
-    const btnStyle  = jaEnviei ? "background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px" : "";
-    const btnClass  = jaEnviei ? "" : (temTel ? "btn--gold" : "btn--ghost");
-    const btnLabel  = jaEnviei ? "✓" : "💬 Enviar";
-    const btnTitle  = temTel ? "Enviar via Digisac" : "Clique em ✏️ para informar o telefone";
+    const btnStyle = jaEnviei ? "background:#22c55e;color:#fff;border-color:#22c55e;min-width:36px" : "";
+    const btnClass = jaEnviei ? "" : "btn--gold";
+    const btnLabel = jaEnviei ? "✓" : "💬 Enviar";
     const btnEnviar = `<button class="btn ${btnClass} fu-btn-dg"
         data-tel="${esc(card.tel || "")}" data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
-        style="${btnStyle}" title="${btnTitle}">${btnLabel}</button>`;
+        style="${btnStyle}" title="Enviar via Digisac">${btnLabel}</button>`;
 
     return `
       <div class="fu-card">
@@ -423,25 +426,30 @@
             <div class="fu-card__nome">${esc(card.nome)}</div>
             <div class="fu-card__sub">${esc(card.sub)}</div>
             ${card.clienteNome && card.clienteNome !== card.nome
-              ? `<div class="fu-card__matched">📞 Tel. buscado via cadastro: <strong>${esc(card.clienteNome)}</strong></div>`
+              ? `<div class="fu-card__matched">📞 Tel. via cadastro: <strong>${esc(card.clienteNome)}</strong></div>`
               : ""}
           </div>
           <div class="fu-card__actions">
             ${badgeEnviado}
             ${btnEnviar}
-            <button class="btn btn--ghost fu-btn-edit" data-msg="${esc(card.msg)}" title="Editar mensagem antes de enviar">✏️</button>
+            <button class="btn btn--ghost fu-btn-edit ${editAberta ? "fu-btn-edit--ativo" : ""}"
+              data-msg="${esc(card.msg)}" title="Editar mensagem">✏️</button>
             <button class="btn btn--ghost fu-btn-copy" data-msg="${esc(card.msg)}" title="Copiar mensagem">⧉</button>
           </div>
         </div>
-        <div class="fu-card__editarea" hidden>
+        <div class="fu-card__editarea"${editAberta ? "" : " hidden"}>
           <div class="fu-phone-row">
-            <label class="fu-phone-label">📱 Telefone</label>
+            <label class="fu-phone-label">📱</label>
             <input type="tel" class="input fu-phone-input" value="${esc(card.tel || "")}"
-              placeholder="Ex: 85999997092" style="flex:1" />
-            <span class="fu-phone-hint">Brasil: DDD + número (ex: 85999997092) · Internacional: código do país + número sem o + (ex: 351912345678 para Portugal)</span>
+              placeholder="Telefone (ex: 85999997092)" style="flex:1;min-width:0" />
+            <button class="btn btn--gold fu-btn-enviar-inline"
+              data-secao="${esc(secao)}" data-nome="${esc(card.nome)}"
+              title="Enviar com este número">Enviar →</button>
           </div>
-          <textarea class="input fu-msg-textarea" rows="4" style="margin-top:8px">${esc(card.msg)}</textarea>
-          <div class="fu-editarea-hint">Edite o telefone e/ou a mensagem e clique em Enviar.</div>
+          <div class="fu-phone-hint" style="margin:4px 0 8px;font-size:0.72rem;color:var(--text-muted)">
+            Brasil: DDD + número (ex: <strong>85999997092</strong>) · Internacional sem + (ex: <strong>351912345678</strong>)
+          </div>
+          <textarea class="input fu-msg-textarea" rows="3">${esc(card.msg)}</textarea>
         </div>
       </div>`;
   }
@@ -553,31 +561,31 @@
       renderSecao("🔄", "Reativação de inativos",        secoes.reativacao,        "fu-s6"),
     ].join("");
 
-    // Botões Digisac — usa telefone/mensagem editados se a área estiver aberta
+    // Botão principal Enviar (usa telefone original do data-tel)
     wrap.querySelectorAll(".fu-btn-dg").forEach(btn => {
       btn.addEventListener("click", () => {
-        const card      = btn.closest(".fu-card");
-        const editArea  = card.querySelector(".fu-card__editarea");
-        const aberta    = editArea && !editArea.hidden;
-        const telInput  = card.querySelector(".fu-phone-input");
-        const textarea  = card.querySelector(".fu-msg-textarea");
-
-        const tel = aberta && telInput?.value.trim()
-          ? telInput.value.trim()
-          : btn.dataset.tel;
-        const msg = aberta && textarea?.value.trim()
-          ? textarea.value
-          : card.querySelector(".fu-btn-edit").dataset.msg;
-
+        const tel = btn.dataset.tel;
         if (!tel) {
-          alert("Informe o telefone no campo acima antes de enviar.\nFormato: DDD + número, ex: 85999997092");
-          if (!aberta && editArea) {
-            editArea.hidden = false;
-            card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo");
-          }
-          telInput?.focus();
+          // Sem telefone: abre a área de edição e foca no input
+          const card = btn.closest(".fu-card");
+          const editArea = card.querySelector(".fu-card__editarea");
+          if (editArea) { editArea.hidden = false; card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo"); }
+          card.querySelector(".fu-phone-input")?.focus();
           return;
         }
+        const msg = btn.closest(".fu-card").querySelector(".fu-btn-edit").dataset.msg;
+        enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
+      });
+    });
+
+    // Botão "Enviar →" dentro da área de edição (usa telefone e mensagem dos inputs)
+    wrap.querySelectorAll(".fu-btn-enviar-inline").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const card    = btn.closest(".fu-card");
+        const tel     = card.querySelector(".fu-phone-input")?.value.trim();
+        const msg     = card.querySelector(".fu-msg-textarea")?.value.trim()
+                     || card.querySelector(".fu-btn-edit").dataset.msg;
+        if (!tel) { card.querySelector(".fu-phone-input").focus(); return; }
         enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
       });
     });
@@ -685,18 +693,25 @@
         // Re-ativa botões
         sec.querySelectorAll(".fu-btn-dg").forEach(btn => {
           btn.addEventListener("click", () => {
-            const card     = btn.closest(".fu-card");
-            const editArea = card.querySelector(".fu-card__editarea");
-            const aberta   = editArea && !editArea.hidden;
-            const telInput = card.querySelector(".fu-phone-input");
-            const textarea = card.querySelector(".fu-msg-textarea");
-            const tel = aberta && telInput?.value.trim() ? telInput.value.trim() : btn.dataset.tel;
-            const msg = aberta && textarea?.value.trim() ? textarea.value : card.querySelector(".fu-btn-edit").dataset.msg;
+            const tel = btn.dataset.tel;
             if (!tel) {
-              alert("Informe o telefone no campo acima antes de enviar.\nFormato: DDD + número, ex: 85999997092");
-              if (!aberta && editArea) { editArea.hidden = false; card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo"); }
-              telInput?.focus(); return;
+              const card = btn.closest(".fu-card");
+              const editArea = card.querySelector(".fu-card__editarea");
+              if (editArea) { editArea.hidden = false; card.querySelector(".fu-btn-edit").classList.add("fu-btn-edit--ativo"); }
+              card.querySelector(".fu-phone-input")?.focus();
+              return;
             }
+            const msg = btn.closest(".fu-card").querySelector(".fu-btn-edit").dataset.msg;
+            enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
+          });
+        });
+        sec.querySelectorAll(".fu-btn-enviar-inline").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const card = btn.closest(".fu-card");
+            const tel  = card.querySelector(".fu-phone-input")?.value.trim();
+            const msg  = card.querySelector(".fu-msg-textarea")?.value.trim()
+                      || card.querySelector(".fu-btn-edit").dataset.msg;
+            if (!tel) { card.querySelector(".fu-phone-input").focus(); return; }
             enviarDigisac(btn, tel, msg, btn.dataset.secao, btn.dataset.nome);
           });
         });

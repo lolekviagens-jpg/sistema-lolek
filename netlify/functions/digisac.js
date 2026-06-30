@@ -30,24 +30,28 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: "phone e message são obrigatórios" }) };
   }
 
-  // Normaliza telefone → +55XXXXXXXXXXX
+  // Normaliza telefone — brasileiro: 10-11 dígitos → adiciona "55"; internacional: mantém como veio
   let tel = String(phone).replace(/\D/g, "");
-  if (!tel.startsWith("55")) tel = "55" + tel;
+  if (tel.length === 10 || tel.length === 11) tel = "55" + tel;
 
   const payload = JSON.stringify({
     number:    tel,
-    text:      message,
+    body:      message,
     serviceId: serviceId,
   });
 
+  console.log("[Digisac] payload:", JSON.stringify({ number: tel, body: "(msg)", serviceId }));
+
   try {
     const result = await request(BASE + "/messages", token, payload);
+    console.log("[Digisac] status:", result.status, "body:", result.body.slice(0, 300));
     return {
       statusCode: result.status,
       headers: { "Content-Type": "application/json" },
       body: result.body,
     };
   } catch (err) {
+    console.error("[Digisac] erro de rede:", err.message);
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };
