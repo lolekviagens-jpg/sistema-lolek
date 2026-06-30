@@ -6,6 +6,12 @@
   const LOLEK_EMAIL = "thaynara@agencialolekviagens.com.br";
   const LOLEK_END   = "Av. Santos Dumont, 2789, Sala 402 — Fortaleza/CE";
 
+  const LS_KEY   = "lolek_anthropic_key";
+  const LS_MODEL = "lolek_anthropic_model";
+
+  function getApiKey()   { return localStorage.getItem(LS_KEY)   || ""; }
+  function getModel()    { return localStorage.getItem(LS_MODEL) || "claude-haiku-4-5-20251001"; }
+
   const PROD_CFG = {
     passagem: {
       label: "Passagem aérea", icon: "✈️",
@@ -273,16 +279,34 @@
     });
   }
 
+  // ===== Modal de configuração IA =====
+  function abrirConfigIA(onSaved) {
+    const modal  = document.getElementById("orc-ia-modal");
+    const keyEl  = document.getElementById("orc-ia-key");
+    const modEl  = document.getElementById("orc-ia-model");
+    if (!modal) return;
+
+    // Preenche com valores salvos
+    keyEl.value = getApiKey();
+    modEl.value = getModel();
+    modal.hidden = false;
+
+    // Referência temporária para callback pós-save
+    modal._onSaved = onSaved || null;
+  }
+
+  function fecharConfigIA() {
+    const modal = document.getElementById("orc-ia-modal");
+    if (modal) modal.hidden = true;
+  }
+
   // ===== Análise com IA (somente passagem) =====
   async function analisarPassagem(pid, destId, imageSrc) {
-    let apiKey = localStorage.getItem("lolek_anthropic_key");
+    const apiKey = getApiKey();
     if (!apiKey) {
-      apiKey = prompt(
-        "Para extrair dados automaticamente, informe sua chave da API Anthropic (começa com sk-ant-).\nEla será salva localmente neste navegador."
-      );
-      if (!apiKey || !apiKey.trim()) return;
-      localStorage.setItem("lolek_anthropic_key", apiKey.trim());
-      apiKey = apiKey.trim();
+      // Abre configurações e, após salvar, reanalisa automaticamente
+      abrirConfigIA(() => analisarPassagem(pid, destId, imageSrc));
+      return;
     }
 
     const btn = document.querySelector(`[data-ai-pid="${pid}"]`);
@@ -302,7 +326,7 @@
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
+          model: getModel(),
           max_tokens: 1024,
           messages: [{
             role: "user",
@@ -353,13 +377,12 @@
       fill("milhas",          ex.milhas);
       fill("taxa_embarque",   ex.taxa_embarque);
 
-      // Recalcula valor_pax se tiver milhas
       document.getElementById(prefix + "milhas")?.dispatchEvent(new Event("input"));
 
       if (btn) { btn.disabled = false; btn.textContent = "✓ Dados extraídos!"; }
-      setTimeout(() => { if (btn) btn.textContent = "🤖 Extrair dados novamente"; }, 3000);
+      setTimeout(() => { if (btn) { btn.textContent = "🤖 Analisar novamente"; } }, 3000);
     } catch (err) {
-      if (btn) { btn.disabled = false; btn.textContent = "🤖 Extrair dados do print"; }
+      if (btn) { btn.disabled = false; btn.textContent = "🤖 Analisar novamente"; }
       alert("Erro ao analisar: " + err.message);
     }
   }
@@ -393,6 +416,10 @@
       if (!fotoStore[pid]) fotoStore[pid] = [];
       fotoStore[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
       renderFotos(pid, zoneId, tipo, destId);
+      // Para passagem: aciona análise automaticamente se a chave já estiver configurada
+      if (tipo === "passagem" && getApiKey()) {
+        analisarPassagem(pid, destId, e.target.result);
+      }
     };
     r.readAsDataURL(file);
   }
@@ -415,13 +442,13 @@
       `<div class="orc-foto-thumb"><img src="${f.src}"><button class="orc-foto-rm" data-pid="${pid}" data-fid="${f.fid}" data-zone="${zoneId}" data-tipo="${tipo||""}" data-dest="${destId||""}">✕</button></div>`
     ).join("");
 
-    // Para passagem: mostrar botão de análise com IA (fotos são apenas para extração, não para o cliente)
+    // Para passagem: botão de análise (quando há key, serve para reanálise manual; sem key, abre config)
     if (isPassagem && fotos.length > 0) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn--gold orc-ia-btn";
       btn.dataset.aiPid = pid;
-      btn.textContent = "🤖 Extrair dados do print";
+      btn.textContent = getApiKey() ? "🤖 Analisar novamente" : "⚙ Configurar IA para extrair dados";
       btn.addEventListener("click", () => analisarPassagem(pid, destId, fotos[fotos.length - 1].src));
       prev.appendChild(btn);
     }
@@ -851,6 +878,43 @@
   pdfBtn.addEventListener("click", baixarPDF);
   copyBtn.addEventListener("click", copiarTexto);
 
+  // Botão ⚙ Configurar IA
+  document.getElementById("orc-ia-cfg-btn")?.addEventListener("click", () => abrirConfigIA());
+
+  // Modal: fechar
+  document.getElementById("orc-ia-modal-close")?.addEventListener("click", fecharConfigIA);
+  document.getElementById("orc-ia-modal-cancel")?.addEventListener("click", fecharConfigIA);
+  document.getElementById("orc-ia-modal")?.querySelector(".modal__backdrop")
+    ?.addEventListener("click", fecharConfigIA);
+
+  // Modal: salvar
+  document.getElementById("orc-ia-modal-save")?.addEventListener("click", () => {
+    const keyEl = document.getElementById("orc-ia-key");
+    const modEl = document.getElementById("orc-ia-model");
+    const key   = keyEl?.value.trim() || "";
+    const model = modEl?.value || "claude-haiku-4-5-20251001";
+
+    if (key) localStorage.setItem(LS_KEY, key);
+    else localStorage.removeItem(LS_KEY);
+    localStorage.setItem(LS_MODEL, model);
+
+    fecharConfigIA();
+
+    // Atualiza visual do botão de configuração
+    const cfgBtn = document.getElementById("orc-ia-cfg-btn");
+    if (cfgBtn) cfgBtn.textContent = key ? "⚙ IA configurada ✓" : "⚙ Configurar IA";
+
+    // Se havia callback (ex: acionar análise após configurar), executa agora
+    const modal = document.getElementById("orc-ia-modal");
+    if (modal?._onSaved && key) { const cb = modal._onSaved; modal._onSaved = null; cb(); }
+  });
+
   // ===== Início =====
   addDestino();
+
+  // Reflete estado da chave no botão ao carregar
+  (function() {
+    const cfgBtn = document.getElementById("orc-ia-cfg-btn");
+    if (cfgBtn && getApiKey()) cfgBtn.textContent = "⚙ IA configurada ✓";
+  })();
 })();

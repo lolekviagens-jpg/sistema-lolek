@@ -91,8 +91,40 @@
       <!-- ===== PAINEL ORÇAMENTOS ===== -->
       <section class="panel" data-panel="orcamentos">
 
+        <!-- Modal de configuração da IA -->
+        <div class="modal" id="orc-ia-modal" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:460px">
+            <div class="modal__header">
+              <span class="modal__title">Configurações de IA</span>
+              <button class="modal__close" id="orc-ia-modal-close">✕</button>
+            </div>
+            <div class="form">
+              <label class="field" style="margin-bottom:16px">
+                <span class="field__label">Chave da API Anthropic</span>
+                <input type="password" id="orc-ia-key" class="input" placeholder="sk-ant-api03-..." autocomplete="off" />
+              </label>
+              <label class="field" style="margin-bottom:16px">
+                <span class="field__label">Modelo</span>
+                <select id="orc-ia-model" class="input">
+                  <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — rápido e econômico</option>
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — mais preciso</option>
+                </select>
+              </label>
+              <p class="orc-ia-info">A chave fica salva apenas neste navegador e é enviada somente à Anthropic no momento da leitura do print.</p>
+              <div class="modal__footer">
+                <button class="btn btn--ghost" id="orc-ia-modal-cancel">Cancelar</button>
+                <button class="btn btn--gold" id="orc-ia-modal-save">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- FORMULÁRIO -->
         <div id="orc-form-wrap">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+            <button type="button" id="orc-ia-cfg-btn" class="btn btn--ghost btn--icon orc-ia-cfg-btn" title="Configurar chave de API para leitura de prints">⚙ Configurar IA</button>
+          </div>
 
           <div class="orc-card">
             <div class="orc-card__header">Dados do cliente</div>
@@ -130,7 +162,7 @@
           </div>
 
           <button type="button" id="orc-gerar" class="btn btn--gold orc-gerar-btn">Gerar orçamento →</button>
-        </div>
+        </div><!-- /orc-form-wrap -->
 
         <!-- OUTPUT -->
         <div id="orc-output-wrap" hidden>

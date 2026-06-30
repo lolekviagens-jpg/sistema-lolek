@@ -1664,6 +1664,22 @@ textarea.input {
   font-weight: 600;
 }
 
+/* ===== Botão ⚙ Configurar IA ===== */
+.orc-ia-cfg-btn {
+  font-size: 0.78rem;
+  padding: 7px 13px;
+  color: var(--text-muted);
+  gap: 6px;
+}
+
+/* ===== Info do modal de IA ===== */
+.orc-ia-info {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin-bottom: 4px;
+}
+
 /* ===== Print zone (passagem — extração de dados interna) ===== */
 .orc-print-zone {
   border-color: rgba(201, 168, 76, 0.45);
