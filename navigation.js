@@ -11,7 +11,8 @@
     checkin:    "Check-in do dia",
     orcamentos: "Orçamentos",
     vendas:     "Vendas",
-    clientes:   "Clientes",
+    clientes:    "Clientes",
+    confirmacao: "Confirmação de Reserva",
   };
 
   function activateTab(tab) {

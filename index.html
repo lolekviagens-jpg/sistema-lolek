@@ -44,6 +44,10 @@
           <span class="nav__icon">👥</span>
           <span class="nav__label">Clientes</span>
         </button>
+        <button class="nav__item" data-tab="confirmacao">
+          <span class="nav__icon">📋</span>
+          <span class="nav__label">Confirmação</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -324,6 +328,119 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL CONFIRMAÇÃO DE RESERVA ===== -->
+      <section class="panel" data-panel="confirmacao">
+
+        <!-- INPUT -->
+        <div id="conf-input-wrap">
+          <div class="orc-card">
+            <div class="orc-card__header">Cole o texto ou o print da confirmação</div>
+            <div class="orc-card__body">
+
+              <!-- Zona de print (Ctrl+V) -->
+              <div class="conf-print-zone orc-print-zone" id="conf-print-zone" tabindex="0">
+                <span class="conf-print-hint">📋 Cole aqui o print da confirmação (Ctrl+V) para extrair dados automaticamente</span>
+                <input type="file" id="conf-print-input" accept="image/*" hidden />
+              </div>
+
+              <!-- OU texto -->
+              <div class="cli-form-divider">— ou cole o texto abaixo —</div>
+              <label class="field field--full">
+                <textarea id="conf-paste" class="input" rows="5"
+                  placeholder="Cole aqui o e-mail / texto de confirmação da reserva (companhia aérea, hotel, plataforma de reserva...)"></textarea>
+              </label>
+
+              <div style="display:flex;justify-content:flex-end;margin-top:12px">
+                <button type="button" id="conf-extrair-btn" class="btn btn--gold">🤖 Extrair dados</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- FORMULÁRIO DE REVISÃO -->
+          <div id="conf-form-section" class="orc-card" style="margin-top:16px">
+            <div class="orc-card__header">Revise os dados extraídos</div>
+            <div class="orc-card__body">
+              <div class="form__grid">
+                <label class="field">
+                  <span class="field__label">Tipo de reserva</span>
+                  <select id="conf-tipo" class="input">
+                    <option value="aereo">Aéreo</option>
+                    <option value="hotel">Hotel</option>
+                    <option value="pacote">Pacote (aéreo + hotel)</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field__label">Localizador / Código</span>
+                  <input type="text" id="conf-localizador" class="input" placeholder="Ex: ABC123" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Passageiro(s) — um por linha</span>
+                  <textarea id="conf-passageiros" class="input" rows="3" placeholder="Nome Completo 1&#10;Nome Completo 2"></textarea>
+                </label>
+                <label class="field">
+                  <span class="field__label">Data de ida / Check-in</span>
+                  <input type="text" id="conf-ida" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data de volta / Check-out</span>
+                  <input type="text" id="conf-volta" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+              </div>
+
+              <!-- Campos aéreo -->
+              <div id="conf-section-aereo">
+                <div class="orc-cost-divider" style="margin:14px 0 10px"><span>Dados do voo</span></div>
+                <div class="form__grid">
+                  <label class="field"><span class="field__label">Origem (IATA ou cidade)</span><input type="text" id="conf-origem" class="input" placeholder="Ex: FOR" /></label>
+                  <label class="field"><span class="field__label">Destino (IATA ou cidade)</span><input type="text" id="conf-destino" class="input" placeholder="Ex: LIS" /></label>
+                  <label class="field"><span class="field__label">Companhia aérea</span><input type="text" id="conf-companhia" class="input" placeholder="Ex: LATAM" /></label>
+                  <label class="field"><span class="field__label">Número do voo</span><input type="text" id="conf-voo" class="input" placeholder="Ex: LA3504" /></label>
+                  <label class="field"><span class="field__label">Horário de partida</span><input type="text" id="conf-horario_partida" class="input" placeholder="Ex: 14:30" /></label>
+                  <label class="field"><span class="field__label">Horário de chegada</span><input type="text" id="conf-horario_chegada" class="input" placeholder="Ex: 22:15" /></label>
+                  <label class="field"><span class="field__label">Classe</span><input type="text" id="conf-classe" class="input" placeholder="Ex: Econômica" /></label>
+                </div>
+              </div>
+
+              <!-- Campos hotel -->
+              <div id="conf-section-hotel">
+                <div class="orc-cost-divider" style="margin:14px 0 10px"><span>Dados do hotel</span></div>
+                <div class="form__grid">
+                  <label class="field field--full"><span class="field__label">Nome do hotel</span><input type="text" id="conf-hotel_nome" class="input" /></label>
+                  <label class="field field--full"><span class="field__label">Endereço</span><input type="text" id="conf-hotel_endereco" class="input" /></label>
+                  <label class="field"><span class="field__label">Tipo de quarto</span><input type="text" id="conf-quarto" class="input" placeholder="Ex: Standard duplo" /></label>
+                  <label class="field"><span class="field__label">Regime</span><input type="text" id="conf-regime" class="input" placeholder="Ex: Café da manhã incluso" /></label>
+                </div>
+              </div>
+
+              <div class="form__grid" style="margin-top:10px">
+                <label class="field"><span class="field__label">Valor total</span><input type="text" id="conf-valor_total" class="input" placeholder="Ex: R$ 2.500,00" /></label>
+                <label class="field field--full"><span class="field__label">Observações</span><textarea id="conf-observacoes" class="input" rows="2"></textarea></label>
+                <!-- Campo oculto para data de emissão -->
+                <input type="hidden" id="conf-data_emissao" />
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;margin-top:16px">
+                <button type="button" id="conf-gerar-btn" class="btn btn--gold">Gerar comprovante →</button>
+              </div>
+            </div>
+          </div>
+        </div><!-- /conf-input-wrap -->
+
+        <!-- OUTPUT -->
+        <div id="conf-output-wrap" hidden>
+          <div id="conf-preview"></div>
+          <div class="toolbar" style="margin-top:20px">
+            <button type="button" id="conf-editar-btn" class="btn btn--ghost">← Editar</button>
+            <div style="display:flex;gap:10px">
+              <button type="button" id="conf-pdf-btn"  class="btn btn--gold">↓ Baixar PDF</button>
+              <button type="button" id="conf-copy-btn" class="btn btn--ghost">Copiar texto</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
@@ -332,5 +449,6 @@
   <script src="orcamentos.js"></script>
   <script src="vendas.js"></script>
   <script src="clientes.js"></script>
+  <script src="confirmacao.js"></script>
 </body>
 </html>

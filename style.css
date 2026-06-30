@@ -2183,6 +2183,129 @@ textarea.input {
   background: #fef2f2;
 }
 
+/* ===== Aba Confirmação de Reserva ===== */
+.conf-print-zone {
+  border: 2px dashed rgba(201,168,76,0.5);
+  border-radius: var(--radius);
+  background: rgba(253,248,238,0.6);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: default;
+  margin-bottom: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.conf-print-zone--loaded {
+  border-color: var(--gold);
+  background: rgba(253,248,238,0.9);
+}
+
+.conf-print-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Hotel card no preview */
+.conf-hotel-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  background: var(--surface);
+}
+
+.conf-hotel-nome {
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 8px;
+}
+
+.conf-hotel-info {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.conf-hotel-dates {
+  font-size: 0.85rem;
+  color: var(--navy);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+/* Localizador em destaque */
+.conf-localizador {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--navy);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  margin-bottom: 16px;
+}
+
+.conf-loc-label {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.conf-loc-valor {
+  font-family: var(--font-title);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 3px;
+}
+
+/* Passageiros */
+.conf-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin: 16px 0 8px;
+}
+
+.conf-pax-row {
+  font-size: 0.88rem;
+  color: var(--navy);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Valor */
+.conf-valor-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: #f8fafc;
+  border-radius: var(--radius);
+  margin: 16px 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.conf-valor {
+  font-family: var(--font-title);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.conf-emitido-em {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
 /* Toggle do calendário */
 .cal-toggle-btn {
   display: flex;
