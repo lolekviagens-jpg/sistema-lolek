@@ -61,6 +61,9 @@
     if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
     m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    // Erro comum de fórmula/digitação na planilha: data sem o ano (ex: "02/07"). Assume o ano corrente.
+    m = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (m) return `${new Date().getFullYear()}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
     return null;
   }
 
