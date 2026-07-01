@@ -104,6 +104,30 @@
   function fBRL(v) { return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fData(s){ return s ? new Date(s + "T12:00:00").toLocaleDateString("pt-BR") : "—"; }
 
+  // Converte data extraída pela IA (DD/MM/AAAA ou ISO) para o formato do <input type="date">.
+  function paraDataISO(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return null;
+    let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+    return null;
+  }
+
+  // Posição (0-based) desta passagem entre as passagens do destino: 0=IDA, 1=VOLTA, etc.
+  function passagemIndex(destId, pid) {
+    const dest = destinos.find((d) => d.id === destId);
+    if (!dest) return 0;
+    let idx = 0;
+    for (const p of dest.produtos) {
+      if (p.tipo !== "passagem") continue;
+      if (p.pid === pid) return idx;
+      idx++;
+    }
+    return idx;
+  }
+
   // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
   // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
   function extractJson(text) {
@@ -377,6 +401,7 @@
   "cidade_dest": "nome da cidade de destino (ex: Lisboa)",
   "companhia": "nome da companhia aérea",
   "voo": "número do voo",
+  "data": "DD/MM/AAAA da data do voo, ou null se não estiver visível",
   "horario_partida": "HH:MM",
   "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte",
   "conexoes": "Voo direto OU ex: 1 escala em GRU",
@@ -417,6 +442,19 @@
       fill("conexoes",        ex.conexoes);
       fill("duracao",         ex.duracao);
       fill("milhas",          ex.milhas);
+
+      // Data do voo não tem campo próprio no card — vai para "Data de ida/volta" do
+      // destino (só se ainda estiver vazio, pra não sobrescrever o que já foi digitado).
+      const dataIso = paraDataISO(ex.data);
+      if (dataIso) {
+        const isVolta  = passagemIndex(destId, pid) % 2 === 1;
+        const fieldId  = isVolta ? "o-co-" + destId : "o-ci-" + destId;
+        const dataEl   = document.getElementById(fieldId);
+        if (dataEl && !dataEl.value) {
+          dataEl.value = dataIso;
+          dataEl.dispatchEvent(new Event("change"));
+        }
+      }
       fill("taxa_embarque",   ex.taxa_embarque);
 
       document.getElementById(prefix + "milhas")?.dispatchEvent(new Event("input"));
@@ -767,46 +805,91 @@
 
         itens.forEach((it, j) => {
           if (it.tipo === "passagem") {
-            // Monta linha de info de voo (sem dados internos)
-            const metaParts = [
-              it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
-              it.partida && it.chegada ? it.partida + " - " + it.chegada : (it.partida || it.chegada || ""),
-              it.conexoes || "",
-              it.duracao  || "",
-            ].filter(Boolean);
-            const metaLine = pdfSafe(metaParts.join("  ·  "));
+            // Cartão de voo no mesmo layout visual do preview: código IATA grande,
+            // horário e cidade nas pontas, duração/paradas centralizados na linha tracejada.
+            const iata      = parseTrecho(it.nomeItem);
+            const origCity  = pdfSafe(it.cidadeOrigem || "");
+            const destCity  = pdfSafe(it.cidadeDestino || "");
+            const vooInfo   = pdfSafe([it.companhia, it.voo].filter(Boolean).join(" · "));
+            const isDireto  = it.conexoes && /direto/i.test(it.conexoes);
+            const stopsTxt  = pdfSafe(isDireto ? "Voo direto" : (it.conexoes || ""));
+            const paxLabel  = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
+            const valorTxt  = textoValorPassagem(it);
+            const temPreco  = it.totalPassagem > 0;
 
-            const nomeLine = pdfSafe(it.nomeItem || "Passagem aérea");
-            const linhasNome = doc.splitTextToSize(nomeLine, usableW - 50);
-            const linhasMeta = metaLine ? doc.splitTextToSize(metaLine, usableW - 50) : [];
-            const paxLabel   = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
-            const valorTxt   = textoValorPassagem(it);
+            const headerH = 7, bodyH = 24, priceH = 7;
+            const cardH   = headerH + bodyH;
+            const taxaH   = it.taxaEmbarque > 0 ? 6 : 0;
+            checkPage(cardH + priceH + taxaH + 4);
 
-            const passH = Math.max(12, linhasNome.length * 4.5 + linhasMeta.length * 3.5 + 4);
-            const taxaH = it.taxaEmbarque > 0 ? 6 : 0;
-            checkPage(passH + taxaH + 2);
+            // Moldura do cartão
+            doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3);
+            doc.rect(ML, y, usableW, cardH, "S");
 
-            // Linha da passagem
-            if (j % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, passH, "F"); }
-            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + passH, W - MR, y + passH);
-
-            let iy = y + 4;
-            doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); doc.setTextColor(17, 24, 39);
-            doc.text(linhasNome, ML + 3, iy); iy += linhasNome.length * 4.5;
-            if (linhasMeta.length) {
-              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(linhasMeta, ML + 3, iy);
+            // Cabeçalho (label do trecho + data + companhia/voo)
+            doc.setFillColor(10, 31, 61); doc.rect(ML, y, usableW, headerH, "F");
+            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(201, 168, 76);
+            doc.text(pdfSafe(it.flightLabel || "VOO"), ML + 4, y + 4.8);
+            const headerRight = [it.flightDate, vooInfo].filter(Boolean).join("   ·   ");
+            if (headerRight) {
+              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184);
+              doc.text(pdfSafe(headerRight), W - MR - 4, y + 4.8, { align: "right" });
             }
-            // Rótulo e valor empilhados verticalmente, alinhados à direita, para não
-            // colidir com o texto de horários/companhia à esquerda nem entre si.
-            const temPreco = it.totalPassagem > 0;
-            doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-            doc.text("Passagem (" + paxLabel + ")", W - MR - 2, y + 4, { align: "right" });
+
+            const by     = y + headerH;
+            const leftX  = ML + 27;
+            const rightX = W - MR - 27;
+            const midX   = W / 2;
+
+            // Aeroporto de origem
+            doc.setFontSize(17); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+            doc.text(iata.orig || "—", leftX, by + 9, { align: "center" });
+            if (it.partida) {
+              doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+              doc.text(pdfSafe(it.partida), leftX, by + 15, { align: "center" });
+            }
+            if (origCity) {
+              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(origCity, leftX, by + 19.5, { align: "center" });
+            }
+
+            // Aeroporto de destino
+            doc.setFontSize(17); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+            doc.text(iata.dest || "—", rightX, by + 9, { align: "center" });
+            if (it.chegada) {
+              doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
+              doc.text(pdfSafe(it.chegada), rightX, by + 15, { align: "center" });
+            }
+            if (destCity) {
+              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(destCity, rightX, by + 19.5, { align: "center" });
+            }
+
+            // Meio: duração, linha tracejada e paradas/voo direto
+            if (it.duracao) {
+              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(pdfSafe(it.duracao), midX, by + 8, { align: "center" });
+            }
+            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
+            doc.setLineDashPattern([1, 1], 0);
+            doc.line(midX - 18, by + 11, midX + 18, by + 11);
+            doc.setLineDashPattern([], 0);
+            if (stopsTxt) {
+              doc.setFontSize(6.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+              doc.text(stopsTxt, midX, by + 16, { align: "center" });
+            }
+
+            y += cardH;
+
+            // Linha de preço (abaixo do cartão, largura toda, sem risco de colisão)
+            doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+            doc.text("Passagem (" + paxLabel + ")", ML + 3, y + 4.5);
             doc.setFontSize(temPreco ? 9 : 7.5);
             doc.setFont("helvetica", temPreco ? "bold" : "italic");
             doc.setTextColor(...(temPreco ? [10, 31, 61] : [107, 114, 128]));
-            doc.text(doc.splitTextToSize(valorTxt, 55), W - MR - 2, y + 9, { align: "right" });
-            y += passH;
+            doc.text(valorTxt, W - MR - 2, y + 4.5, { align: "right" });
+            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + priceH, W - MR, y + priceH);
+            y += priceH;
 
             // Linha da taxa de embarque (se houver)
             if (it.taxaEmbarque > 0) {
