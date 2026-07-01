@@ -6,10 +6,8 @@
   const LOLEK_EMAIL = "thaynara@agencialolekviagens.com.br";
   const LOLEK_END   = "Av. Santos Dumont, 2789, Sala 402 — Fortaleza/CE";
 
-  const LS_KEY   = "lolek_anthropic_key";
   const LS_MODEL = "lolek_anthropic_model";
 
-  function getApiKey()   { return localStorage.getItem(LS_KEY)   || ""; }
   function getModel()    { return localStorage.getItem(LS_MODEL) || "claude-haiku-4-5-20251001"; }
 
   const PROD_CFG = {
@@ -105,6 +103,25 @@
   function gN(id)  { const e = document.getElementById(id); return e ? (parseFloat(e.value) || 0) : 0; }
   function fBRL(v) { return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fData(s){ return s ? new Date(s + "T12:00:00").toLocaleDateString("pt-BR") : "—"; }
+
+  // Preço de exibição de um trecho de passagem: se zerado, indica que o valor
+  // está embutido no outro trecho (round-trip cotado como preço único) em vez de mostrar R$ 0,00.
+  function textoValorPassagem(it) {
+    if (it.totalPassagem > 0) return fBRL(it.totalPassagem);
+    const outroTrecho = /IDA/i.test(it.flightLabel || "") ? "volta" : "ida";
+    return "Incluso na passagem de " + outroTrecho;
+  }
+
+  // A fonte padrão (helvetica) do jsPDF não tem os glyphs de seta/emoji — sai como
+  // caractere corrompido no PDF. Troca por equivalentes em ASCII antes de desenhar.
+  function pdfSafe(s) {
+    return String(s || "")
+      .replace(/[→➜⇒]/g, "-")
+      .replace(/✈️|✈/g, "")
+      .replace(/[◆▬]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
   function diffD(a, b) {
     if (!a || !b) return 0;
     return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
@@ -296,12 +313,10 @@
   // ===== Modal de configuração IA =====
   function abrirConfigIA(onSaved) {
     const modal  = document.getElementById("orc-ia-modal");
-    const keyEl  = document.getElementById("orc-ia-key");
     const modEl  = document.getElementById("orc-ia-model");
     if (!modal) return;
 
     // Preenche com valores salvos
-    keyEl.value = getApiKey();
     modEl.value = getModel();
     modal.hidden = false;
 
@@ -316,13 +331,6 @@
 
   // ===== Análise com IA (somente passagem) =====
   async function analisarPassagem(pid, destId, imageSrc) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      // Abre configurações e, após salvar, reanalisa automaticamente
-      abrirConfigIA(() => analisarPassagem(pid, destId, imageSrc));
-      return;
-    }
-
     const btn = document.querySelector(`[data-ai-pid="${pid}"]`);
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Analisando..."; }
 
@@ -331,14 +339,9 @@
       if (!match) throw new Error("Imagem inválida");
       const [, mime, b64] = match;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/.netlify/functions/anthropic", {
         method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: getModel(),
           max_tokens: 1024,
@@ -438,8 +441,8 @@
       if (!fotoStore[pid]) fotoStore[pid] = [];
       fotoStore[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
       renderFotos(pid, zoneId, tipo, destId);
-      // Para passagem: aciona análise automaticamente se a chave já estiver configurada
-      if (tipo === "passagem" && getApiKey()) {
+      // Para passagem: aciona análise automaticamente ao colar o print
+      if (tipo === "passagem") {
         analisarPassagem(pid, destId, e.target.result);
       }
     };
@@ -464,13 +467,13 @@
       `<div class="orc-foto-thumb"><img src="${f.src}"><button class="orc-foto-rm" data-pid="${pid}" data-fid="${f.fid}" data-zone="${zoneId}" data-tipo="${tipo||""}" data-dest="${destId||""}">✕</button></div>`
     ).join("");
 
-    // Para passagem: botão de análise (quando há key, serve para reanálise manual; sem key, abre config)
+    // Para passagem: botão de reanálise manual
     if (isPassagem && fotos.length > 0) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "btn btn--gold orc-ia-btn";
       btn.dataset.aiPid = pid;
-      btn.textContent = getApiKey() ? "🤖 Analisar novamente" : "⚙ Configurar IA para extrair dados";
+      btn.textContent = "🤖 Analisar novamente";
       btn.addEventListener("click", () => analisarPassagem(pid, destId, fotos[fotos.length - 1].src));
       prev.appendChild(btn);
     }
@@ -636,7 +639,7 @@
           const paxLbl = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
           tableRows.push(`<tr>
             <td>Passagem aérea — ${escapeHtml(it.flightLabel)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
-            <td>${fBRL(it.totalPassagem)}</td>
+            <td>${textoValorPassagem(it)}</td>
           </tr>`);
           if (it.taxaEmbarque > 0) {
             tableRows.push(`<tr class="orc-prev-table-row--taxa">
@@ -728,16 +731,16 @@
         (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
         (d.bebes    > 0 ? " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "") : "");
       doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-      doc.text("Para: " + d.nome + "   ·   " + paxStr, W / 2, y, { align: "center" }); y += 10;
+      doc.text("Para: " + pdfSafe(d.nome) + "   ·   " + paxStr, W / 2, y, { align: "center" }); y += 10;
 
       function drawBloco(label, periodo, itens) {
         checkPage(25);
         doc.setFillColor(10, 31, 61); doc.rect(ML, y, usableW, 8, "F");
         doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
-        doc.text(label, ML + 3, y + 5.5);
+        doc.text(pdfSafe(label), ML + 3, y + 5.5);
         if (periodo) {
           doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184);
-          doc.text(periodo, W - MR - 2, y + 5.5, { align: "right" });
+          doc.text(pdfSafe(periodo), W - MR - 2, y + 5.5, { align: "right" });
         }
         y += 8;
 
@@ -746,18 +749,19 @@
             // Monta linha de info de voo (sem dados internos)
             const metaParts = [
               it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
-              it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
+              it.partida && it.chegada ? it.partida + " - " + it.chegada : (it.partida || it.chegada || ""),
               it.conexoes || "",
               it.duracao  || "",
             ].filter(Boolean);
-            const metaLine = metaParts.join("  ·  ");
+            const metaLine = pdfSafe(metaParts.join("  ·  "));
 
-            const nomeLine = "✈ " + (it.nomeItem || "Passagem aérea");
+            const nomeLine = pdfSafe(it.nomeItem || "Passagem aérea");
             const linhasNome = doc.splitTextToSize(nomeLine, usableW - 50);
             const linhasMeta = metaLine ? doc.splitTextToSize(metaLine, usableW - 50) : [];
             const paxLabel   = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
+            const valorTxt   = textoValorPassagem(it);
 
-            const passH = Math.max(10, linhasNome.length * 4.5 + linhasMeta.length * 3.5 + 4);
+            const passH = Math.max(12, linhasNome.length * 4.5 + linhasMeta.length * 3.5 + 4);
             const taxaH = it.taxaEmbarque > 0 ? 6 : 0;
             checkPage(passH + taxaH + 2);
 
@@ -772,10 +776,15 @@
               doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
               doc.text(linhasMeta, ML + 3, iy);
             }
-            doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-            doc.text("Passagem (" + paxLabel + ")", W - MR - 2 - 30, y + 4, { align: "left" });
-            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-            doc.text(fBRL(it.totalPassagem), W - MR - 2, y + 5.5, { align: "right" });
+            // Rótulo e valor empilhados verticalmente, alinhados à direita, para não
+            // colidir com o texto de horários/companhia à esquerda nem entre si.
+            const temPreco = it.totalPassagem > 0;
+            doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
+            doc.text("Passagem (" + paxLabel + ")", W - MR - 2, y + 4, { align: "right" });
+            doc.setFontSize(temPreco ? 9 : 7.5);
+            doc.setFont("helvetica", temPreco ? "bold" : "italic");
+            doc.setTextColor(...(temPreco ? [10, 31, 61] : [107, 114, 128]));
+            doc.text(doc.splitTextToSize(valorTxt, 55), W - MR - 2, y + 9, { align: "right" });
             y += passH;
 
             // Linha da taxa de embarque (se houver)
@@ -789,8 +798,8 @@
             }
           } else {
             // Produtos normais
-            const linhasNome = doc.splitTextToSize(it.nomeItem || "", usableW - 40);
-            const linhasDesc = it.desc ? doc.splitTextToSize(it.desc, usableW - 40) : [];
+            const linhasNome = doc.splitTextToSize(pdfSafe(it.nomeItem || ""), usableW - 40);
+            const linhasDesc = it.desc ? doc.splitTextToSize(pdfSafe(it.desc), usableW - 40) : [];
             const nFotos     = (it.fotos || []).length;
             const fotoH      = nFotos > 0 ? Math.ceil(nFotos / 3) * 22 + 4 : 0;
             const rowH       = Math.max(10, linhasNome.length * 4 + linhasDesc.length * 3.5 + fotoH + 4);
@@ -831,7 +840,7 @@
       d.destsData.forEach((dest, i) => {
         if (i % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, 6, "F"); }
         doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(75, 85, 99);
-        doc.text((i + 1) + ". " + dest.nome, ML + 3, y + 4);
+        doc.text(pdfSafe((i + 1) + ". " + dest.nome), ML + 3, y + 4);
         doc.text(fBRL(dest.totalDest), W - MR - 2, y + 4, { align: "right" });
         doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + 6, W - MR, y + 6); y += 6;
       });
@@ -851,12 +860,12 @@
       doc.rect(ML, y, usableW, 14, "FD");
       doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
       doc.text("FORMAS DE PAGAMENTO", ML + 3, y + 5);
-      doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
-      doc.text("◆ PIX     ▬ Cartão de crédito em até 12x (mediante taxas)", ML + 3, y + 10); y += 18;
+      doc.setFontSize(8.5); doc.setFont("helvetica", "normal"); doc.setTextColor(17, 24, 39);
+      doc.text("PIX     |     Cartão de crédito em até 12x (mediante taxas)", ML + 3, y + 10); y += 18;
 
       if (d.obs) {
         checkPage(20);
-        const lo = doc.splitTextToSize(d.obs, usableW - 6);
+        const lo = doc.splitTextToSize(pdfSafe(d.obs), usableW - 6);
         const oh = lo.length * 4 + 10;
         doc.setFillColor(253, 248, 238); doc.setDrawColor(201, 168, 76); doc.setLineWidth(0.4);
         doc.rect(ML, y, usableW, oh, "FD");
@@ -900,7 +909,7 @@
           ].filter(Boolean).join(" · ");
           if (meta) txt += " — " + meta;
           txt += "\n";
-          txt += "     Passagem: " + fBRL(it.totalPassagem) + "\n";
+          txt += "     Passagem: " + textoValorPassagem(it) + "\n";
           if (it.taxaEmbarque > 0) txt += "     Taxa de embarque: " + fBRL(it.taxaEmbarque * it.adultos) + "\n";
         } else {
           txt += "   • " + it.nomeItem + (it.desc ? " — " + it.desc : "") + ": " + fBRL(it.venda) + "\n";
@@ -936,32 +945,18 @@
 
   // Modal: salvar
   document.getElementById("orc-ia-modal-save")?.addEventListener("click", () => {
-    const keyEl = document.getElementById("orc-ia-key");
     const modEl = document.getElementById("orc-ia-model");
-    const key   = keyEl?.value.trim() || "";
     const model = modEl?.value || "claude-haiku-4-5-20251001";
 
-    if (key) localStorage.setItem(LS_KEY, key);
-    else localStorage.removeItem(LS_KEY);
     localStorage.setItem(LS_MODEL, model);
 
     fecharConfigIA();
 
-    // Atualiza visual do botão de configuração
-    const cfgBtn = document.getElementById("orc-ia-cfg-btn");
-    if (cfgBtn) cfgBtn.textContent = key ? "⚙ IA configurada ✓" : "⚙ Configurar IA";
-
     // Se havia callback (ex: acionar análise após configurar), executa agora
     const modal = document.getElementById("orc-ia-modal");
-    if (modal?._onSaved && key) { const cb = modal._onSaved; modal._onSaved = null; cb(); }
+    if (modal?._onSaved) { const cb = modal._onSaved; modal._onSaved = null; cb(); }
   });
 
   // ===== Início =====
   addDestino();
-
-  // Reflete estado da chave no botão ao carregar
-  (function() {
-    const cfgBtn = document.getElementById("orc-ia-cfg-btn");
-    if (cfgBtn && getApiKey()) cfgBtn.textContent = "⚙ IA configurada ✓";
-  })();
 })();

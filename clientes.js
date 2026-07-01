@@ -3,7 +3,6 @@
   "use strict";
 
   const LS_KEY      = "lolek_clientes";
-  const LS_AI_KEY   = "lolek_anthropic_key";
   const LS_AI_MODEL = "lolek_anthropic_model";
 
   // Dados iniciais (importados do WhatsApp)
@@ -20,7 +19,6 @@
     return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
   }
   function gerarId() { return "c" + Date.now() + Math.random().toString(36).slice(2, 8); }
-  function getApiKey()   { return localStorage.getItem(LS_AI_KEY)   || ""; }
   function getModel()    { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
 
   // ===== Estado =====
@@ -187,21 +185,13 @@
 
   // ===== IA: extração do texto colado =====
   async function extrairComIA(texto) {
-    const apiKey = getApiKey();
-    if (!apiKey) { alert("Configure a chave da API Anthropic primeiro (aba Orçamentos → ⚙ Configurar IA)."); return; }
-
     const btn = gel("cform-ia-btn");
     if (btn) { btn.disabled = true; btn.textContent = "⏳ Extraindo..."; }
 
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/.netlify/functions/anthropic", {
         method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: getModel(),
           max_tokens: 512,

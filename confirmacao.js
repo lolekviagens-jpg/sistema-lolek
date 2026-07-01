@@ -8,7 +8,6 @@
   const LOLEK_EMAIL = "thaynara@agencialolekviagens.com.br";
   const LOLEK_TEL   = "(85) 99632-7092";
 
-  const LS_AI_KEY   = "lolek_anthropic_key";
   const LS_AI_MODEL = "lolek_anthropic_model";
 
   // Mapeamento de companhias → site de gerenciamento da reserva
@@ -44,7 +43,6 @@
     return null;
   }
 
-  function getApiKey() { return localStorage.getItem(LS_AI_KEY) || ""; }
   function getModel()  { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
 
   function escHtml(s) {
@@ -60,12 +58,6 @@
 
   // ===== Extração IA =====
   async function extrairReserva() {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      alert("Configure a chave da API Anthropic primeiro (aba Orçamentos → ⚙ Configurar IA).");
-      return;
-    }
-
     const texto = (gel("conf-paste")?.value || "").trim();
     const fileInput = gel("conf-print-input");
     const files = fileInput?.files;
@@ -104,14 +96,9 @@
         content = [{ type: "text", text: promptExtracao() + "\n\nTexto da confirmação:\n" + texto }];
       }
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/.netlify/functions/anthropic", {
         method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ model: getModel(), max_tokens: 2048, messages: [{ role: "user", content }] }),
       });
 
@@ -543,7 +530,7 @@ IMPORTANTE: para voos com múltiplos trechos ou escala, inclua CADA trecho separ
       fileInput.files = dt.files;
       if (hint) hint.textContent = `✓ "${file.name}" carregado — clique em Extrair dados`;
       zone.classList.add("conf-print-zone--loaded");
-      if (getApiKey()) extrairReserva();
+      extrairReserva();
     }
 
     // Colar imagem com Ctrl+V
@@ -571,7 +558,7 @@ IMPORTANTE: para voos com múltiplos trechos ou escala, inclua CADA trecho separ
         if (file) {
           if (hint) hint.textContent = `✓ "${file.name}" selecionado — clique em Extrair dados`;
           zone.classList.add("conf-print-zone--loaded");
-          if (getApiKey()) extrairReserva();
+          extrairReserva();
         }
       });
     }
