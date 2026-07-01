@@ -248,7 +248,11 @@
     // Modal detalhe
     gel("cli-modal-detalhe").addEventListener("click", e => { if (e.target === gel("cli-modal-detalhe")) fecharDetalhe(); });
     gel("cli-detalhe-fechar").addEventListener("click", fecharDetalhe);
-    gel("cli-detalhe-editar").addEventListener("click", () => { fecharDetalhe(); abrirFormCliente(clienteEditando || clientes.find(c => c.id === clienteEditando?.id)); });
+    gel("cli-detalhe-editar").addEventListener("click", () => {
+      const c = clienteEditando;
+      fecharDetalhe();
+      abrirFormCliente(c);
+    });
 
     // Modal form
     gel("cli-modal-form").addEventListener("click", e => { if (e.target === gel("cli-modal-form")) fecharFormCliente(); });
