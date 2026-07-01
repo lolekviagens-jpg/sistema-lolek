@@ -191,7 +191,7 @@
   function addProduto(destId, tipo) {
     const dest = destinos.find((d) => d.id === destId);
     if (!dest) return;
-    const pid = tipo + "-" + Date.now();
+    const pid = tipo + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
     dest.produtos.push({ pid, tipo });
     fotoStore[pid] = [];
     renderDestinos();

@@ -344,7 +344,7 @@
   }
 
   function addFuncRow() {
-    cfg.funcs.push({ id: "f" + Date.now(), nome: "" });
+    cfg.funcs.push({ id: "f" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), nome: "" });
     const chave = chaveAtual();
     renderMetasFuncs(chave, cfg.metas[chave] || {});
     gel("metas-funcs").querySelector("[data-id]:last-child .vcfg-nome")?.focus();
