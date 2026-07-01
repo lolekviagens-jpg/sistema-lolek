@@ -56,6 +56,27 @@
     return n > 0 ? "R$ " + n.toLocaleString("pt-BR", { minimumFractionDigits: 2 }) : "";
   }
 
+  // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
+  // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
+  function extractJson(text) {
+    const start = String(text || "").indexOf("{");
+    if (start === -1) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+      }
+    }
+    return null;
+  }
+
   // ===== Extração IA =====
   async function extrairReserva() {
     const texto = (gel("conf-paste")?.value || "").trim();
@@ -105,7 +126,7 @@
       if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
 
       const data    = await resp.json();
-      const jsonStr = (data.content?.[0]?.text || "").match(/\{[\s\S]*\}/)?.[0];
+      const jsonStr = extractJson(data.content?.[0]?.text || "");
       if (!jsonStr) throw new Error("Resposta inesperada da IA");
 
       const extraido = JSON.parse(jsonStr);

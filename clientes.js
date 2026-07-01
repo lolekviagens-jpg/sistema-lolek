@@ -21,6 +21,27 @@
   function gerarId() { return "c" + Date.now() + Math.random().toString(36).slice(2, 8); }
   function getModel()    { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
 
+  // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
+  // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
+  function extractJson(text) {
+    const start = String(text || "").indexOf("{");
+    if (start === -1) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+      }
+    }
+    return null;
+  }
+
   // ===== Estado =====
   let clientes    = [];
   let termoBusca  = "";
@@ -205,7 +226,7 @@
       if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
 
       const data = await resp.json();
-      const jsonStr = (data.content?.[0]?.text || "").match(/\{[\s\S]*\}/)?.[0];
+      const jsonStr = extractJson(data.content?.[0]?.text || "");
       if (!jsonStr) throw new Error("Resposta inesperada");
 
       const ex = JSON.parse(jsonStr);

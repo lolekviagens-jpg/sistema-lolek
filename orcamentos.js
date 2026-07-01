@@ -104,6 +104,27 @@
   function fBRL(v) { return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fData(s){ return s ? new Date(s + "T12:00:00").toLocaleDateString("pt-BR") : "—"; }
 
+  // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
+  // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
+  function extractJson(text) {
+    const start = String(text || "").indexOf("{");
+    if (start === -1) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+      }
+    }
+    return null;
+  }
+
   // Preço de exibição de um trecho de passagem: se zerado, indica que o valor
   // está embutido no outro trecho (round-trip cotado como preço único) em vez de mostrar R$ 0,00.
   function textoValorPassagem(it) {
@@ -375,7 +396,7 @@
 
       const data = await resp.json();
       const text = data.content?.[0]?.text || "";
-      const jsonStr = text.match(/\{[\s\S]*\}/)?.[0];
+      const jsonStr = extractJson(text);
       if (!jsonStr) throw new Error("Resposta inesperada da IA");
 
       const ex = JSON.parse(jsonStr);
