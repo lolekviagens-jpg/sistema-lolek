@@ -2,12 +2,14 @@
 (function () {
   "use strict";
 
-  const LS_KEY = "lolek_financeiro";
+  const LS_KEY      = "lolek_financeiro";
+  const LS_AI_MODEL = "lolek_anthropic_model";
 
   let lancamentos   = [];
   let filtroAtual   = "todos";
   let editando      = null;
   let desbloqueado  = false; // só em memória: recarregar a página (F5) sempre pede a senha de novo
+  let importados    = [];    // linhas extraídas do extrato, aguardando revisão
 
   function gel(id) { return document.getElementById(id); }
 
@@ -22,6 +24,29 @@
   }
 
   function gerarId() { return "l" + Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
+
+  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+
+  // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
+  // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
+  function extractJson(text) {
+    const start = String(text || "").indexOf("{");
+    if (start === -1) return null;
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else {
+        if (ch === '"') inStr = true;
+        else if (ch === "{") depth++;
+        else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+      }
+    }
+    return null;
+  }
 
   function parseData(str) {
     const m = String(str || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
@@ -153,6 +178,7 @@
           <td>${escHtml(l.vencimento || "—")}</td>
           <td class="table__client">${escHtml(l.descricao)}</td>
           <td class="table__muted">${escHtml(l.categoria || "—")}</td>
+          <td class="table__muted">${escHtml(l.origem || "—")}</td>
           <td>${l.tipo === "entrada" ? "Entrada" : "Saída"}</td>
           <td style="color:${corValor};font-weight:600">${fBRL(v)}</td>
           <td><span class="badge badge--${l.status === "pago" ? "concluido" : "pendente"} fin-status-toggle">${l.status === "pago" ? "Pago" : "Pendente"}</span></td>
@@ -189,6 +215,7 @@
     gel("fin-f-status").value     = l ? l.status     : "pendente";
     gel("fin-f-descricao").value  = l ? l.descricao  : "";
     gel("fin-f-categoria").value  = l ? l.categoria  : "";
+    gel("fin-f-origem").value     = l ? (l.origem || "") : "";
     gel("fin-f-valor").value      = l ? l.valor      : "";
     gel("fin-f-vencimento").value = l ? l.vencimento : "";
     gel("fin-f-excluir").hidden   = !l;
@@ -204,6 +231,7 @@
       status:     gel("fin-f-status").value,
       descricao:  gel("fin-f-descricao").value.trim(),
       categoria:  gel("fin-f-categoria").value.trim(),
+      origem:     gel("fin-f-origem").value.trim(),
       valor:      parseFloat(gel("fin-f-valor").value) || 0,
       vencimento: gel("fin-f-vencimento").value.trim(),
     };
@@ -229,6 +257,137 @@
     render();
   }
 
+  // ===== Importar extrato (IA) =====
+  function abrirImportar() {
+    gel("fin-imp-origem").value = "";
+    gel("fin-imp-texto").value  = "";
+    gel("fin-imp-passo1").hidden = false;
+    gel("fin-imp-passo2").hidden = true;
+    importados = [];
+    gel("fin-modal-importar").hidden = false;
+    gel("fin-imp-texto").focus();
+  }
+
+  function fecharImportar() {
+    gel("fin-modal-importar").hidden = true;
+    importados = [];
+  }
+
+  async function extrairExtrato() {
+    const origem = gel("fin-imp-origem").value.trim();
+    const texto  = gel("fin-imp-texto").value.trim();
+    if (!texto) { alert("Cole o texto do extrato antes de extrair."); return; }
+
+    const btn = gel("fin-imp-extrair-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Extraindo...";
+
+    try {
+      const resp = await fetch("/.netlify/functions/anthropic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: getModel(),
+          max_tokens: 4096,
+          messages: [{
+            role: "user",
+            content: `Extraia todas as transações do extrato bancário ou fatura de cartão de crédito abaixo. Ignore linhas de saldo, resumo, limite ou totalizadores — só transações individuais.
+
+Para cada transação retorne:
+- data: DD/MM/AAAA
+- descricao: resumida, mantendo o que identifica a transação
+- valor: número positivo, sem sinal
+- tipo: "entrada" para receita/crédito/estorno, "saida" para despesa/débito/compra
+- confianca: "alta" se o tipo de gasto é claro pelo texto (ex: tarifa bancária, PIX identificado, pagamento de fatura, juros, anuidade), ou "baixa" se for uma compra genérica sem contexto do que foi (ex: "COMPRA CARTAO ESTABELECIMENTO X", nome de maquininha, código numérico)
+- categoria: sugestão curta de categoria quando confianca for "alta"; deixe "" (vazio) quando for "baixa"
+
+Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
+{"transacoes":[{"data":"","descricao":"","valor":0,"tipo":"","confianca":"","categoria":""}]}
+
+EXTRATO:
+${texto}`,
+          }],
+        }),
+      });
+
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
+
+      const data = await resp.json();
+      const jsonStr = extractJson(data.content?.[0]?.text || "");
+      if (!jsonStr) throw new Error("Resposta inesperada da IA");
+
+      const parsed = JSON.parse(jsonStr);
+      const transacoes = Array.isArray(parsed.transacoes) ? parsed.transacoes : [];
+      if (transacoes.length === 0) { alert("Nenhuma transação encontrada nesse texto."); return; }
+
+      importados = transacoes.map(t => ({
+        data:      t.data || "",
+        descricao: t.descricao || "",
+        valor:     parseFloat(t.valor) || 0,
+        tipo:      t.tipo === "entrada" ? "entrada" : "saida",
+        categoria: t.categoria || "",
+        confianca: t.confianca === "alta" ? "alta" : "baixa",
+        origem,
+      }));
+
+      renderImportRevisao();
+      gel("fin-imp-passo1").hidden = true;
+      gel("fin-imp-passo2").hidden = false;
+    } catch (err) {
+      alert("Erro ao extrair lançamentos: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🤖 Extrair lançamentos";
+    }
+  }
+
+  function renderImportRevisao() {
+    const tbody = gel("fin-imp-tbody");
+    tbody.innerHTML = importados.map((t, i) => `
+      <tr class="${t.confianca === "baixa" ? "fin-imp-row--atencao" : ""}" data-i="${i}">
+        <td><input type="checkbox" class="fin-imp-check" checked /></td>
+        <td><input type="text" class="input fin-imp-data" value="${escHtml(t.data)}" style="width:95px" /></td>
+        <td><input type="text" class="input fin-imp-desc" value="${escHtml(t.descricao)}" style="min-width:180px" /></td>
+        <td><input type="number" class="input fin-imp-valor" value="${t.valor}" step="0.01" style="width:95px" /></td>
+        <td>
+          <select class="input fin-imp-tipo">
+            <option value="entrada"${t.tipo === "entrada" ? " selected" : ""}>Entrada</option>
+            <option value="saida"${t.tipo === "saida" ? " selected" : ""}>Saída</option>
+          </select>
+        </td>
+        <td><input type="text" class="input fin-imp-categoria" value="${escHtml(t.categoria)}" placeholder="${t.confianca === "baixa" ? "O que é isso?" : ""}" /></td>
+      </tr>`).join("");
+  }
+
+  function confirmarImportacao() {
+    const origem = gel("fin-imp-origem").value.trim();
+    const linhas = gel("fin-imp-tbody").querySelectorAll("tr");
+    let count = 0;
+
+    linhas.forEach(tr => {
+      if (!tr.querySelector(".fin-imp-check").checked) return;
+
+      const dados = {
+        tipo:       tr.querySelector(".fin-imp-tipo").value,
+        status:     "pendente",
+        descricao:  tr.querySelector(".fin-imp-desc").value.trim(),
+        categoria:  tr.querySelector(".fin-imp-categoria").value.trim(),
+        origem,
+        valor:      parseFloat(tr.querySelector(".fin-imp-valor").value) || 0,
+        vencimento: tr.querySelector(".fin-imp-data").value.trim(),
+      };
+      if (!dados.descricao || !dados.valor) return;
+
+      lancamentos.push({ ...dados, id: gerarId(), criadoEm: new Date().toISOString() });
+      count++;
+    });
+
+    salvar();
+    fecharImportar();
+    render();
+    alert(count + " lançamento" + (count !== 1 ? "s importados" : " importado") + " com sucesso.");
+  }
+
   // ===== Init =====
   function init() {
     carregar();
@@ -243,6 +402,17 @@
     gel("fin-f-salvar").addEventListener("click", salvarForm);
     gel("fin-f-excluir").addEventListener("click", excluirLancamento);
     gel("fin-modal-lanc").addEventListener("click", e => { if (e.target === gel("fin-modal-lanc")) fecharForm(); });
+
+    gel("fin-importar-btn").addEventListener("click", abrirImportar);
+    gel("fin-imp-fechar").addEventListener("click", fecharImportar);
+    gel("fin-imp-cancelar").addEventListener("click", fecharImportar);
+    gel("fin-imp-extrair-btn").addEventListener("click", extrairExtrato);
+    gel("fin-imp-voltar").addEventListener("click", () => {
+      gel("fin-imp-passo1").hidden = false;
+      gel("fin-imp-passo2").hidden = true;
+    });
+    gel("fin-imp-confirmar-btn").addEventListener("click", confirmarImportacao);
+    gel("fin-modal-importar").addEventListener("click", e => { if (e.target === gel("fin-modal-importar")) fecharImportar(); });
 
     document.querySelectorAll(".fin-filtro").forEach(btn => {
       btn.addEventListener("click", () => {

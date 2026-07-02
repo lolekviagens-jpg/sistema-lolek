@@ -552,6 +552,7 @@
             <span class="toolbar__info" id="fin-updated"></span>
             <div style="display:flex;gap:8px">
               <button class="btn btn--ghost btn--icon" id="fin-lock-btn2" type="button" title="Bloquear">🔒</button>
+              <button class="btn btn--ghost" id="fin-importar-btn" type="button">📥 Importar extrato</button>
               <button class="btn btn--gold" id="fin-novo-btn" type="button">+ Novo lançamento</button>
             </div>
           </div>
@@ -587,6 +588,7 @@
                   <th>Vencimento</th>
                   <th>Descrição</th>
                   <th>Categoria</th>
+                  <th>Origem</th>
                   <th>Tipo</th>
                   <th>Valor</th>
                   <th>Status</th>
@@ -633,6 +635,10 @@
                   <input type="text" id="fin-f-categoria" class="input" placeholder="Ex: Aluguel, Comissão, Fornecedor" />
                 </label>
                 <label class="field">
+                  <span class="field__label">Origem</span>
+                  <input type="text" id="fin-f-origem" class="input" list="fin-origens-opcoes" placeholder="Ex: Conta PJ" />
+                </label>
+                <label class="field">
                   <span class="field__label">Valor (R$) *</span>
                   <input type="number" id="fin-f-valor" class="input" step="0.01" min="0" />
                 </label>
@@ -647,6 +653,70 @@
               <div style="display:flex;gap:8px;margin-left:auto">
                 <button class="btn btn--ghost" id="fin-f-cancelar">Cancelar</button>
                 <button class="btn btn--gold" id="fin-f-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <datalist id="fin-origens-opcoes">
+          <option value="Conta PJ">
+          <option value="Cartão 1">
+          <option value="Cartão 2">
+          <option value="Cartão 3">
+        </datalist>
+
+        <!-- Modal: importar extrato -->
+        <div class="modal" id="fin-modal-importar" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:820px">
+            <div class="modal__header">
+              <span class="modal__title">Importar extrato</span>
+              <button class="modal__close" id="fin-imp-fechar">✕</button>
+            </div>
+
+            <!-- Passo 1: colar texto -->
+            <div id="fin-imp-passo1" style="padding:0 24px 20px">
+              <div class="form__grid" style="margin-bottom:10px">
+                <label class="field">
+                  <span class="field__label">Origem deste extrato</span>
+                  <input type="text" id="fin-imp-origem" class="input" list="fin-origens-opcoes" placeholder="Ex: Conta PJ" />
+                </label>
+              </div>
+              <label class="field field--full">
+                <span class="field__label">Cole aqui o texto do extrato do banco ou da fatura do cartão</span>
+                <textarea id="fin-imp-texto" class="input" rows="10" placeholder="Cole aqui o extrato copiado do app do banco ou a fatura do cartão..."></textarea>
+              </label>
+              <div style="display:flex;justify-content:flex-end;margin-top:12px">
+                <button type="button" id="fin-imp-extrair-btn" class="btn btn--gold">🤖 Extrair lançamentos</button>
+              </div>
+            </div>
+
+            <!-- Passo 2: revisão -->
+            <div id="fin-imp-passo2" style="padding:0 24px 20px" hidden>
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+                Confira os lançamentos abaixo. Os destacados em amarelo não foram identificados com clareza — explique o que são no campo "Categoria" antes de importar.
+              </p>
+              <div class="fin-imp-tabela-wrap">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Data</th>
+                      <th>Descrição</th>
+                      <th>Valor</th>
+                      <th>Tipo</th>
+                      <th>Categoria / o que é</th>
+                    </tr>
+                  </thead>
+                  <tbody id="fin-imp-tbody"></tbody>
+                </table>
+              </div>
+              <div class="modal__footer">
+                <button class="btn btn--ghost" id="fin-imp-voltar">← Voltar</button>
+                <div style="display:flex;gap:8px;margin-left:auto">
+                  <button class="btn btn--ghost" id="fin-imp-cancelar">Cancelar</button>
+                  <button class="btn btn--gold" id="fin-imp-confirmar-btn">Importar selecionados</button>
+                </div>
               </div>
             </div>
           </div>

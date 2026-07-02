@@ -2767,3 +2767,23 @@ textarea.input {
   border-color: var(--navy);
   color: #fff;
 }
+
+.fin-imp-tabela-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.fin-imp-tabela-wrap .table input,
+.fin-imp-tabela-wrap .table select {
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+.fin-imp-row--atencao td {
+  background: #fef3c7;
+}
+
+.fin-imp-row--atencao .fin-imp-categoria {
+  border-color: #b45309;
+}
