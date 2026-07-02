@@ -18,12 +18,12 @@ exports.handler = async (event) => {
   try { payload = JSON.parse(event.body || "{}"); }
   catch { return { statusCode: 400, body: JSON.stringify({ error: { message: "JSON inválido" } }) }; }
 
-  const { model, max_tokens, messages } = payload;
+  const { model, max_tokens, messages, tools } = payload;
   if (!model || !messages) {
     return { statusCode: 400, body: JSON.stringify({ error: { message: "model e messages são obrigatórios" } }) };
   }
 
-  const body = JSON.stringify({ model, max_tokens: max_tokens || 1024, messages });
+  const body = JSON.stringify({ model, max_tokens: max_tokens || 1024, messages, ...(tools ? { tools } : {}) });
 
   try {
     const result = await request(apiKey, body);

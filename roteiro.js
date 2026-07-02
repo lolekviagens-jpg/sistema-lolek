@@ -55,6 +55,12 @@
     });
   }
 
+  // Junta todos os blocos de texto da resposta (com busca na web, vêm intercalados
+  // com blocos de server_tool_use / web_search_tool_result que não são texto).
+  function getResponseText(content) {
+    return (content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+  }
+
   function parseDataBR(str) {
     const m = String(str || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (!m) return null;
@@ -154,7 +160,7 @@
     const btn = gel("rot-gerar-btn");
     btn.disabled = true; btn.textContent = "⏳ Gerando roteiro...";
 
-    const prompt = `Você é especialista em roteiros de viagem. Monte um roteiro dia a dia para a viagem abaixo.
+    const prompt = `Você é especialista em roteiros de viagem. Pesquise na web e monte um roteiro dia a dia REAL (não genérico) para a viagem abaixo.
 
 Destino: ${destino}
 Duração: ${dias} dia${dias !== 1 ? "s" : ""}
@@ -162,7 +168,13 @@ Nível de orçamento do cliente: ${orcamento}
 ${perfil ? "Perfil / observações do cliente: " + perfil : ""}
 ${hospedagem ? "Hospedagem já reservada: " + hospedagem : ""}
 
-Para cada dia, sugira atividades de manhã, tarde e noite adequadas ao destino e ao nível de orçamento informado, um restaurante conceituado condizente com o perfil e o orçamento, e quais ingressos ou reservas antecipadas são recomendados (parques, museus, shows, passeios guiados etc). Use nomes reais e conhecidos de lugares do destino sempre que possível, mas se não tiver certeza sobre preços ou funcionamento atual, diga isso na sugestão em vez de inventar valores.
+Antes de montar o roteiro, pesquise na web:
+- Os principais pontos turísticos do destino e onde ficam localizados
+- Restaurantes conceituados e bem avaliados, condizentes com o nível de orçamento e o perfil do cliente
+- Preços, horários de funcionamento e se é necessário comprar ingresso antecipado
+- Opções de transporte local (metrô, ônibus, táxi/app, a pé) entre os pontos do roteiro
+
+Depois de pesquisar, monte cada dia agrupando as atividades por PROXIMIDADE GEOGRÁFICA (evite roteiros que fazem o turista atravessar a cidade várias vezes no mesmo dia) e indique o melhor meio de transporte entre elas. Use nomes reais e específicos de lugares (não "um museu local" — o nome do museu de verdade). Se não tiver certeza sobre um preço ou horário atual, diga isso na sugestão em vez de inventar o valor.
 
 Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
 {
@@ -170,27 +182,33 @@ Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
     {
       "dia": 1,
       "titulo": "título curto do dia",
-      "manha": "sugestão para a manhã",
-      "tarde": "sugestão para a tarde",
-      "noite": "sugestão para a noite",
-      "restaurante": "nome e breve descrição do restaurante sugerido",
-      "ingressos": "ingressos/reservas recomendadas, ou string vazia se não houver"
+      "manha": "sugestão para a manhã, com nome real do local",
+      "tarde": "sugestão para a tarde, com nome real do local",
+      "noite": "sugestão para a noite, com nome real do local",
+      "transporte": "como se locomover entre os pontos do dia (ex: metrô linha X até Y, depois 10 min a pé)",
+      "restaurante": "nome real de um restaurante e breve descrição",
+      "ingressos": "ingressos/reservas recomendadas com preço aproximado se souber, ou string vazia se não houver"
     }
   ],
-  "dica_geral": "uma dica geral extra sobre o destino (opcional, ou string vazia)"
+  "dica_geral": "uma dica geral extra sobre o destino, incluindo transporte (opcional, ou string vazia)"
 }`;
 
     try {
       const resp = await fetch("/.netlify/functions/anthropic", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model: getModel(), max_tokens: 4096, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({
+          model: getModel(),
+          max_tokens: 8192,
+          messages: [{ role: "user", content: prompt }],
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+        }),
       });
 
       if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
 
       const data    = await resp.json();
-      const jsonStr = extractJson(data.content?.[0]?.text || "");
+      const jsonStr = extractJson(getResponseText(data.content));
       if (!jsonStr) throw new Error("Resposta inesperada da IA");
 
       const roteiro = JSON.parse(jsonStr);
@@ -221,8 +239,9 @@ Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
         ${linha("☀️", "Manhã", d.manha, false)}
         ${linha("🌇", "Tarde", d.tarde, true)}
         ${linha("🌙", "Noite", d.noite, false)}
-        ${linha("🍽️", "Restaurante sugerido", d.restaurante, true)}
-        ${linha("🎟️", "Ingressos / reservas", d.ingressos, false)}
+        ${linha("🚇", "Como se locomover", d.transporte, true)}
+        ${linha("🍽️", "Restaurante sugerido", d.restaurante, false)}
+        ${linha("🎟️", "Ingressos / reservas", d.ingressos, true)}
       </div>`;
   }
 
