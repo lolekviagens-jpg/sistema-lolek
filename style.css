@@ -1695,6 +1695,90 @@ textarea.input {
   line-height: 1.5;
 }
 
+/* Produtos vendidos no mês (grid geral) */
+.vendas-produtos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 26px;
+}
+
+.vendas-prod-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  text-align: center;
+}
+
+.vendas-prod-icon {
+  font-size: 1.5rem;
+  margin-bottom: 6px;
+}
+
+.vendas-prod-num {
+  font-family: var(--font-title);
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--navy);
+  line-height: 1;
+}
+
+.vendas-prod-nome {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Origem das passagens (leads) */
+.vendas-leads-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 22px;
+  margin-bottom: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vendas-lead-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vendas-lead-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.84rem;
+}
+
+.vendas-lead-nome {
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.vendas-lead-num {
+  color: var(--text-muted);
+}
+
+.vendas-lead-bar {
+  height: 8px;
+  background: var(--bg);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.vendas-lead-bar__fill {
+  height: 100%;
+  border-radius: 20px;
+  transition: width 0.4s ease;
+}
+
 .vendas-cfg-row {
   display: flex;
   align-items: center;
@@ -2601,4 +2685,85 @@ textarea.input {
   padding: 2px 6px;
   margin-top: 4px;
   display: inline-block;
+}
+
+/* ===== Financeiro ===== */
+.fin-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.fin-lock[hidden] {
+  display: none;
+}
+
+.fin-lock__box {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 36px 30px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fin-lock__icon {
+  font-size: 2.2rem;
+  margin-bottom: 4px;
+}
+
+.fin-lock__title {
+  font-family: var(--font-title);
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.fin-lock__hint {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.fin-lock__error {
+  font-size: 0.8rem;
+  color: #c0392b;
+  text-align: left;
+}
+
+.fin-filtros {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.fin-filtro {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 20px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.fin-filtro:hover {
+  border-color: var(--gold);
+  color: var(--navy);
+}
+
+.fin-filtro.is-active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
 }

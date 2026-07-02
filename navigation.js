@@ -14,6 +14,7 @@
     clientes:    "Clientes",
     confirmacao: "Confirmação de Emissão",
     followup:    "Follow-up",
+    financeiro:  "Financeiro",
   };
 
   function activateTab(tab) {

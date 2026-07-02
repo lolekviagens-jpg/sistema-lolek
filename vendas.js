@@ -6,10 +6,12 @@
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
   const CFG_KEY   = "lolek_vendas_cfg2";
 
-  const COL_SITUACAO = 1;  // coluna B — tipo de produto
-  const COL_FUNC     = 2;  // coluna C — nome da funcionária
-  const COL_SEP      = 4;  // coluna E — separador de mês (ex: "junho")
-  const COL_LUCRO    = 15; // coluna P — lucro
+  const COL_SITUACAO    = 1;  // coluna B — tipo de produto
+  const COL_FUNC        = 2;  // coluna C — nome da funcionária
+  const COL_LEAD        = 3;  // coluna D — origem do lead (Shalom, Orgânico, Corporativo, Convenção...)
+  const COL_SEP         = 4;  // coluna E — separador de mês (ex: "junho")
+  const COL_VALOR_TOTAL = 14; // coluna O — valor total (faturamento)
+  const COL_LUCRO       = 15; // coluna P — lucro
 
   const MESES_PT    = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
   const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -113,25 +115,42 @@
     const linhasMes = rows.slice(sep.rowIdx + 1, fim);
 
     // porFunc[nome] = { total, count, produtos: { tipo: n } }
-    const porFunc = {};
+    const porFunc      = {};
+    const produtosTotal = {};
+    const leadsPassagem = {};
+    let faturamento = 0, lucroTotal = 0;
+
     linhasMes.forEach(cols => {
-      const func = (cols[COL_FUNC] || "").trim();
+      // Linhas de subtotal/resumo (ex: totalizador antes do separador do próximo mês)
+      // não têm situação preenchida — só o valor numérico na coluna de funcionária.
+      const situacao = (cols[COL_SITUACAO] || "").trim();
+      if (!situacao) return;
+
+      const func  = (cols[COL_FUNC] || "").trim();
       if (!func) return;
 
-      const lucro    = parseNum(cols[COL_LUCRO]);
-      const situacao = (cols[COL_SITUACAO] || "").trim();
-      const tipo     = tipoProduto(situacao);
+      const lucro = parseNum(cols[COL_LUCRO]);
+      const valor = parseNum(cols[COL_VALOR_TOTAL]);
+      const tipo  = tipoProduto(situacao);
 
       if (!porFunc[func]) porFunc[func] = { total: 0, count: 0, produtos: {} };
-
       porFunc[func].total += lucro;
       porFunc[func].count++;
       if (tipo) {
         porFunc[func].produtos[tipo] = (porFunc[func].produtos[tipo] || 0) + 1;
+        produtosTotal[tipo] = (produtosTotal[tipo] || 0) + 1;
+      }
+
+      faturamento += valor;
+      lucroTotal  += lucro;
+
+      if (tipo === "Passagem aérea") {
+        const lead = (cols[COL_LEAD] || "").trim() || "Não informado";
+        leadsPassagem[lead] = (leadsPassagem[lead] || 0) + 1;
       }
     });
 
-    return { porFunc, month: sep.month, year: now.getFullYear() };
+    return { porFunc, produtosTotal, leadsPassagem, faturamento, lucroTotal, month: sep.month, year: now.getFullYear() };
   }
 
   // ===== Configuração (metas) =====
@@ -186,7 +205,75 @@
       sugEl.innerHTML = "";
     }
 
+    renderStats(d);
+    renderProdutos(d);
+    renderLeads(d);
     renderFuncs(d, metas, diasR);
+  }
+
+  // ===== Faturamento / lucro / margem =====
+  function renderStats(d) {
+    const faturamento = d.faturamento || 0;
+    const lucro       = d.lucroTotal  || 0;
+    const margem      = faturamento > 0 ? (lucro / faturamento) * 100 : 0;
+
+    gel("vendas-stat-faturamento").textContent = fBRL(faturamento);
+    gel("vendas-stat-lucro").textContent       = fBRL(lucro);
+    gel("vendas-stat-margem").textContent      = fPct(margem);
+  }
+
+  // ===== Produtos vendidos no mês (todas as funcionárias) =====
+  const PRODUTO_ICONS = {
+    "Passagem aérea":     "✈️",
+    "Hospedagem":         "🏨",
+    "Seguro viagem":      "🛡️",
+    "Adicional de mala":  "🧳",
+  };
+
+  function renderProdutos(d) {
+    const grid  = gel("vendas-produtos-grid");
+    const prods = Object.entries(d.produtosTotal || {}).sort((a, b) => b[1] - a[1]);
+
+    if (prods.length === 0) {
+      grid.innerHTML = `<div class="empty-state empty-state--compact"><p>Nenhum produto vendido neste mês</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = prods.map(([tipo, n]) => `
+      <div class="vendas-prod-card">
+        <div class="vendas-prod-icon">${PRODUTO_ICONS[tipo] || "📦"}</div>
+        <div class="vendas-prod-num">${n}</div>
+        <div class="vendas-prod-nome">${escHtml(tipo)}</div>
+      </div>`).join("");
+  }
+
+  // ===== Origem das passagens (lead) =====
+  const LEAD_CORES = ["#0a1f3d", "#c9a84c", "#1f8a4c", "#2563eb", "#b45309", "#7c3aed", "#be123c"];
+
+  function renderLeads(d) {
+    const box   = gel("vendas-leads-list");
+    const leads = Object.entries(d.leadsPassagem || {}).sort((a, b) => b[1] - a[1]);
+    const total = leads.reduce((s, [, n]) => s + n, 0);
+
+    if (total === 0) {
+      box.innerHTML = `<div class="empty-state empty-state--compact"><p>Nenhuma passagem vendida neste mês</p></div>`;
+      return;
+    }
+
+    box.innerHTML = leads.map(([lead, n], i) => {
+      const pct = (n / total) * 100;
+      const cor = LEAD_CORES[i % LEAD_CORES.length];
+      return `
+        <div class="vendas-lead-row">
+          <div class="vendas-lead-info">
+            <span class="vendas-lead-nome">${escHtml(lead)}</span>
+            <span class="vendas-lead-num">${n} · ${fPct(pct)}</span>
+          </div>
+          <div class="vendas-lead-bar">
+            <div class="vendas-lead-bar__fill" style="width:${pct}%;background:${cor}"></div>
+          </div>
+        </div>`;
+    }).join("");
   }
 
   function renderFuncs(d, metas, diasR) {

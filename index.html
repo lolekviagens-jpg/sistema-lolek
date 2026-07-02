@@ -52,6 +52,10 @@
           <span class="nav__icon">💬</span>
           <span class="nav__label">Follow-up</span>
         </button>
+        <button class="nav__item" data-tab="financeiro">
+          <span class="nav__icon">💰</span>
+          <span class="nav__label">Financeiro</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -206,6 +210,22 @@
 
         <div id="vendas-status"></div>
 
+        <!-- Faturamento / Lucro / Margem -->
+        <div class="stats">
+          <div class="stat">
+            <div class="stat__value" id="vendas-stat-faturamento">—</div>
+            <div class="stat__label">Faturamento</div>
+          </div>
+          <div class="stat stat--gold">
+            <div class="stat__value" id="vendas-stat-lucro">—</div>
+            <div class="stat__label">Lucro</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value" id="vendas-stat-margem">—</div>
+            <div class="stat__label">Margem</div>
+          </div>
+        </div>
+
         <!-- Card empresa -->
         <div class="vendas-empresa-card">
           <div class="vendas-empresa-top">
@@ -224,6 +244,14 @@
             <div id="vendas-empresa-bar" class="vendas-bar__fill" style="width:0%"></div>
           </div>
         </div>
+
+        <!-- Produtos vendidos no mês -->
+        <div class="vendas-section-title">Produtos vendidos no mês</div>
+        <div id="vendas-produtos-grid" class="vendas-produtos-grid"></div>
+
+        <!-- Origem das passagens -->
+        <div class="vendas-section-title">Origem das passagens</div>
+        <div id="vendas-leads-list" class="vendas-leads-list"></div>
 
         <!-- Cards funcionárias -->
         <div class="vendas-section-title">Funcionárias</div>
@@ -501,6 +529,132 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL FINANCEIRO ===== -->
+      <section class="panel" data-panel="financeiro">
+
+        <!-- Tela de bloqueio -->
+        <div id="fin-lock" class="fin-lock">
+          <div class="fin-lock__box">
+            <div class="fin-lock__icon">🔒</div>
+            <div class="fin-lock__title" id="fin-lock-title">Área financeira protegida</div>
+            <p class="fin-lock__hint" id="fin-lock-hint">Digite a senha para continuar.</p>
+            <input type="password" id="fin-lock-senha" class="input" placeholder="Senha" autocomplete="off" />
+            <input type="password" id="fin-lock-senha2" class="input" placeholder="Confirme a senha" autocomplete="off" hidden />
+            <div class="fin-lock__error" id="fin-lock-erro" hidden></div>
+            <button type="button" class="btn btn--gold" id="fin-lock-btn" style="width:100%;justify-content:center">Entrar</button>
+          </div>
+        </div>
+
+        <!-- Conteúdo (visível após desbloqueio) -->
+        <div id="fin-conteudo" hidden>
+
+          <div class="toolbar">
+            <span class="toolbar__info" id="fin-updated"></span>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--ghost btn--icon" id="fin-lock-btn2" type="button" title="Bloquear">🔒</button>
+              <button class="btn btn--ghost" id="fin-senha-btn" type="button">⚙ Alterar senha</button>
+              <button class="btn btn--gold" id="fin-novo-btn" type="button">+ Novo lançamento</button>
+            </div>
+          </div>
+
+          <!-- Cards resumo -->
+          <div class="stats">
+            <div class="stat">
+              <div class="stat__value" id="fin-stat-saldo">R$ 0,00</div>
+              <div class="stat__label">Saldo (pago)</div>
+            </div>
+            <div class="stat">
+              <div class="stat__value" id="fin-stat-receber">R$ 0,00</div>
+              <div class="stat__label">A receber</div>
+            </div>
+            <div class="stat">
+              <div class="stat__value" id="fin-stat-pagar">R$ 0,00</div>
+              <div class="stat__label">A pagar</div>
+            </div>
+          </div>
+
+          <!-- Filtros -->
+          <div class="fin-filtros">
+            <button class="fin-filtro is-active" data-filtro="todos" type="button">Todos</button>
+            <button class="fin-filtro" data-filtro="entrada" type="button">Entradas</button>
+            <button class="fin-filtro" data-filtro="saida" type="button">Saídas</button>
+            <button class="fin-filtro" data-filtro="pendente" type="button">Pendentes</button>
+          </div>
+
+          <div class="card">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Tipo</th>
+                  <th>Valor</th>
+                  <th>Status</th>
+                  <th class="table__actions-col"></th>
+                </tr>
+              </thead>
+              <tbody id="fin-tabela-body"></tbody>
+            </table>
+          </div>
+          <div id="fin-vazio"></div>
+
+        </div><!-- /fin-conteudo -->
+
+        <!-- Modal novo/editar lançamento -->
+        <div class="modal" id="fin-modal-lanc" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:520px">
+            <div class="modal__header">
+              <span class="modal__title" id="fin-modal-titulo">Novo lançamento</span>
+              <button class="modal__close" id="fin-modal-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field">
+                  <span class="field__label">Tipo</span>
+                  <select id="fin-f-tipo" class="input">
+                    <option value="entrada">Entrada</option>
+                    <option value="saida">Saída</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field__label">Status</span>
+                  <select id="fin-f-status" class="input">
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                  </select>
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Descrição *</span>
+                  <input type="text" id="fin-f-descricao" class="input" placeholder="Ex: Comissão hotel XPTO" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Categoria</span>
+                  <input type="text" id="fin-f-categoria" class="input" placeholder="Ex: Aluguel, Comissão, Fornecedor" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Valor (R$) *</span>
+                  <input type="number" id="fin-f-valor" class="input" step="0.01" min="0" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Vencimento</span>
+                  <input type="text" id="fin-f-vencimento" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost btn--danger" id="fin-f-excluir" hidden>Excluir</button>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="fin-f-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="fin-f-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
@@ -511,5 +665,6 @@
   <script src="clientes.js"></script>
   <script src="confirmacao.js"></script>
   <script src="followup.js"></script>
+  <script src="financeiro.js"></script>
 </body>
 </html>
