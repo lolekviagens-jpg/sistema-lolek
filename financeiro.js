@@ -2,8 +2,7 @@
 (function () {
   "use strict";
 
-  const LS_KEY       = "lolek_financeiro";
-  const LS_HASH_KEY  = "lolek_fin_pass_hash";
+  const LS_KEY        = "lolek_financeiro";
   const SS_UNLOCK_KEY = "lolek_fin_unlocked";
 
   let lancamentos = [];
@@ -36,15 +35,8 @@
   }
   function salvar() { localStorage.setItem(LS_KEY, JSON.stringify(lancamentos)); }
 
-  // ===== Senha (hash SHA-256, nunca guardamos a senha em texto puro) =====
-  async function hashSenha(txt) {
-    const enc = new TextEncoder().encode(txt);
-    const buf = await crypto.subtle.digest("SHA-256", enc);
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-
-  function temSenha()          { return !!localStorage.getItem(LS_HASH_KEY); }
-  function estaDesbloqueado()  { return sessionStorage.getItem(SS_UNLOCK_KEY) === "1"; }
+  // ===== Senha (verificada no servidor — FINANCEIRO_SENHA no Netlify, nunca no navegador) =====
+  function estaDesbloqueado() { return sessionStorage.getItem(SS_UNLOCK_KEY) === "1"; }
 
   function mostrarErroLock(msg) {
     const el = gel("fin-lock-erro");
@@ -52,18 +44,11 @@
     el.hidden = false;
   }
 
-  function mostrarLock(modoCriar) {
+  function mostrarLock() {
     gel("fin-conteudo").hidden = true;
     gel("fin-lock").hidden = false;
     gel("fin-lock-senha").value = "";
-    gel("fin-lock-senha2").value = "";
-    gel("fin-lock-senha2").hidden = !modoCriar;
     gel("fin-lock-erro").hidden = true;
-    gel("fin-lock-title").textContent = modoCriar ? "Criar senha da área financeira" : "Área financeira protegida";
-    gel("fin-lock-hint").textContent  = modoCriar
-      ? "Defina uma senha para proteger o acesso a esta aba."
-      : "Digite a senha para continuar.";
-    gel("fin-lock-btn").textContent = modoCriar ? "Criar senha" : "Entrar";
     gel("fin-lock-senha").focus();
   }
 
@@ -74,39 +59,39 @@
   }
 
   async function tentarEntrar() {
-    const modoCriar = !temSenha();
-    const senha  = gel("fin-lock-senha").value;
-    const senha2 = gel("fin-lock-senha2").value;
+    const senha = gel("fin-lock-senha").value;
     if (!senha) return;
 
-    if (modoCriar) {
-      if (senha.length < 4)   { mostrarErroLock("A senha deve ter ao menos 4 caracteres."); return; }
-      if (senha !== senha2)   { mostrarErroLock("As senhas não coincidem."); return; }
-      localStorage.setItem(LS_HASH_KEY, await hashSenha(senha));
-      sessionStorage.setItem(SS_UNLOCK_KEY, "1");
-      mostrarConteudo();
-      return;
-    }
+    const btn = gel("fin-lock-btn");
+    btn.disabled = true;
+    gel("fin-lock-erro").hidden = true;
 
-    const hash = await hashSenha(senha);
-    if (hash === localStorage.getItem(LS_HASH_KEY)) {
-      sessionStorage.setItem(SS_UNLOCK_KEY, "1");
-      mostrarConteudo();
-    } else {
-      mostrarErroLock("Senha incorreta.");
+    try {
+      const resp = await fetch("/.netlify/functions/financeiro-auth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ senha }),
+      });
+      const data = await resp.json();
+
+      if (data.ok) {
+        sessionStorage.setItem(SS_UNLOCK_KEY, "1");
+        mostrarConteudo();
+      } else if (resp.status === 500) {
+        mostrarErroLock("Senha ainda não configurada no Netlify (variável FINANCEIRO_SENHA).");
+      } else {
+        mostrarErroLock("Senha incorreta.");
+      }
+    } catch (err) {
+      mostrarErroLock("Erro ao verificar a senha: " + err.message);
+    } finally {
+      btn.disabled = false;
     }
   }
 
   function bloquear() {
     sessionStorage.removeItem(SS_UNLOCK_KEY);
-    mostrarLock(false);
-  }
-
-  function trocarSenha() {
-    if (!confirm("Isso apaga a senha atual e pede para cadastrar uma nova. Continuar?")) return;
-    localStorage.removeItem(LS_HASH_KEY);
-    sessionStorage.removeItem(SS_UNLOCK_KEY);
-    mostrarLock(true);
+    mostrarLock();
   }
 
   // ===== Lançamentos =====
@@ -249,11 +234,8 @@
     carregar();
 
     gel("fin-lock-btn").addEventListener("click", tentarEntrar);
-    [gel("fin-lock-senha"), gel("fin-lock-senha2")].forEach(el => {
-      el.addEventListener("keydown", e => { if (e.key === "Enter") tentarEntrar(); });
-    });
+    gel("fin-lock-senha").addEventListener("keydown", e => { if (e.key === "Enter") tentarEntrar(); });
     gel("fin-lock-btn2").addEventListener("click", bloquear);
-    gel("fin-senha-btn").addEventListener("click", trocarSenha);
 
     gel("fin-novo-btn").addEventListener("click", () => abrirForm(null));
     gel("fin-modal-fechar").addEventListener("click", fecharForm);
@@ -271,7 +253,7 @@
     });
 
     if (estaDesbloqueado()) mostrarConteudo();
-    else mostrarLock(!temSenha());
+    else mostrarLock();
   }
 
   init();
