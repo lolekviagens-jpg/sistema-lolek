@@ -104,6 +104,17 @@
     return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
 
+  // Classifica o produto pela coluna de situação (mesma regra usada em vendas.js)
+  function tipoProduto(situacao) {
+    const s = (situacao || "").toLowerCase().trim();
+    if (!s) return null;
+    if (s === "aguardando viagem" || s === "viagem concluida") return "Passagem aérea";
+    if (s.includes("hospedagem")) return "Hospedagem";
+    if (s.includes("seguro"))     return "Seguro viagem";
+    if (s.includes("mala"))       return "Adicional de mala";
+    return situacao.trim().charAt(0).toUpperCase() + situacao.trim().slice(1);
+  }
+
   // ===== Processamento =====
   function rowsToPassengers(rows) {
     return rows
@@ -117,7 +128,8 @@
         dataIda:    parseDate(cols[COL.dataIda]),
         dataVolta:  parseDate(cols[COL.dataVolta]),
       }))
-      .filter((p) => p.nome && !/cancel/i.test(p.situacao));
+      .filter((p) => p.nome && !/cancel/i.test(p.situacao))
+      .map((p) => ({ ...p, tipo: tipoProduto(p.situacao) }));
   }
 
   // ===== Calendário =====
@@ -125,8 +137,9 @@
     const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
     calTitle.textContent = MESES[calMonth] + " " + calYear;
 
-    const idaDays   = new Set(lastPassengers.map((p) => p.dataIda).filter(Boolean));
-    const voltaDays = new Set(lastPassengers.map((p) => p.dataVolta).filter(Boolean));
+    const aereos    = lastPassengers.filter((p) => p.tipo === "Passagem aérea");
+    const idaDays   = new Set(aereos.map((p) => p.dataIda).filter(Boolean));
+    const voltaDays = new Set(aereos.map((p) => p.dataVolta).filter(Boolean));
     const today     = todayYmd();
 
     const firstDow = (new Date(calYear, calMonth, 1).getDay() + 6) % 7; // seg=0
@@ -180,22 +193,30 @@
       header.innerHTML = `<span class="ci-day-label">📅 ${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</span>`;
       sectionsEl.appendChild(header);
 
-      const ida   = lastPassengers.filter((p) => p.dataIda   === selectedDate);
-      const volta = lastPassengers.filter((p) => p.dataVolta === selectedDate);
+      const aereos = lastPassengers.filter((p) => p.tipo === "Passagem aérea");
+      const ida   = aereos.filter((p) => p.dataIda   === selectedDate);
+      const volta = aereos.filter((p) => p.dataVolta === selectedDate);
       sectionsEl.appendChild(renderSection("🔴", "Embarques — ida", ida, "ida", selectedDate));
       sectionsEl.appendChild(renderSection("🟣", "Chegadas — volta", volta, "volta", selectedDate));
     } else {
-      // Visão padrão: hoje + amanhã
-      const hoje   = todayYmd();
-      const amanha = tomorrowYmd();
+      // Visão padrão: hoje + amanhã (check-in é só de passagem aérea)
+      const hoje    = todayYmd();
+      const amanha  = tomorrowYmd();
+      const aereos  = lastPassengers.filter((p) => p.tipo === "Passagem aérea");
       const groups = {
-        idaAmanha:   lastPassengers.filter((p) => p.dataIda   === amanha),
-        voltaAmanha: lastPassengers.filter((p) => p.dataVolta === amanha),
-        idaHoje:     lastPassengers.filter((p) => p.dataIda   === hoje),
-        voltaHoje:   lastPassengers.filter((p) => p.dataVolta === hoje),
+        idaAmanha:   aereos.filter((p) => p.dataIda   === amanha),
+        voltaAmanha: aereos.filter((p) => p.dataVolta === amanha),
+        idaHoje:     aereos.filter((p) => p.dataIda   === hoje),
+        voltaHoje:   aereos.filter((p) => p.dataVolta === hoje),
       };
       sectionsEl.appendChild(renderSection("✅", "Check-in de ida — fazer hoje (voo amanhã)",      groups.idaAmanha,   "ida",   amanha));
       sectionsEl.appendChild(renderSection("✅", "Check-in de volta — fazer hoje (retorno amanhã)", groups.voltaAmanha, "volta", amanha));
+
+      // Conferência de hospedagem — não é check-in, só garantir que está tudo certo antes do hóspede chegar
+      const hospedagemAmanha = lastPassengers.filter((p) => p.tipo === "Hospedagem" && p.dataIda === amanha);
+      if (hospedagemAmanha.length > 0) {
+        sectionsEl.appendChild(renderSection("🏨", "Conferir hospedagem — check-in amanhã", hospedagemAmanha, "ida", amanha, false, "Conferido ✅"));
+      }
 
       if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0) {
         const divEl = document.createElement("div");
@@ -208,7 +229,7 @@
     }
   }
 
-  function renderSection(emoji, title, items, leg, legDate, secondary = false) {
+  function renderSection(emoji, title, items, leg, legDate, secondary = false, actionLabel = "Check-in feito ✅") {
     const wrap = document.createElement("div");
     wrap.className = "ci-section" + (secondary ? " ci-section--secondary" : "");
 
@@ -271,7 +292,7 @@
         <td class="table__actions-col"></td>`;
 
       const actionCell = tr.querySelector(".table__actions-col");
-      actionCell.appendChild(renderAction(key, confirmedAt));
+      actionCell.appendChild(renderAction(key, confirmedAt, actionLabel));
       tbody.appendChild(tr);
     });
 
@@ -280,7 +301,7 @@
     return wrap;
   }
 
-  function renderAction(key, confirmedAt) {
+  function renderAction(key, confirmedAt, actionLabel = "Check-in feito ✅") {
     const cell = document.createElement("div");
     cell.className = "ci-action";
 
@@ -297,7 +318,7 @@
       const btn = document.createElement("button");
       btn.className = "btn btn--gold btn--icon";
       btn.type      = "button";
-      btn.textContent = "Check-in feito ✅";
+      btn.textContent = actionLabel;
       btn.addEventListener("click", () => {
         setConfirmed(key, true);
         renderSections();
