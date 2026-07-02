@@ -2,12 +2,12 @@
 (function () {
   "use strict";
 
-  const LS_KEY        = "lolek_financeiro";
-  const SS_UNLOCK_KEY = "lolek_fin_unlocked";
+  const LS_KEY = "lolek_financeiro";
 
-  let lancamentos = [];
-  let filtroAtual = "todos";
-  let editando    = null;
+  let lancamentos   = [];
+  let filtroAtual   = "todos";
+  let editando      = null;
+  let desbloqueado  = false; // só em memória: recarregar a página (F5) sempre pede a senha de novo
 
   function gel(id) { return document.getElementById(id); }
 
@@ -36,7 +36,7 @@
   function salvar() { localStorage.setItem(LS_KEY, JSON.stringify(lancamentos)); }
 
   // ===== Senha (verificada no servidor — FINANCEIRO_SENHA no Netlify, nunca no navegador) =====
-  function estaDesbloqueado() { return sessionStorage.getItem(SS_UNLOCK_KEY) === "1"; }
+  function estaDesbloqueado() { return desbloqueado; }
 
   function mostrarErroLock(msg) {
     const el = gel("fin-lock-erro");
@@ -75,7 +75,7 @@
       const data = await resp.json();
 
       if (data.ok) {
-        sessionStorage.setItem(SS_UNLOCK_KEY, "1");
+        desbloqueado = true;
         mostrarConteudo();
       } else if (resp.status === 500) {
         mostrarErroLock("Senha ainda não configurada no Netlify (variável FINANCEIRO_SENHA).");
@@ -90,7 +90,7 @@
   }
 
   function bloquear() {
-    sessionStorage.removeItem(SS_UNLOCK_KEY);
+    desbloqueado = false;
     mostrarLock();
   }
 
