@@ -48,6 +48,10 @@
           <span class="nav__icon">📋</span>
           <span class="nav__label">Confirmação</span>
         </button>
+        <button class="nav__item" data-tab="roteiro">
+          <span class="nav__icon">🗺</span>
+          <span class="nav__label">Roteiro</span>
+        </button>
         <button class="nav__item" data-tab="followup">
           <span class="nav__icon">💬</span>
           <span class="nav__label">Follow-up</span>
@@ -462,6 +466,101 @@
 
       </section>
 
+      <!-- ===== PAINEL ROTEIRO ===== -->
+      <section class="panel" data-panel="roteiro">
+
+        <!-- INPUT -->
+        <div id="rot-input-wrap">
+          <div class="orc-card">
+            <div class="orc-card__header">Cole o print ou o texto com as informações da viagem do cliente</div>
+            <div class="orc-card__body">
+
+              <!-- Zona de entrada (Ctrl+V ou arrastar) -->
+              <div class="conf-print-zone orc-print-zone" id="rot-print-zone" tabindex="0">
+                <span class="conf-print-hint">📋 Cole um print (Ctrl+V) ou arraste um arquivo aqui</span>
+                <input type="file" id="rot-print-input" accept="image/*,.pdf" hidden />
+              </div>
+              <div style="display:flex;justify-content:center;margin:8px 0 4px">
+                <button type="button" id="rot-btn-arquivo" class="btn btn--ghost" style="font-size:0.82rem">📎 Selecionar arquivo (imagem ou PDF)</button>
+              </div>
+
+              <!-- OU texto -->
+              <div class="cli-form-divider">— ou cole o texto abaixo —</div>
+              <label class="field field--full">
+                <textarea id="rot-paste" class="input" rows="4"
+                  placeholder="Cole aqui informações sobre a viagem do cliente: destino, datas, hospedagem já reservada, perfil do cliente..."></textarea>
+              </label>
+
+              <div style="display:flex;justify-content:flex-end;margin-top:12px">
+                <button type="button" id="rot-extrair-btn" class="btn btn--gold">🤖 Extrair dados</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- FORMULÁRIO DE REVISÃO -->
+          <div id="rot-form-section" class="orc-card" style="margin-top:16px">
+            <div class="orc-card__header">Dados do roteiro</div>
+            <div class="orc-card__body">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Nome do cliente</span>
+                  <input type="text" id="rot-nome" class="input" placeholder="Ex: Maria Silva" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Destino *</span>
+                  <input type="text" id="rot-destino" class="input" placeholder="Ex: Lisboa, Portugal" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data de início</span>
+                  <input type="text" id="rot-data-inicio" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data de fim</span>
+                  <input type="text" id="rot-data-fim" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Quantidade de dias *</span>
+                  <input type="number" id="rot-dias" class="input" min="1" max="30" value="3" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Nível de orçamento *</span>
+                  <select id="rot-orcamento" class="input">
+                    <option value="econômico">Econômico</option>
+                    <option value="moderado" selected>Moderado</option>
+                    <option value="alto padrão">Alto padrão / luxo</option>
+                  </select>
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Hospedagem já reservada <span class="field__optional">(opcional)</span></span>
+                  <input type="text" id="rot-hospedagem" class="input" placeholder="Ex: Hotel XPTO" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Perfil / observações <span class="field__optional">(opcional)</span></span>
+                  <textarea id="rot-perfil" class="input" rows="2" placeholder="Ex: casal em lua de mel, viaja com crianças pequenas, gosta de vida noturna..."></textarea>
+                </label>
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;margin-top:16px">
+                <button type="button" id="rot-gerar-btn" class="btn btn--gold">Gerar roteiro →</button>
+              </div>
+            </div>
+          </div>
+        </div><!-- /rot-input-wrap -->
+
+        <!-- OUTPUT -->
+        <div id="rot-output-wrap" hidden>
+          <div id="rot-preview"></div>
+          <div class="toolbar" style="margin-top:20px">
+            <button type="button" id="rot-editar-btn" class="btn btn--ghost">← Editar</button>
+            <div style="display:flex;gap:10px">
+              <button type="button" id="rot-pdf-btn"  class="btn btn--gold">↓ Salvar como PDF</button>
+              <button type="button" id="rot-copy-btn" class="btn btn--ghost">Copiar texto</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
       <!-- ===== PAINEL FOLLOW-UP ===== -->
       <section class="panel" data-panel="followup">
 
@@ -732,6 +831,7 @@
   <script src="vendas.js"></script>
   <script src="clientes.js"></script>
   <script src="confirmacao.js"></script>
+  <script src="roteiro.js"></script>
   <script src="followup.js"></script>
   <script src="financeiro.js"></script>
 </body>

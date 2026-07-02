@@ -13,6 +13,7 @@
     vendas:     "Vendas",
     clientes:    "Clientes",
     confirmacao: "Confirmação de Emissão",
+    roteiro:     "Roteiro",
     followup:    "Follow-up",
     financeiro:  "Financeiro",
   };

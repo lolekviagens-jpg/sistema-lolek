@@ -2787,3 +2787,26 @@ textarea.input {
 .fin-imp-row--atencao .fin-imp-categoria {
   border-color: #b45309;
 }
+
+/* ===== Roteiro — caixa de oferta da Lolek ===== */
+.rot-oferta-box {
+  border: 1.5px solid var(--gold);
+  background: #fdf9ef;
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin: 18px 0;
+}
+
+.rot-oferta-titulo {
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+
+.rot-oferta-texto {
+  font-size: 0.82rem;
+  color: var(--text);
+  line-height: 1.6;
+}
