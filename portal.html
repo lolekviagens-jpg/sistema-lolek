@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal Corporativo — Lolek Viagens</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@300;400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Layout próprio do portal — sem sidebar do sistema interno */
+    body { background: var(--navy); min-height: 100vh; }
+
+    .portal-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 24px 60px;
+    }
+
+    .portal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    .portal-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .portal-brand__logo {
+      width: 48px;
+      height: 48px;
+      border: 2px solid var(--gold);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-title);
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--gold);
+    }
+
+    .portal-brand__text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.1;
+      color: #fff;
+    }
+
+    .portal-brand__name {
+      font-family: var(--font-title);
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+
+    .portal-brand__sub {
+      font-size: 0.68rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    /* Tela de login */
+    .portal-login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .portal-login-wrap[hidden] { display: none; }
+    .portal-wrap[hidden] { display: none; }
+
+    .portal-login-box {
+      width: 100%;
+      max-width: 380px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 60px rgba(7, 24, 46, 0.35);
+      padding: 40px 34px;
+      text-align: center;
+    }
+
+    .portal-login-title {
+      font-family: var(--font-title);
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--navy);
+      margin: 14px 0 4px;
+    }
+
+    .portal-login-hint {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      margin-bottom: 22px;
+    }
+
+    .portal-login-box .field {
+      text-align: left;
+      margin-bottom: 14px;
+    }
+
+    .portal-login-erro {
+      font-size: 0.8rem;
+      color: #c0392b;
+      text-align: left;
+      margin-bottom: 10px;
+    }
+
+    /* Dashboard */
+    .portal-content {
+      background: var(--bg);
+      border-radius: var(--radius);
+      padding: 28px;
+      min-height: 400px;
+    }
+
+    .portal-empresa-nome {
+      font-family: var(--font-title);
+      font-size: 1.9rem;
+      font-weight: 600;
+      color: var(--navy);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Tela de login ===== -->
+  <div id="portal-login-wrap" class="portal-login-wrap">
+    <div class="portal-login-box">
+      <div class="brand__logo" style="margin:0 auto">LV</div>
+      <div class="portal-login-title">Portal Corporativo</div>
+      <p class="portal-login-hint">Entre com o e-mail e senha cadastrados pela Lolek Viagens.</p>
+
+      <div class="portal-login-erro" id="portal-login-erro" hidden></div>
+
+      <label class="field">
+        <span class="field__label">E-mail</span>
+        <input type="email" id="portal-email" class="input" autocomplete="username" />
+      </label>
+      <label class="field">
+        <span class="field__label">Senha</span>
+        <input type="password" id="portal-senha" class="input" autocomplete="current-password" />
+      </label>
+
+      <button type="button" id="portal-login-btn" class="btn btn--gold" style="width:100%;justify-content:center;margin-top:6px">Entrar</button>
+    </div>
+  </div>
+
+  <!-- ===== Dashboard (visível após login) ===== -->
+  <div id="portal-dashboard-wrap" class="portal-wrap" hidden>
+    <div class="portal-header">
+      <div class="portal-brand">
+        <div class="portal-brand__logo">LV</div>
+        <div class="portal-brand__text">
+          <span class="portal-brand__name">Lolek Viagens</span>
+          <span class="portal-brand__sub">Portal Corporativo</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="button" id="portal-trocar-senha-btn" class="btn btn--ghost">Alterar senha</button>
+        <button type="button" id="portal-logout-btn" class="btn btn--ghost">Sair</button>
+      </div>
+    </div>
+
+    <div class="portal-content">
+      <div id="portal-status"></div>
+
+      <div class="portal-empresa-nome" id="portal-empresa-nome">—</div>
+      <div class="toolbar__info" id="portal-empresa-cnpj" style="margin-bottom:20px"></div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat__value" id="portal-stat-total">—</div><div class="stat__label">Emissões</div></div>
+        <div class="stat"><div class="stat__value" id="portal-stat-aguardando">—</div><div class="stat__label">Aguardando</div></div>
+        <div class="stat stat--gold"><div class="stat__value" id="portal-stat-pago">—</div><div class="stat__label">Pago</div></div>
+        <div class="stat"><div class="stat__value" id="portal-stat-atrasado">—</div><div class="stat__label">Atrasado</div></div>
+      </div>
+
+      <div class="fin-filtros" id="portal-filtros">
+        <button class="fin-filtro is-active" data-filtro="todos" type="button">Todos</button>
+        <button class="fin-filtro" data-filtro="aguardando" type="button">Aguardando</button>
+        <button class="fin-filtro" data-filtro="pago" type="button">Pago</button>
+        <button class="fin-filtro" data-filtro="atrasado" type="button">Atrasado</button>
+      </div>
+
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Emissão</th>
+              <th>Serviço</th>
+              <th>Passageiro</th>
+              <th>Trecho</th>
+              <th>Valor</th>
+              <th>Vencimento</th>
+              <th>Status</th>
+              <th>Nota fiscal</th>
+            </tr>
+          </thead>
+          <tbody id="portal-emissoes-body"></tbody>
+        </table>
+      </div>
+      <div id="portal-emissoes-vazio"></div>
+    </div>
+  </div>
+
+  <!-- ===== Modal: trocar senha ===== -->
+  <div class="modal" id="portal-modal-senha" hidden>
+    <div class="modal__backdrop"></div>
+    <div class="modal__dialog" style="max-width:420px">
+      <div class="modal__header">
+        <span class="modal__title">Alterar senha</span>
+        <button class="modal__close" id="portal-modal-senha-fechar">✕</button>
+      </div>
+      <div style="padding:0 24px 20px">
+        <label class="field field--full">
+          <span class="field__label">Nova senha</span>
+          <input type="password" id="portal-nova-senha" class="input" autocomplete="new-password" />
+        </label>
+        <div id="portal-senha-erro" style="font-size:0.8rem;color:#c0392b;margin-top:6px" hidden></div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" id="portal-senha-cancelar">Cancelar</button>
+        <button class="btn btn--gold" id="portal-senha-salvar">Salvar nova senha</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="portal.js"></script>
+</body>
+</html>
