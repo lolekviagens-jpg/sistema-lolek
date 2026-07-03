@@ -160,7 +160,7 @@
     const btn = gel("rot-gerar-btn");
     btn.disabled = true; btn.textContent = "⏳ Gerando roteiro...";
 
-    const prompt = `Você é especialista em roteiros de viagem. Pesquise na web e monte um roteiro dia a dia REAL (não genérico) para a viagem abaixo.
+    const prompt = `Você é especialista em roteiros de viagem. Monte um roteiro dia a dia REAL (não genérico) para a viagem abaixo, usando o que você sabe sobre o destino.
 
 Destino: ${destino}
 Duração: ${dias} dia${dias !== 1 ? "s" : ""}
@@ -168,13 +168,7 @@ Nível de orçamento do cliente: ${orcamento}
 ${perfil ? "Perfil / observações do cliente: " + perfil : ""}
 ${hospedagem ? "Hospedagem já reservada: " + hospedagem : ""}
 
-Antes de montar o roteiro, pesquise na web:
-- Os principais pontos turísticos do destino e onde ficam localizados
-- Restaurantes conceituados e bem avaliados, condizentes com o nível de orçamento e o perfil do cliente
-- Preços, horários de funcionamento e se é necessário comprar ingresso antecipado
-- Opções de transporte local (metrô, ônibus, táxi/app, a pé) entre os pontos do roteiro
-
-Depois de pesquisar, monte cada dia agrupando as atividades por PROXIMIDADE GEOGRÁFICA (evite roteiros que fazem o turista atravessar a cidade várias vezes no mesmo dia) e indique o melhor meio de transporte entre elas. Use nomes reais e específicos de lugares (não "um museu local" — o nome do museu de verdade). Se não tiver certeza sobre um preço ou horário atual, diga isso na sugestão em vez de inventar o valor.
+Monte cada dia agrupando as atividades por PROXIMIDADE GEOGRÁFICA (evite roteiros que fazem o turista atravessar a cidade várias vezes no mesmo dia) e indique o melhor meio de transporte local entre elas (metrô, ônibus, táxi/app, a pé). Use nomes reais e específicos de pontos turísticos e restaurantes do destino (não "um museu local" — o nome do museu de verdade), adequados ao nível de orçamento e ao perfil do cliente. Você não tem acesso à internet nesta tarefa: se não tiver certeza sobre um preço, horário de funcionamento ou se um lugar ainda está aberto, diga isso explicitamente na sugestão em vez de inventar — a agência confere os detalhes antes de repassar ao cliente.
 
 Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
 {
@@ -199,9 +193,8 @@ Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           model: getModel(),
-          max_tokens: 8192,
+          max_tokens: 4096,
           messages: [{ role: "user", content: prompt }],
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
         }),
       });
 
