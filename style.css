@@ -2810,3 +2810,104 @@ textarea.input {
   color: var(--text);
   line-height: 1.6;
 }
+
+/* ===== Empresas — portal corporativo ===== */
+.emp-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.emp-lista-empresas {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emp-empresa-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.emp-empresa-card:hover {
+  border-color: var(--gold);
+}
+
+.emp-empresa-card--ativa {
+  border-color: var(--navy);
+  box-shadow: var(--shadow);
+}
+
+.emp-empresa-nome {
+  font-weight: 600;
+  color: var(--navy);
+  font-size: 0.92rem;
+}
+
+.emp-empresa-cnpj {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.emp-detalhe {
+  flex: 1;
+  min-width: 0;
+}
+
+.emp-detalhe-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.emp-detalhe-nome {
+  font-family: var(--font-title);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.emp-detalhe-cnpj {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.emp-usuarios-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: 0.84rem;
+}
+
+.emp-usuarios-titulo {
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 6px;
+}
+
+.emp-usuario-item {
+  color: var(--text-muted);
+  padding: 3px 0;
+}
+
+.emp-senha-resultado {
+  background: #fdf9ef;
+  border: 1.5px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-size: 0.86rem;
+}
+
+.emp-senha-resultado strong {
+  color: var(--navy);
+}

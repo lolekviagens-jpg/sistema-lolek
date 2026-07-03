@@ -60,6 +60,10 @@
           <span class="nav__icon">💰</span>
           <span class="nav__label">Financeiro</span>
         </button>
+        <button class="nav__item" data-tab="empresas">
+          <span class="nav__icon">🏢</span>
+          <span class="nav__label">Empresas</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -822,6 +826,176 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL EMPRESAS (portal corporativo) ===== -->
+      <section class="panel" data-panel="empresas">
+
+        <!-- Tela de bloqueio -->
+        <div id="emp-lock" class="fin-lock">
+          <div class="fin-lock__box">
+            <div class="fin-lock__icon">🔒</div>
+            <div class="fin-lock__title">Área de empresas protegida</div>
+            <p class="fin-lock__hint">Digite a senha para continuar.</p>
+            <input type="password" id="emp-lock-senha" class="input" placeholder="Senha" autocomplete="off" />
+            <div class="fin-lock__error" id="emp-lock-erro" hidden></div>
+            <button type="button" class="btn btn--gold" id="emp-lock-btn" style="width:100%;justify-content:center">Entrar</button>
+          </div>
+        </div>
+
+        <!-- Conteúdo (visível após desbloqueio) -->
+        <div id="emp-conteudo" hidden>
+
+          <div class="toolbar">
+            <span class="toolbar__info" id="emp-updated"></span>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--ghost btn--icon" id="emp-lock-btn2" type="button" title="Bloquear">🔒</button>
+              <button class="btn btn--gold" id="emp-nova-empresa-btn" type="button">+ Nova empresa</button>
+            </div>
+          </div>
+
+          <div id="emp-status"></div>
+
+          <div class="emp-layout">
+            <div class="emp-lista-empresas" id="emp-lista-empresas"></div>
+            <div class="emp-detalhe" id="emp-detalhe">
+              <div class="empty-state empty-state--compact"><p>Selecione uma empresa à esquerda</p></div>
+            </div>
+          </div>
+
+        </div><!-- /emp-conteudo -->
+
+        <!-- Modal: nova empresa -->
+        <div class="modal" id="emp-modal-empresa" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:460px">
+            <div class="modal__header">
+              <span class="modal__title">Nova empresa</span>
+              <button class="modal__close" id="emp-modal-empresa-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Nome da empresa *</span>
+                  <input type="text" id="emp-f-nome" class="input" placeholder="Ex: Empresa X Ltda" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">CNPJ <span class="field__optional">(opcional)</span></span>
+                  <input type="text" id="emp-f-cnpj" class="input" placeholder="00.000.000/0000-00" />
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" id="emp-f-empresa-cancelar">Cancelar</button>
+              <button class="btn btn--gold" id="emp-f-empresa-salvar">Salvar</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: nova/editar emissão -->
+        <div class="modal" id="emp-modal-emissao" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:600px">
+            <div class="modal__header">
+              <span class="modal__title" id="emp-modal-emissao-titulo">Nova emissão</span>
+              <button class="modal__close" id="emp-modal-emissao-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field">
+                  <span class="field__label">Data emissão</span>
+                  <input type="text" id="emp-e-data_emissao" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Serviço *</span>
+                  <input type="text" id="emp-e-servico" class="input" placeholder="Ex: Passagem aérea" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Passageiro *</span>
+                  <input type="text" id="emp-e-passageiro" class="input" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data ida</span>
+                  <input type="text" id="emp-e-data_ida" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data volta</span>
+                  <input type="text" id="emp-e-data_volta" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Saída</span>
+                  <input type="text" id="emp-e-saida" class="input" placeholder="Ex: FOR" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Destino</span>
+                  <input type="text" id="emp-e-destino" class="input" placeholder="Ex: GRU" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Localizador</span>
+                  <input type="text" id="emp-e-localizador" class="input" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Valor total (R$) *</span>
+                  <input type="number" id="emp-e-valor" class="input" step="0.01" min="0" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Data para pagamento</span>
+                  <input type="text" id="emp-e-data_pagamento" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Status pagamento</span>
+                  <select id="emp-e-status_pagamento" class="input">
+                    <option value="aguardando">Aguardando</option>
+                    <option value="pago">Pago</option>
+                    <option value="atrasado">Atrasado</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span class="field__label">Nota fiscal</span>
+                  <select id="emp-e-nota_fiscal_status" class="input">
+                    <option value="nao_solicitada">Não solicitada</option>
+                    <option value="solicitada">Solicitada</option>
+                    <option value="emitida">Emitida</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost btn--danger" id="emp-e-excluir" hidden>Excluir</button>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="emp-e-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="emp-e-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: criar acesso da empresa -->
+        <div class="modal" id="emp-modal-usuario" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:460px">
+            <div class="modal__header">
+              <span class="modal__title">Criar acesso para a empresa</span>
+              <button class="modal__close" id="emp-modal-usuario-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">
+                Cria um login para essa empresa acessar o portal. A senha é gerada automaticamente — copie e envie pra empresa (por e-mail ou WhatsApp), ela só aparece uma vez aqui.
+              </p>
+              <label class="field field--full">
+                <span class="field__label">E-mail de acesso *</span>
+                <input type="email" id="emp-u-email" class="input" placeholder="contato@empresa.com" />
+              </label>
+              <div id="emp-u-resultado" hidden style="margin-top:16px"></div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" id="emp-u-cancelar">Cancelar</button>
+              <button class="btn btn--gold" id="emp-u-criar">Criar acesso</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
@@ -834,5 +1008,6 @@
   <script src="roteiro.js"></script>
   <script src="followup.js"></script>
   <script src="financeiro.js"></script>
+  <script src="empresas.js"></script>
 </body>
 </html>

@@ -16,6 +16,7 @@
     roteiro:     "Roteiro",
     followup:    "Follow-up",
     financeiro:  "Financeiro",
+    empresas:    "Empresas",
   };
 
   function activateTab(tab) {
