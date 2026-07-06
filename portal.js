@@ -40,6 +40,20 @@
     return { nao_solicitada: "Não solicitada", solicitada: "Solicitada", emitida: "Emitida" }[status] || "—";
   }
 
+  function servicoClasse(servico) {
+    const s = (servico || "").toLowerCase();
+    if (s.includes("passagem") || s.includes("aére") || s.includes("aere") || s.includes("voo")) return "servico-passagem";
+    if (s.includes("hospedagem") || s.includes("hotel"))  return "servico-hospedagem";
+    if (s.includes("mala"))     return "servico-mala";
+    if (s.includes("assento")) return "servico-assento";
+    if (s.includes("seguro"))  return "servico-seguro";
+    return "servico-outro";
+  }
+
+  function servicoBadgeHtml(servico) {
+    return `<span class="badge badge--${servicoClasse(servico)}">${escHtml(servico)}</span>`;
+  }
+
   // ===== Login =====
   function mostrarErroLogin(msg) {
     const el = gel("portal-login-erro");
@@ -154,7 +168,7 @@
       return `
         <tr>
           <td>${fData(e.data_emissao)}</td>
-          <td class="table__client">${escHtml(e.servico)}</td>
+          <td>${servicoBadgeHtml(e.servico)}</td>
           <td>${escHtml(e.passageiro)}</td>
           <td class="table__muted">${trecho}</td>
           <td style="font-weight:600">${fBRL(e.valor)}</td>

@@ -22,6 +22,24 @@
     return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  function fData(iso) {
+    return iso ? new Date(iso + "T12:00:00").toLocaleDateString("pt-BR") : "—";
+  }
+
+  function servicoClasse(servico) {
+    const s = (servico || "").toLowerCase();
+    if (s.includes("passagem") || s.includes("aére") || s.includes("aere") || s.includes("voo")) return "servico-passagem";
+    if (s.includes("hospedagem") || s.includes("hotel"))  return "servico-hospedagem";
+    if (s.includes("mala"))     return "servico-mala";
+    if (s.includes("assento")) return "servico-assento";
+    if (s.includes("seguro"))  return "servico-seguro";
+    return "servico-outro";
+  }
+
+  function servicoBadgeHtml(servico) {
+    return `<span class="badge badge--${servicoClasse(servico)}">${escHtml(servico)}</span>`;
+  }
+
   // ===== Chamada à function administrativa =====
   async function chamar(action, data) {
     const resp = await fetch("/.netlify/functions/empresas-admin", {
@@ -238,12 +256,12 @@
       const trecho = (e.saida || e.destino) ? `${escHtml(e.saida || "—")} → ${escHtml(e.destino || "—")}` : "—";
       return `
         <tr data-id="${escHtml(e.id)}">
-          <td>${e.data_emissao ? new Date(e.data_emissao).toLocaleDateString("pt-BR") : "—"}</td>
-          <td class="table__client">${escHtml(e.servico)}</td>
+          <td>${fData(e.data_emissao)}</td>
+          <td>${servicoBadgeHtml(e.servico)}</td>
           <td>${escHtml(e.passageiro)}</td>
           <td class="table__muted">${trecho}</td>
           <td style="font-weight:600">${fBRL(e.valor)}</td>
-          <td>${e.data_pagamento ? new Date(e.data_pagamento).toLocaleDateString("pt-BR") : "—"}</td>
+          <td>${fData(e.data_pagamento)}</td>
           <td><span class="badge badge--${statusBadgeClass(e.status_pagamento)}">${statusLabel(e.status_pagamento)}</span></td>
           <td class="table__muted">${notaFiscalLabel(e.nota_fiscal_status)}</td>
           <td class="table__actions-col">

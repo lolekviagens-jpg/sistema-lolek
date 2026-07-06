@@ -474,6 +474,37 @@ textarea.input {
   color: #1f8a4c;
 }
 
+/* Badges de tipo de serviço (emissões do portal corporativo) */
+.badge--servico-passagem {
+  background: #eef0fc;
+  color: #4338ca;
+}
+
+.badge--servico-hospedagem {
+  background: #fdeef5;
+  color: #b0397e;
+}
+
+.badge--servico-mala {
+  background: #e6f7f6;
+  color: #0f766e;
+}
+
+.badge--servico-assento {
+  background: #f4eefd;
+  color: #7c3aed;
+}
+
+.badge--servico-seguro {
+  background: #eaf6fb;
+  color: #0e7ba6;
+}
+
+.badge--servico-outro {
+  background: #f1f2f4;
+  color: #5b6472;
+}
+
 /* ===== Estado vazio ===== */
 .empty-state {
   display: flex;
