@@ -4,12 +4,14 @@
 
   const SHEET_ID  = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
   const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
-  const CONFIRM_KEY = "lolek_checkins_confirm";
+  const CHECKINS_FN = "/.netlify/functions/checkins";
+  const CONFIRMS_POLL_MS = 20000; // reconsulta as confirmações de outros computadores periodicamente
 
   const COL = { situacao: 1, nome: 4, dataIda: 5, dataVolta: 6, saida: 7, destino: 8, companhia: 9, localizador: 11 };
 
   // ===== Estado =====
   let lastPassengers = [];
+  let confirms = {}; // chave -> ISO timestamp (compartilhado via Supabase, não mais localStorage)
   let calYear, calMonth;
   let selectedDate = null; // null = visão geral (hoje+amanhã); "YYYY-MM-DD" = dia específico
 
@@ -81,11 +83,19 @@
     return rows;
   }
 
-  // ===== Confirmações (localStorage) =====
-  function loadConfirms() {
-    try { return JSON.parse(localStorage.getItem(CONFIRM_KEY) || "{}"); } catch { return {}; }
+  // ===== Confirmações (Supabase, via Netlify Function — compartilhado entre computadores) =====
+  async function fetchConfirms() {
+    try {
+      const resp = await fetch(CHECKINS_FN);
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const rows = await resp.json();
+      const map = {};
+      for (const r of rows) map[r.chave] = r.confirmado_em;
+      confirms = map;
+    } catch (e) {
+      console.error("Falha ao carregar confirmações de check-in:", e);
+    }
   }
-  function saveConfirms(map) { localStorage.setItem(CONFIRM_KEY, JSON.stringify(map)); }
 
   // Chave inclui nome do passageiro para evitar conflito em famílias com mesmo localizador
   function confirmKey(p, leg, legDate) {
@@ -94,10 +104,27 @@
     return `${loc}||${nome}||${leg}||${legDate}`;
   }
 
-  function setConfirmed(key, value) {
-    const map = loadConfirms();
-    if (value) map[key] = new Date().toISOString(); else delete map[key];
-    saveConfirms(map);
+  async function setConfirmed(key, value) {
+    // Otimista: atualiza a tela na hora, sincroniza com o servidor em seguida
+    const anterior = confirms[key];
+    if (value) confirms[key] = new Date().toISOString(); else delete confirms[key];
+    renderSections();
+    renderCalendar();
+
+    try {
+      const resp = await fetch(CHECKINS_FN, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: value ? "confirmar" : "desfazer", chave: key }),
+      });
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+    } catch (e) {
+      console.error("Falha ao salvar check-in:", e);
+      if (anterior) confirms[key] = anterior; else delete confirms[key];
+      renderSections();
+      renderCalendar();
+      alert("Não foi possível salvar o check-in. Verifique sua conexão e tente novamente.");
+    }
   }
 
   function formatTime(iso) {
@@ -234,7 +261,6 @@
     wrap.className = "ci-section" + (secondary ? " ci-section--secondary" : "");
 
     const sorted = items.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-    const confirms = loadConfirms();
 
     // Conta confirmados
     const total       = sorted.length;
@@ -311,8 +337,6 @@
         <button class="ci-undo" type="button">desfazer</button>`;
       cell.querySelector(".ci-undo").addEventListener("click", () => {
         setConfirmed(key, false);
-        renderSections();
-        renderCalendar();
       });
     } else {
       const btn = document.createElement("button");
@@ -321,8 +345,6 @@
       btn.textContent = actionLabel;
       btn.addEventListener("click", () => {
         setConfirmed(key, true);
-        renderSections();
-        renderCalendar();
       });
       cell.appendChild(btn);
     }
@@ -347,7 +369,10 @@
     refreshBtn.disabled = true;
     showStatus(`<div class="notice">Carregando planilha…</div>`);
     try {
-      const resp = await fetch(SHEET_URL + "&t=" + Date.now());
+      const [resp] = await Promise.all([
+        fetch(SHEET_URL + "&t=" + Date.now()),
+        fetchConfirms(),
+      ]);
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const text = await resp.text();
       lastPassengers = rowsToPassengers(parseCsv(text));
@@ -361,6 +386,14 @@
     } finally {
       refreshBtn.disabled = false;
     }
+  }
+
+  // Reconsulta só as confirmações (sem recarregar a planilha inteira), para refletir
+  // check-ins feitos em outros computadores sem precisar clicar em "Atualizar".
+  async function pollConfirms() {
+    await fetchConfirms();
+    renderSections();
+    renderCalendar();
   }
 
   // ===== Eventos =====
@@ -387,4 +420,5 @@
   calMonth   = now.getMonth();
   renderCalendar(); // renderiza calendário vazio enquanto carrega
   fetchSheet();
+  setInterval(pollConfirms, CONFIRMS_POLL_MS);
 })();
