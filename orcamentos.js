@@ -81,7 +81,8 @@
 
   // ===== Estado =====
   let destinos = [], destCounter = 0;
-  const fotoStore = {};
+  const fotoStore = {};       // fotos que aparecem para o cliente (preview/PDF)
+  const fotoStorePrint = {};  // print de reserva usado só para a IA extrair dados (hospedagem)
 
   // ===== Elementos =====
   const formWrap     = document.getElementById("orc-form-wrap");
@@ -218,6 +219,7 @@
     const pid = tipo + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
     dest.produtos.push({ pid, tipo });
     fotoStore[pid] = [];
+    fotoStorePrint[pid] = [];
     renderDestinos();
   }
 
@@ -226,6 +228,7 @@
     if (!dest) return;
     dest.produtos = dest.produtos.filter((p) => p.pid !== pid);
     delete fotoStore[pid];
+    delete fotoStorePrint[pid];
     renderDestinos();
   }
 
@@ -252,6 +255,7 @@
       const prodHtml = dest.produtos.map((p) => {
         const cfg = PROD_CFG[p.tipo];
         const isPassagem = p.tipo === "passagem";
+        const isHospedagem = p.tipo === "hospedagem";
 
         const fieldsHtml = cfg.fields.map((f) => {
           if (f.type === "divider") {
@@ -274,7 +278,17 @@
         const zoneClass = isPassagem ? "orc-foto-zone orc-print-zone" : "orc-foto-zone";
         const zoneHint  = isPassagem
           ? "📋 Cole aqui o print do bilhete (Ctrl+V) para extrair dados automaticamente"
-          : "📷 Cole (Ctrl+V), arraste ou clique para adicionar fotos";
+          : isHospedagem
+            ? "📷 Cole, arraste ou clique para adicionar fotos do hotel (aparecem no orçamento para o cliente)"
+            : "📷 Cole (Ctrl+V), arraste ou clique para adicionar fotos";
+
+        // Hospedagem tem uma zona extra, só para o print da reserva (nome/preço do
+        // hotel) — a IA lê daqui, e essas imagens não aparecem no orçamento do cliente.
+        const printZoneId  = "fotozone-print-" + p.pid;
+        const printZoneHtml = isHospedagem ? `
+              <div class="orc-foto-zone orc-print-zone" id="${printZoneId}" tabindex="0">
+                <span class="orc-foto-hint">📋 Cole aqui o print da reserva do hotel (Ctrl+V) para extrair dados automaticamente</span>
+              </div>` : "";
 
         return `
           <div class="orc-produto-item" id="pi-${p.pid}">
@@ -287,6 +301,7 @@
               <div class="form__grid orc-produto-fields">
                 ${fieldsHtml}
               </div>
+              ${printZoneHtml}
               <div class="${zoneClass}" id="${zoneId}" tabindex="0">
                 <span class="orc-foto-hint">${zoneHint}</span>
               </div>
@@ -349,6 +364,11 @@
         setupFotoZone(p.pid, zoneId, p.tipo, dest.id);
         renderFotos(p.pid, zoneId, p.tipo, dest.id);
         if (p.tipo === "passagem") bindMilhasCalc(dest.id, p.pid);
+        if (p.tipo === "hospedagem") {
+          const printZoneId = "fotozone-print-" + p.pid;
+          setupFotoZonePrintHotel(p.pid, printZoneId, dest.id);
+          renderFotosPrintHotel(p.pid, printZoneId, dest.id);
+        }
       });
 
       calcNoites(dest.id);
@@ -372,6 +392,60 @@
   function fecharConfigIA() {
     const modal = document.getElementById("orc-ia-modal");
     if (modal) modal.hidden = true;
+  }
+
+  // Preenche um card de passagem com os dados extraídos pela IA. forcarVolta:
+  // true = grava a data em "Data de volta", false = em "Data de ida", null = decide
+  // pela posição do card entre as passagens do destino (0=ida, 1=volta, ...).
+  function preencherCardPassagem(destId, cardPid, ex, forcarVolta) {
+    const prefix = `${destId}-${cardPid}-`;
+    const fill = (field, val) => {
+      if (val == null || val === "") return;
+      const el = document.getElementById(prefix + field);
+      if (el) el.value = val;
+    };
+
+    fill("trecho",          ex.trecho);
+    fill("cidade_orig",     ex.cidade_orig);
+    fill("cidade_dest",     ex.cidade_dest);
+    fill("companhia",       ex.companhia);
+    fill("voo",             ex.voo);
+    fill("horario_partida", ex.horario_partida);
+    fill("horario_chegada", ex.horario_chegada);
+    fill("conexoes",        ex.conexoes);
+    fill("duracao",         ex.duracao);
+    fill("milhas",          ex.milhas);
+
+    // Data do voo não tem campo próprio no card — vai para "Data de ida/volta" do
+    // destino (só se ainda estiver vazio, pra não sobrescrever o que já foi digitado).
+    const dataIso = paraDataISO(ex.data);
+    if (dataIso) {
+      const isVolta = forcarVolta === null ? passagemIndex(destId, cardPid) % 2 === 1 : forcarVolta;
+      const fieldId = isVolta ? "o-co-" + destId : "o-ci-" + destId;
+      const dataEl  = document.getElementById(fieldId);
+      if (dataEl && !dataEl.value) {
+        dataEl.value = dataIso;
+        dataEl.dispatchEvent(new Event("change"));
+      }
+    }
+    fill("taxa_embarque", ex.taxa_embarque);
+
+    document.getElementById(prefix + "milhas")?.dispatchEvent(new Event("input"));
+  }
+
+  // Garante um segundo card de passagem no destino, para preencher a volta extraída
+  // do mesmo print da ida — reaproveita um card já existente ou cria um novo.
+  function garantirSegundaPassagem(destId, pid) {
+    const dest = destinos.find((d) => d.id === destId);
+    if (!dest) return null;
+    const passagens = dest.produtos.filter((p) => p.tipo === "passagem");
+    const idx = passagens.findIndex((p) => p.pid === pid);
+    if (idx === -1) return null;
+    if (passagens[idx + 1]) return passagens[idx + 1].pid;
+
+    addProduto(destId, "passagem");
+    const novasPassagens = dest.produtos.filter((p) => p.tipo === "passagem");
+    return novasPassagens[novasPassagens.length - 1].pid;
   }
 
   // ===== Análise com IA (somente passagem) =====
@@ -407,7 +481,80 @@
   "conexoes": "Voo direto OU ex: 1 escala em GRU",
   "duracao": "Xh Ymin",
   "milhas": número_inteiro_ou_null,
-  "taxa_embarque": valor_numerico_em_reais_ou_null
+  "taxa_embarque": valor_numerico_em_reais_ou_null,
+  "volta": {
+    "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO (invertido em relação à ida)",
+    "cidade_orig": "...", "cidade_dest": "...",
+    "companhia": "...", "voo": "...",
+    "data": "DD/MM/AAAA ou null",
+    "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)",
+    "conexoes": "...", "duracao": "...",
+    "milhas": número_inteiro_ou_null,
+    "taxa_embarque": valor_numerico_em_reais_ou_null
+  } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho, "volta" deve ser null.
+}` },
+            ],
+          }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Erro HTTP " + resp.status);
+      }
+
+      const data = await resp.json();
+      const text = data.content?.[0]?.text || "";
+      const jsonStr = extractJson(text);
+      if (!jsonStr) throw new Error("Resposta inesperada da IA");
+
+      const ex = JSON.parse(jsonStr);
+      preencherCardPassagem(destId, pid, ex, /* forcarVolta */ null);
+
+      // Print único mostrando ida e volta juntas (reserva round-trip): garante um
+      // segundo card de passagem para a volta e preenche com os dados extraídos.
+      if (ex.volta && typeof ex.volta === "object") {
+        const voltaPid = garantirSegundaPassagem(destId, pid);
+        if (voltaPid) preencherCardPassagem(destId, voltaPid, ex.volta, true);
+      }
+
+      if (btn) { btn.disabled = false; btn.textContent = "✓ Dados extraídos!"; }
+      setTimeout(() => { if (btn) { btn.textContent = "🤖 Analisar novamente"; } }, 3000);
+    } catch (err) {
+      if (btn) { btn.disabled = false; btn.textContent = "🤖 Analisar novamente"; }
+      alert("Erro ao analisar: " + err.message);
+    }
+  }
+
+  // ===== Análise com IA (hospedagem) =====
+  const REGIMES_HOSPEDAGEM = PROD_CFG.hospedagem.fields.find((f) => f.id === "regime").options;
+
+  async function analisarHospedagem(pid, destId, imageSrc) {
+    const btn = document.querySelector(`[data-ai-hotel-pid="${pid}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Analisando..."; }
+
+    try {
+      const match = imageSrc.match(/^data:([^;]+);base64,(.+)$/);
+      if (!match) throw new Error("Imagem inválida");
+      const [, mime, b64] = match;
+
+      const resp = await fetch("/.netlify/functions/anthropic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: getModel(),
+          max_tokens: 1024,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
+              { type: "text", text: `Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
+{
+  "hotel": "nome do hotel/pousada",
+  "regime": "uma destas opções, exatamente como escrito: ${REGIMES_HOSPEDAGEM.map((r) => `\"${r}\"`).join(", ")} — ou null se não estiver claro",
+  "checkin": "DD/MM/AAAA da data de check-in, ou null",
+  "checkout": "DD/MM/AAAA da data de check-out, ou null",
+  "custo": valor_numerico_total_em_reais_ou_null
 }` },
             ],
           }],
@@ -432,32 +579,17 @@
         if (el) el.value = val;
       };
 
-      fill("trecho",          ex.trecho);
-      fill("cidade_orig",     ex.cidade_orig);
-      fill("cidade_dest",     ex.cidade_dest);
-      fill("companhia",       ex.companhia);
-      fill("voo",             ex.voo);
-      fill("horario_partida", ex.horario_partida);
-      fill("horario_chegada", ex.horario_chegada);
-      fill("conexoes",        ex.conexoes);
-      fill("duracao",         ex.duracao);
-      fill("milhas",          ex.milhas);
+      fill("hotel", ex.hotel);
+      if (ex.regime && REGIMES_HOSPEDAGEM.includes(ex.regime)) fill("regime", ex.regime);
+      fill("custo", ex.custo);
 
-      // Data do voo não tem campo próprio no card — vai para "Data de ida/volta" do
-      // destino (só se ainda estiver vazio, pra não sobrescrever o que já foi digitado).
-      const dataIso = paraDataISO(ex.data);
-      if (dataIso) {
-        const isVolta  = passagemIndex(destId, pid) % 2 === 1;
-        const fieldId  = isVolta ? "o-co-" + destId : "o-ci-" + destId;
-        const dataEl   = document.getElementById(fieldId);
-        if (dataEl && !dataEl.value) {
-          dataEl.value = dataIso;
-          dataEl.dispatchEvent(new Event("change"));
-        }
-      }
-      fill("taxa_embarque",   ex.taxa_embarque);
+      const ciIso = paraDataISO(ex.checkin);
+      const ciEl  = document.getElementById("o-ci-" + destId);
+      if (ciIso && ciEl && !ciEl.value) { ciEl.value = ciIso; ciEl.dispatchEvent(new Event("change")); }
 
-      document.getElementById(prefix + "milhas")?.dispatchEvent(new Event("input"));
+      const coIso = paraDataISO(ex.checkout);
+      const coEl  = document.getElementById("o-co-" + destId);
+      if (coIso && coEl && !coEl.value) { coEl.value = coIso; coEl.dispatchEvent(new Event("change")); }
 
       if (btn) { btn.disabled = false; btn.textContent = "✓ Dados extraídos!"; }
       setTimeout(() => { if (btn) { btn.textContent = "🤖 Analisar novamente"; } }, 3000);
@@ -541,6 +673,61 @@
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         removeFoto(b.dataset.pid, b.dataset.fid, b.dataset.zone, b.dataset.tipo, b.dataset.dest);
+      })
+    );
+  }
+
+  // Zona de print da reserva de hotel (só para IA — imagens aqui não vão pro cliente)
+  function setupFotoZonePrintHotel(pid, zoneId, destId) {
+    const zone = document.getElementById(zoneId);
+    if (!zone) return;
+    zone.addEventListener("paste", (e) => {
+      for (const item of (e.clipboardData?.items || []))
+        if (item.type.startsWith("image/")) readFotoPrintHotel(pid, item.getAsFile(), zoneId, destId);
+    });
+  }
+
+  function readFotoPrintHotel(pid, file, zoneId, destId) {
+    const r = new FileReader();
+    r.onload = (e) => {
+      if (!fotoStorePrint[pid]) fotoStorePrint[pid] = [];
+      fotoStorePrint[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
+      renderFotosPrintHotel(pid, zoneId, destId);
+      analisarHospedagem(pid, destId, e.target.result);
+    };
+    r.readAsDataURL(file);
+  }
+
+  function removeFotoPrintHotel(pid, fid, zoneId, destId) {
+    fotoStorePrint[pid] = (fotoStorePrint[pid] || []).filter((f) => f.fid !== fid);
+    renderFotosPrintHotel(pid, zoneId, destId);
+  }
+
+  function renderFotosPrintHotel(pid, zoneId, destId) {
+    const zone = document.getElementById(zoneId);
+    if (!zone) return;
+    let prev = zone.querySelector(".orc-fotos-preview");
+    if (!prev) { prev = document.createElement("div"); prev.className = "orc-fotos-preview"; zone.appendChild(prev); }
+
+    const fotos = fotoStorePrint[pid] || [];
+    prev.innerHTML = fotos.map((f) =>
+      `<div class="orc-foto-thumb"><img src="${f.src}"><button class="orc-foto-rm" data-pid="${pid}" data-fid="${f.fid}" data-zone="${zoneId}" data-dest="${destId||""}">✕</button></div>`
+    ).join("");
+
+    if (fotos.length > 0) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn--gold orc-ia-btn";
+      btn.dataset.aiHotelPid = pid;
+      btn.textContent = "🤖 Analisar novamente";
+      btn.addEventListener("click", () => analisarHospedagem(pid, destId, fotos[fotos.length - 1].src));
+      prev.appendChild(btn);
+    }
+
+    prev.querySelectorAll(".orc-foto-rm").forEach((b) =>
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeFotoPrintHotel(b.dataset.pid, b.dataset.fid, b.dataset.zone, b.dataset.dest);
       })
     );
   }
