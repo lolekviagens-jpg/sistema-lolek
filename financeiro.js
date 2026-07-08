@@ -161,9 +161,10 @@
 
     if (!valorTotal) return null;
 
-    const dedupeKey = reserva
-      ? normalizarTexto(reserva) + "|" + normalizarTexto(dataEmissao)
-      : normalizarTexto(dataEmissao) + "|" + normalizarTexto(cliente) + "|" + normalizarTexto(destino) + "|" + valorTotal;
+    // Inclui situação/cliente/valor além da reserva: uma mesma reserva costuma ter várias linhas
+    // (passagem, hospedagem, seguro...) ou vários passageiros no mesmo dia, e só reserva+data colidiria.
+    const dedupeKey = normalizarTexto(dataEmissao) + "|" + normalizarTexto(cliente) + "|" + normalizarTexto(situacao) + "|" +
+      (reserva ? normalizarTexto(reserva) : normalizarTexto(destino)) + "|" + valorTotal;
 
     // Origem da taxa de embarque: cartão da agência (guarda o nome) ou "milheiro" quando não foi no cartão.
     // "MÊS ATUAL"/"ANUAL" são resumo de fechamento de mês — nunca deveriam vir com situação preenchida,
@@ -210,10 +211,13 @@
       const text = await resp.text();
       const rows = parseCsvPlanilha(text);
 
+      // Uma linha por dedupe_key: o upsert não aceita duas linhas com a mesma chave no mesmo lote
+      // (raríssimo, mas acontece quando duas cobranças ficam idênticas — mesmo dia/cliente/valor/serviço).
+      const vistos = new Set();
       const novos = [];
       rows.forEach((cols) => {
         const l = montarLancamentoDaLinha(cols);
-        if (l) novos.push(l);
+        if (l && !vistos.has(l.dedupe_key)) { vistos.add(l.dedupe_key); novos.push(l); }
       });
       if (novos.length === 0) return;
 
