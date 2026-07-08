@@ -2,13 +2,15 @@
 (function () {
   "use strict";
 
-  const LS_KEY      = "lolek_financeiro";
-  const LS_AI_MODEL = "lolek_anthropic_model";
+  const LS_KEY_ANTIGO   = "lolek_financeiro";           // localStorage antigo, só lido uma vez pra migrar
+  const LS_KEY_MIGRADO  = "lolek_financeiro_migrado";
+  const LS_AI_MODEL     = "lolek_anthropic_model";
 
   let lancamentos   = [];
   let filtroAtual   = "todos";
   let editando      = null;
   let desbloqueado  = false; // só em memória: recarregar a página (F5) sempre pede a senha de novo
+  let senhaAtual    = "";    // guardada em memória pra autenticar cada chamada à function
   let importados    = [];    // linhas extraídas do extrato, aguardando revisão
 
   function gel(id) { return document.getElementById(id); }
@@ -23,9 +25,31 @@
     return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function gerarId() { return "l" + Date.now() + "-" + Math.random().toString(36).slice(2, 8); }
-
   function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+
+  // ===== Chamada à function do Financeiro (Supabase) =====
+  async function chamar(action, data) {
+    const resp = await fetch("/.netlify/functions/financeiro-data", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ senha: senhaAtual, action, data: data || {} }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.error || "Erro HTTP " + resp.status);
+    return json;
+  }
+
+  // ===== Datas: input continua DD/MM/AAAA, banco guarda ISO (date) =====
+  function paraISO(strBR) {
+    const d = parseData(strBR);
+    if (!d) return null;
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function paraBR(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return d && m && y ? `${d}/${m}/${y}` : iso;
+  }
 
   // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
   // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
@@ -54,11 +78,25 @@
     return new Date(+m[3], +m[2] - 1, +m[1]);
   }
 
-  function carregar() {
-    try { lancamentos = JSON.parse(localStorage.getItem(LS_KEY) || "[]"); }
-    catch { lancamentos = []; }
+  async function carregarLancamentos() {
+    lancamentos = await chamar("listar_lancamentos");
   }
-  function salvar() { localStorage.setItem(LS_KEY, JSON.stringify(lancamentos)); }
+
+  // Migra o localStorage antigo (usado antes do Financeiro virar Supabase) uma única vez.
+  async function migrarLocalStorageAntigo() {
+    if (localStorage.getItem(LS_KEY_MIGRADO)) return;
+    let antigos = [];
+    try { antigos = JSON.parse(localStorage.getItem(LS_KEY_ANTIGO) || "[]"); } catch { antigos = []; }
+    if (antigos.length > 0) {
+      const convertidos = antigos.map(l => ({
+        tipo: l.tipo, status: l.status, descricao: l.descricao, categoria: l.categoria || null,
+        origem: l.origem || null, valor: parseFloat(l.valor) || 0,
+        vencimento: paraISO(l.vencimento), fonte: "manual",
+      }));
+      await chamar("importar_lancamentos", { lancamentos: convertidos });
+    }
+    localStorage.setItem(LS_KEY_MIGRADO, "1");
+  }
 
   // ===== Senha (verificada no servidor — FINANCEIRO_SENHA no Netlify, nunca no navegador) =====
   function estaDesbloqueado() { return desbloqueado; }
@@ -77,9 +115,15 @@
     gel("fin-lock-senha").focus();
   }
 
-  function mostrarConteudo() {
+  async function mostrarConteudo() {
     gel("fin-lock").hidden = true;
     gel("fin-conteudo").hidden = false;
+    try {
+      await migrarLocalStorageAntigo();
+      await carregarLancamentos();
+    } catch (err) {
+      alert("Erro ao carregar lançamentos: " + err.message);
+    }
     render();
   }
 
@@ -101,6 +145,7 @@
 
       if (data.ok) {
         desbloqueado = true;
+        senhaAtual = senha;
         mostrarConteudo();
       } else if (resp.status === 500) {
         mostrarErroLock("Senha ainda não configurada no Netlify (variável FINANCEIRO_SENHA).");
@@ -116,6 +161,7 @@
 
   function bloquear() {
     desbloqueado = false;
+    senhaAtual = "";
     mostrarLock();
   }
 
@@ -126,10 +172,9 @@
     if (filtroAtual === "saida")    lista = lista.filter(l => l.tipo === "saida");
     if (filtroAtual === "pendente") lista = lista.filter(l => l.status === "pendente");
     lista.sort((a, b) => {
-      const da = parseData(a.vencimento), db = parseData(b.vencimento);
-      if (da && db) return da - db;
-      if (da) return -1;
-      if (db) return 1;
+      if (a.vencimento && b.vencimento) return a.vencimento < b.vencimento ? -1 : a.vencimento > b.vencimento ? 1 : 0;
+      if (a.vencimento) return -1;
+      if (b.vencimento) return 1;
       return 0;
     });
     return lista;
@@ -175,7 +220,7 @@
       const corValor = l.tipo === "entrada" ? "#1f8a4c" : "#c0392b";
       return `
         <tr data-id="${escHtml(l.id)}">
-          <td>${escHtml(l.vencimento || "—")}</td>
+          <td>${escHtml(paraBR(l.vencimento) || "—")}</td>
           <td class="table__client">${escHtml(l.descricao)}</td>
           <td class="table__muted">${escHtml(l.categoria || "—")}</td>
           <td class="table__muted">${escHtml(l.origem || "—")}</td>
@@ -191,12 +236,17 @@
     }).join("");
 
     body.querySelectorAll(".fin-status-toggle").forEach(el => {
-      el.addEventListener("click", () => {
+      el.addEventListener("click", async () => {
         const l = lancamentos.find(x => x.id === el.closest("tr").dataset.id);
         if (!l) return;
-        l.status = l.status === "pago" ? "pendente" : "pago";
-        salvar();
-        render();
+        const statusNovo = l.status === "pago" ? "pendente" : "pago";
+        try {
+          await chamar("atualizar_lancamento", { id: l.id, status: statusNovo });
+          l.status = statusNovo;
+          render();
+        } catch (err) {
+          alert("Erro ao atualizar status: " + err.message);
+        }
       });
     });
 
@@ -217,7 +267,7 @@
     gel("fin-f-categoria").value  = l ? l.categoria  : "";
     gel("fin-f-origem").value     = l ? (l.origem || "") : "";
     gel("fin-f-valor").value      = l ? l.valor      : "";
-    gel("fin-f-vencimento").value = l ? l.vencimento : "";
+    gel("fin-f-vencimento").value = l ? paraBR(l.vencimento) : "";
     gel("fin-f-excluir").hidden   = !l;
     gel("fin-modal-lanc").hidden  = false;
     gel("fin-f-descricao").focus();
@@ -225,36 +275,50 @@
 
   function fecharForm() { gel("fin-modal-lanc").hidden = true; editando = null; }
 
-  function salvarForm() {
+  async function salvarForm() {
     const dados = {
       tipo:       gel("fin-f-tipo").value,
       status:     gel("fin-f-status").value,
       descricao:  gel("fin-f-descricao").value.trim(),
-      categoria:  gel("fin-f-categoria").value.trim(),
-      origem:     gel("fin-f-origem").value.trim(),
+      categoria:  gel("fin-f-categoria").value.trim() || null,
+      origem:     gel("fin-f-origem").value.trim() || null,
       valor:      parseFloat(gel("fin-f-valor").value) || 0,
-      vencimento: gel("fin-f-vencimento").value.trim(),
+      vencimento: paraISO(gel("fin-f-vencimento").value.trim()),
     };
     if (!dados.descricao) { alert("Descrição obrigatória."); return; }
     if (!dados.valor)     { alert("Informe um valor."); return; }
 
-    if (editando) {
-      Object.assign(editando, dados);
-    } else {
-      lancamentos.push({ ...dados, id: gerarId(), criadoEm: new Date().toISOString() });
+    const btn = gel("fin-f-salvar");
+    btn.disabled = true;
+    try {
+      if (editando) {
+        await chamar("atualizar_lancamento", { id: editando.id, ...dados });
+        Object.assign(editando, dados);
+      } else {
+        dados.fonte = "manual";
+        const [criado] = await chamar("criar_lancamento", dados);
+        lancamentos.push(criado);
+      }
+      fecharForm();
+      render();
+    } catch (err) {
+      alert("Erro ao salvar lançamento: " + err.message);
+    } finally {
+      btn.disabled = false;
     }
-    salvar();
-    fecharForm();
-    render();
   }
 
-  function excluirLancamento() {
+  async function excluirLancamento() {
     if (!editando) return;
     if (!confirm('Excluir "' + editando.descricao + '"?')) return;
-    lancamentos = lancamentos.filter(l => l.id !== editando.id);
-    salvar();
-    fecharForm();
-    render();
+    try {
+      await chamar("excluir_lancamento", { id: editando.id });
+      lancamentos = lancamentos.filter(l => l.id !== editando.id);
+      fecharForm();
+      render();
+    } catch (err) {
+      alert("Erro ao excluir lançamento: " + err.message);
+    }
   }
 
   // ===== Importar extrato (IA) =====
@@ -359,10 +423,10 @@ ${texto}`,
       </tr>`).join("");
   }
 
-  function confirmarImportacao() {
-    const origem = gel("fin-imp-origem").value.trim();
+  async function confirmarImportacao() {
+    const origem = gel("fin-imp-origem").value.trim() || null;
     const linhas = gel("fin-imp-tbody").querySelectorAll("tr");
-    let count = 0;
+    const novos = [];
 
     linhas.forEach(tr => {
       if (!tr.querySelector(".fin-imp-check").checked) return;
@@ -371,27 +435,35 @@ ${texto}`,
         tipo:       tr.querySelector(".fin-imp-tipo").value,
         status:     "pendente",
         descricao:  tr.querySelector(".fin-imp-desc").value.trim(),
-        categoria:  tr.querySelector(".fin-imp-categoria").value.trim(),
+        categoria:  tr.querySelector(".fin-imp-categoria").value.trim() || null,
         origem,
         valor:      parseFloat(tr.querySelector(".fin-imp-valor").value) || 0,
-        vencimento: tr.querySelector(".fin-imp-data").value.trim(),
+        vencimento: paraISO(tr.querySelector(".fin-imp-data").value.trim()),
+        fonte:      "extrato_texto",
       };
       if (!dados.descricao || !dados.valor) return;
-
-      lancamentos.push({ ...dados, id: gerarId(), criadoEm: new Date().toISOString() });
-      count++;
+      novos.push(dados);
     });
 
-    salvar();
-    fecharImportar();
-    render();
-    alert(count + " lançamento" + (count !== 1 ? "s importados" : " importado") + " com sucesso.");
+    if (novos.length === 0) { fecharImportar(); return; }
+
+    const btn = gel("fin-imp-confirmar-btn");
+    btn.disabled = true;
+    try {
+      const criados = await chamar("importar_lancamentos", { lancamentos: novos });
+      lancamentos.push(...criados);
+      fecharImportar();
+      render();
+      alert(criados.length + " lançamento" + (criados.length !== 1 ? "s importados" : " importado") + " com sucesso.");
+    } catch (err) {
+      alert("Erro ao importar lançamentos: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ===== Init =====
   function init() {
-    carregar();
-
     gel("fin-lock-btn").addEventListener("click", tentarEntrar);
     gel("fin-lock-senha").addEventListener("keydown", e => { if (e.key === "Enter") tentarEntrar(); });
     gel("fin-lock-btn2").addEventListener("click", bloquear);
