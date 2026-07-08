@@ -158,16 +158,6 @@
     return "Incluso na passagem de " + outroTrecho;
   }
 
-  // A fonte padrão (helvetica) do jsPDF não tem os glyphs de seta/emoji — sai como
-  // caractere corrompido no PDF. Troca por equivalentes em ASCII antes de desenhar.
-  function pdfSafe(s) {
-    return String(s || "")
-      .replace(/[→➜⇒]/g, "-")
-      .replace(/✈️|✈/g, "")
-      .replace(/[◆▬]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
   function diffD(a, b) {
     if (!a || !b) return 0;
     return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000);
@@ -734,7 +724,7 @@
 
   // ===== Coleta de dados =====
   function coletarDados() {
-    const adultos  = parseInt(gV("o-adultos")) || 2;
+    const adultos  = parseInt(gV("o-adultos")) || 1;
     const criancas = parseInt(gV("o-criancas")) || 0;
     const bebes    = parseInt(gV("o-bebes"))    || 0;
     const nome     = gV("o-nome") || "Cliente";
@@ -949,232 +939,77 @@
   }
 
   // ===== PDF =====
+  // Gera o PDF capturando o próprio HTML do preview (html2canvas), para o
+  // resultado ficar idêntico ao que aparece na tela em vez de um layout redesenhado.
+  const PDF_STAGE_WIDTH = 800; // px — largura fixa de renderização, independente do tamanho da janela
+  const PDF_SCALE = 2; // resolução da captura (2x = qualidade boa de impressão)
+  // Seletores de trechos que não podem ser cortados no meio entre duas páginas do PDF.
+  const PDF_UNSAFE_SELECTORS = ".orc-prev-flight-card, tr, .orc-prev-pag, .orc-prev-header, .orc-prev-titulo, .orc-prev-subtitulo, .orc-prev-footer, thead, tfoot";
+
   async function baixarPDF() {
     const d = window._orcDados;
-    if (!d || !window.jspdf) { alert("Biblioteca de PDF não carregada. Use Ctrl+P para imprimir."); return; }
+    if (!d || !window.jspdf || !window.html2canvas) { alert("Biblioteca de PDF não carregada. Use Ctrl+P para imprimir."); return; }
+
+    const original = document.querySelector("#orc-preview-wrap .orc-prev-wrap");
+    if (!original) return;
 
     pdfBtn.disabled = true; pdfBtn.textContent = "⏳ Gerando...";
+    const stage = document.createElement("div");
     try {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      const W = 210, H = 297, ML = 12, MR = 12, usableW = W - ML - MR;
-      let y = 12;
+      stage.style.cssText = "position:fixed; left:-99999px; top:0; width:" + PDF_STAGE_WIDTH + "px; background:#fff;";
+      const clone = original.cloneNode(true);
+      clone.style.width = PDF_STAGE_WIDTH + "px";
+      stage.appendChild(clone);
+      document.body.appendChild(stage);
 
-      function checkPage(n = 20) { if (y + n > H - 18) { doc.addPage(); y = 14; } }
+      const canvas = await window.html2canvas(clone, { scale: PDF_SCALE, backgroundColor: "#ffffff", useCORS: true });
 
-      doc.setFontSize(15); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-      doc.text("Lolek Viagens", ML, y + 7);
-      doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-      doc.text(LOLEK_EMAIL, W - MR, y + 3, { align: "right" });
-      doc.text(LOLEK_TEL,   W - MR, y + 8, { align: "right" });
-      doc.text(LOLEK_END,   W - MR, y + 13, { align: "right" });
-      y += 20;
-
-      doc.setDrawColor(201, 168, 76); doc.setLineWidth(0.8); doc.line(ML, y, W - MR, y); y += 7;
-      doc.setFontSize(12); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-      doc.text("PROPOSTA PERSONALIZADA DE VIAGEM", W / 2, y, { align: "center" }); y += 5;
-      const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
-        (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
-        (d.bebes    > 0 ? " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "") : "");
-      doc.setFontSize(9); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-      doc.text("Para: " + pdfSafe(d.nome) + "   ·   " + paxStr, W / 2, y, { align: "center" }); y += 10;
-
-      function drawBloco(label, periodo, itens) {
-        checkPage(25);
-        doc.setFillColor(10, 31, 61); doc.rect(ML, y, usableW, 8, "F");
-        doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(255, 255, 255);
-        doc.text(pdfSafe(label), ML + 3, y + 5.5);
-        if (periodo) {
-          doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184);
-          doc.text(pdfSafe(periodo), W - MR - 2, y + 5.5, { align: "right" });
-        }
-        y += 8;
-
-        itens.forEach((it, j) => {
-          if (it.tipo === "passagem") {
-            // Cartão de voo no mesmo layout visual do preview: código IATA grande,
-            // horário e cidade nas pontas, duração/paradas centralizados na linha tracejada.
-            const iata      = parseTrecho(it.nomeItem);
-            const origCity  = pdfSafe(it.cidadeOrigem || "");
-            const destCity  = pdfSafe(it.cidadeDestino || "");
-            const vooInfo   = pdfSafe([it.companhia, it.voo].filter(Boolean).join(" · "));
-            const isDireto  = it.conexoes && /direto/i.test(it.conexoes);
-            const stopsTxt  = pdfSafe(isDireto ? "Voo direto" : (it.conexoes || ""));
-            const paxLabel  = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
-            const valorTxt  = textoValorPassagem(it);
-            const temPreco  = it.totalPassagem > 0;
-
-            const headerH = 7, bodyH = 24, priceH = 7;
-            const cardH   = headerH + bodyH;
-            const taxaH   = it.taxaEmbarque > 0 ? 6 : 0;
-            checkPage(cardH + priceH + taxaH + 4);
-
-            // Moldura do cartão
-            doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.3);
-            doc.rect(ML, y, usableW, cardH, "S");
-
-            // Cabeçalho (label do trecho + data + companhia/voo)
-            doc.setFillColor(10, 31, 61); doc.rect(ML, y, usableW, headerH, "F");
-            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(201, 168, 76);
-            doc.text(pdfSafe(it.flightLabel || "VOO"), ML + 4, y + 4.8);
-            const headerRight = [it.flightDate, vooInfo].filter(Boolean).join("   ·   ");
-            if (headerRight) {
-              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(148, 163, 184);
-              doc.text(pdfSafe(headerRight), W - MR - 4, y + 4.8, { align: "right" });
-            }
-
-            const by     = y + headerH;
-            const leftX  = ML + 27;
-            const rightX = W - MR - 27;
-            const midX   = W / 2;
-
-            // Aeroporto de origem
-            doc.setFontSize(17); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-            doc.text(iata.orig || "—", leftX, by + 9, { align: "center" });
-            if (it.partida) {
-              doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-              doc.text(pdfSafe(it.partida), leftX, by + 15, { align: "center" });
-            }
-            if (origCity) {
-              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(origCity, leftX, by + 19.5, { align: "center" });
-            }
-
-            // Aeroporto de destino
-            doc.setFontSize(17); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-            doc.text(iata.dest || "—", rightX, by + 9, { align: "center" });
-            if (it.chegada) {
-              doc.setFontSize(10); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-              doc.text(pdfSafe(it.chegada), rightX, by + 15, { align: "center" });
-            }
-            if (destCity) {
-              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(destCity, rightX, by + 19.5, { align: "center" });
-            }
-
-            // Meio: duração, linha tracejada e paradas/voo direto
-            if (it.duracao) {
-              doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(pdfSafe(it.duracao), midX, by + 8, { align: "center" });
-            }
-            doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.3);
-            doc.setLineDashPattern([1, 1], 0);
-            doc.line(midX - 18, by + 11, midX + 18, by + 11);
-            doc.setLineDashPattern([], 0);
-            if (stopsTxt) {
-              doc.setFontSize(6.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(stopsTxt, midX, by + 16, { align: "center" });
-            }
-
-            y += cardH;
-
-            // Linha de preço (abaixo do cartão, largura toda, sem risco de colisão)
-            doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-            doc.text("Passagem (" + paxLabel + ")", ML + 3, y + 4.5);
-            doc.setFontSize(temPreco ? 9 : 7.5);
-            doc.setFont("helvetica", temPreco ? "bold" : "italic");
-            doc.setTextColor(...(temPreco ? [10, 31, 61] : [107, 114, 128]));
-            doc.text(valorTxt, W - MR - 2, y + 4.5, { align: "right" });
-            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + priceH, W - MR, y + priceH);
-            y += priceH;
-
-            // Linha da taxa de embarque (se houver)
-            if (it.taxaEmbarque > 0) {
-              doc.setFillColor(249, 250, 251); doc.rect(ML, y, usableW, 6, "F");
-              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text("   Taxa de embarque (" + paxLabel + ")", ML + 3, y + 4);
-              doc.text(fBRL(it.taxaEmbarque * it.adultos), W - MR - 2, y + 4, { align: "right" });
-              doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + 6, W - MR, y + 6);
-              y += 6;
-            }
-          } else {
-            // Produtos normais
-            const linhasNome = doc.splitTextToSize(pdfSafe(it.nomeItem || ""), usableW - 40);
-            const linhasDesc = it.desc ? doc.splitTextToSize(pdfSafe(it.desc), usableW - 40) : [];
-            const nFotos     = (it.fotos || []).length;
-            const fotoH      = nFotos > 0 ? Math.ceil(nFotos / 3) * 22 + 4 : 0;
-            const rowH       = Math.max(10, linhasNome.length * 4 + linhasDesc.length * 3.5 + fotoH + 4);
-            checkPage(rowH + 2);
-
-            if (j % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, rowH, "F"); }
-            doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + rowH, W - MR, y + rowH);
-
-            let iy = y + 4;
-            doc.setFontSize(8.5); doc.setFont("helvetica", "bold"); doc.setTextColor(17, 24, 39);
-            doc.text(linhasNome, ML + 3, iy); iy += linhasNome.length * 4;
-            if (linhasDesc.length) {
-              doc.setFontSize(7.5); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-              doc.text(linhasDesc, ML + 3, iy); iy += linhasDesc.length * 3.5;
-            }
-            if (nFotos > 0) {
-              let fx = ML + 3, fy = iy + 1;
-              for (let k = 0; k < Math.min(nFotos, 6); k++) {
-                try { doc.addImage(it.fotos[k], "JPEG", fx, fy, 20, 15); }
-                catch { try { doc.addImage(it.fotos[k], "PNG", fx, fy, 20, 15); } catch {} }
-                fx += 22; if (fx > W - MR - 20) { fx = ML + 3; fy += 17; }
-              }
-            }
-            doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-            doc.text(fBRL(it.venda), W - MR - 2, y + 5.5, { align: "right" }); y += rowH;
-          }
-        });
-        y += 5;
-      }
-
-      d.destsData.forEach((dest, i) => drawBloco((i + 1) + ". " + dest.nome, dest.periodo, dest.itens));
-
-      // Subtotais
-      checkPage(45);
-      doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, 6, "F");
-      doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(107, 114, 128);
-      doc.text("RESUMO", ML + 3, y + 4); doc.text("SUBTOTAL", W - MR - 2, y + 4, { align: "right" }); y += 6;
-      d.destsData.forEach((dest, i) => {
-        if (i % 2 === 0) { doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, 6, "F"); }
-        doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(75, 85, 99);
-        doc.text(pdfSafe((i + 1) + ". " + dest.nome), ML + 3, y + 4);
-        doc.text(fBRL(dest.totalDest), W - MR - 2, y + 4, { align: "right" });
-        doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.line(ML, y + 6, W - MR, y + 6); y += 6;
+      const cloneTop = clone.getBoundingClientRect().top;
+      const unsafeZones = Array.from(clone.querySelectorAll(PDF_UNSAFE_SELECTORS)).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: (r.top - cloneTop) * PDF_SCALE, bottom: (r.bottom - cloneTop) * PDF_SCALE };
       });
 
-      y += 3;
-      doc.setDrawColor(201, 168, 76); doc.setLineWidth(0.8); doc.line(ML, y, W - MR, y); y += 1;
-      doc.setFillColor(243, 244, 246); doc.rect(ML, y, usableW, 7, "F");
-      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-      doc.text("Por pessoa (" + d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") + ")", ML + 3, y + 5);
-      doc.text(fBRL(d.porPessoa), W - MR - 2, y + 5, { align: "right" }); y += 7;
-      doc.setFillColor(10, 31, 61); doc.rect(ML, y, usableW, 10, "F");
-      doc.setFontSize(12); doc.setFont("helvetica", "bold"); doc.setTextColor(201, 168, 76);
-      doc.text("VALOR TOTAL", ML + 3, y + 7); doc.text(fBRL(d.totalGeral), W - MR - 2, y + 7, { align: "right" }); y += 14;
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = 10, marginY = 10;
+      const usableW = pageW - marginX * 2;
+      const usableH = pageH - marginY * 2;
+      const pxPerMm = canvas.width / usableW;
+      const pageHeightPx = usableH * pxPerMm;
 
-      checkPage(18);
-      doc.setFillColor(253, 248, 238); doc.setDrawColor(201, 168, 76); doc.setLineWidth(0.4);
-      doc.rect(ML, y, usableW, 14, "FD");
-      doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-      doc.text("FORMAS DE PAGAMENTO", ML + 3, y + 5);
-      doc.setFontSize(8.5); doc.setFont("helvetica", "normal"); doc.setTextColor(17, 24, 39);
-      doc.text("PIX     |     Cartão de crédito em até 12x (mediante taxas)", ML + 3, y + 10); y += 18;
-
-      if (d.obs) {
-        checkPage(20);
-        const lo = doc.splitTextToSize(pdfSafe(d.obs), usableW - 6);
-        const oh = lo.length * 4 + 10;
-        doc.setFillColor(253, 248, 238); doc.setDrawColor(201, 168, 76); doc.setLineWidth(0.4);
-        doc.rect(ML, y, usableW, oh, "FD");
-        doc.setFontSize(7); doc.setFont("helvetica", "bold"); doc.setTextColor(10, 31, 61);
-        doc.text("OBSERVAÇÕES", ML + 3, y + 5);
-        doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.text(lo, ML + 3, y + 10); y += oh + 4;
+      // Evita cortar um cartão de voo, linha de tabela etc. ao meio: se o corte ideal
+      // cai dentro de um desses trechos, empurra o corte para o início do trecho.
+      function safeBreak(sliceStart, idealEnd) {
+        for (const zone of unsafeZones) {
+          if (idealEnd > zone.top && idealEnd < zone.bottom && zone.top > sliceStart) return zone.top;
+        }
+        return idealEnd;
       }
 
-      const total = doc.getNumberOfPages();
-      for (let pg = 1; pg <= total; pg++) {
-        doc.setPage(pg);
-        doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.3); doc.line(ML, H - 16, W - MR, H - 16);
-        doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(107, 114, 128);
-        doc.text("Lolek Viagens  ·  " + LOLEK_TEL + "  ·  " + LOLEK_EMAIL, W / 2, H - 11, { align: "center" });
-        doc.text("Este orçamento não possui validade fixa — valores sujeitos à disponibilidade no momento da emissão.", W / 2, H - 6, { align: "center" });
+      let sy = 0, first = true;
+      while (sy < canvas.height - 1) {
+        let sliceEnd = Math.min(sy + pageHeightPx, canvas.height);
+        if (sliceEnd < canvas.height) sliceEnd = safeBreak(sy, sliceEnd);
+        let sliceH = sliceEnd - sy;
+        if (sliceH <= 0) sliceH = Math.min(pageHeightPx, canvas.height - sy);
+
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceH;
+        sliceCanvas.getContext("2d").drawImage(canvas, 0, sy, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+        if (!first) doc.addPage();
+        doc.addImage(sliceCanvas.toDataURL("image/jpeg", 0.92), "JPEG", marginX, marginY, usableW, sliceH / pxPerMm);
+        first = false;
+        sy += sliceH;
       }
+
       doc.save("Orcamento_Lolek_" + d.nome.replace(/\s+/g, "_") + ".pdf");
     } finally {
+      stage.remove();
       pdfBtn.disabled = false; pdfBtn.textContent = "↓ Baixar PDF";
     }
   }
