@@ -98,6 +98,133 @@
     localStorage.setItem(LS_KEY_MIGRADO, "1");
   }
 
+  // ===== Planilha de vendas (pull automático) =====
+  const SHEET_ID  = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
+  const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
+
+  const COL_DATA_EMISSAO = 0;  // A
+  const COL_SITUACAO     = 1;  // B
+  const COL_NOME         = 4;  // E (nome do cliente; também usada como separador de mês, mas essas linhas têm B vazio)
+  const COL_DESTINO      = 8;  // I
+  const COL_COMPANHIA    = 9;  // J
+  const COL_MILHEIRO     = 10; // K — fornecedor de milhas, ou "TARIFADO"/"-" (compra direta, sem milhas)
+  const COL_RESERVA      = 11; // L
+  const COL_CARTAO_TAXA  = 13; // N — cartão da agência que pagou a taxa, ou "MILHEIRO" quando não foi no cartão
+  const COL_VALOR_TOTAL  = 14; // O
+  const COL_LUCRO        = 15; // P
+  const COL_VALOR_MILHA  = 17; // R
+  const COL_QTD_MILHAS   = 19; // T
+
+  // Mesmo parser usado em vendas.js/checkin.js (copiado — cada script é independente, sem imports).
+  function parseCsvPlanilha(text) {
+    const rows = []; let row = [], field = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) { if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; } else field += ch; }
+      else if (ch === '"') inQ = true;
+      else if (ch === ",") { row.push(field); field = ""; }
+      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+      else if (ch !== "\r") field += ch;
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function parseNumPlanilha(s) {
+    const str = String(s || "").replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
+    const n = parseFloat(str);
+    return isNaN(n) ? 0 : n;
+  }
+
+  // Minúsculo, sem acento, espaços colapsados — usado pra chave de dedupe e pra comparar valores da planilha.
+  function normalizarTexto(s) {
+    return String(s || "").normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "").toLowerCase().trim().replace(/\s+/g, " ");
+  }
+
+  // Monta um lançamento de entrada a partir de uma linha de venda da planilha, ou null se a linha
+  // for subtotal/separador de mês (situação vazia) ou não tiver valor.
+  function montarLancamentoDaLinha(cols) {
+    const situacao = (cols[COL_SITUACAO] || "").trim();
+    if (!situacao) return null;
+
+    const dataEmissao = (cols[COL_DATA_EMISSAO] || "").trim();
+    const cliente      = (cols[COL_NOME] || "").trim() || "Cliente";
+    const destino      = (cols[COL_DESTINO] || "").trim();
+    const companhia    = (cols[COL_COMPANHIA] || "").trim();
+    const milheiroRaw  = (cols[COL_MILHEIRO] || "").trim();
+    const reserva      = (cols[COL_RESERVA] || "").trim();
+    const cartaoRaw    = (cols[COL_CARTAO_TAXA] || "").trim();
+    const valorTotal   = parseNumPlanilha(cols[COL_VALOR_TOTAL]);
+    const lucro        = parseNumPlanilha(cols[COL_LUCRO]);
+    const valorMilha   = parseNumPlanilha(cols[COL_VALOR_MILHA]);
+    const qtdMilhas    = parseNumPlanilha(cols[COL_QTD_MILHAS]);
+
+    if (!valorTotal) return null;
+
+    const dedupeKey = reserva
+      ? normalizarTexto(reserva) + "|" + normalizarTexto(dataEmissao)
+      : normalizarTexto(dataEmissao) + "|" + normalizarTexto(cliente) + "|" + normalizarTexto(destino) + "|" + valorTotal;
+
+    // Origem da taxa de embarque: cartão da agência (guarda o nome) ou "milheiro" quando não foi no cartão.
+    // "MÊS ATUAL"/"ANUAL" são resumo de fechamento de mês — nunca deveriam vir com situação preenchida,
+    // mas descarta de qualquer forma por segurança.
+    let taxaEmbarqueOrigem = null, cartaoNome = null;
+    const cartaoNorm = normalizarTexto(cartaoRaw);
+    if (cartaoRaw && cartaoNorm !== "mes atual" && cartaoNorm !== "anual") {
+      if (/milhe?iro/.test(cartaoNorm)) taxaEmbarqueOrigem = "milheiro";
+      else { taxaEmbarqueOrigem = "cartao_agencia"; cartaoNome = cartaoRaw; }
+    }
+
+    // "TARIFADO"/"-"/vazio = comprado direto pelo valor do site, sem fornecedor de milhas.
+    const milheiroNorm  = normalizarTexto(milheiroRaw);
+    const temFornecedor = milheiroRaw && milheiroNorm !== "-" && milheiroNorm !== "tarifado";
+
+    return {
+      tipo: "entrada",
+      status: "pago",
+      descricao: cliente,
+      categoria: destino || null,
+      origem: companhia || null,
+      valor: valorTotal,
+      vencimento: paraISO(dataEmissao),
+      fonte: "planilha_venda",
+      dedupe_key: dedupeKey,
+      sheet_meta: {
+        reserva: reserva || null,
+        companhia: companhia || null,
+        lucro,
+        valor_milha: valorMilha || null,
+        qtd_milhas: qtdMilhas || null,
+        milheiro_raw: temFornecedor ? milheiroRaw : null,
+        cartao_taxa_raw: cartaoRaw || null,
+        taxa_embarque_origem: taxaEmbarqueOrigem,
+        cartao_nome: cartaoNome,
+      },
+    };
+  }
+
+  async function puxarPlanilha() {
+    try {
+      const resp = await fetch(SHEET_URL + "&t=" + Date.now());
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const text = await resp.text();
+      const rows = parseCsvPlanilha(text);
+
+      const novos = [];
+      rows.forEach((cols) => {
+        const l = montarLancamentoDaLinha(cols);
+        if (l) novos.push(l);
+      });
+      if (novos.length === 0) return;
+
+      await chamar("upsert_sheet_lancamentos", { lancamentos: novos });
+      await carregarLancamentos();
+      render();
+    } catch (err) {
+      console.error("Erro ao puxar planilha de vendas:", err);
+    }
+  }
+
   // ===== Senha (verificada no servidor — FINANCEIRO_SENHA no Netlify, nunca no navegador) =====
   function estaDesbloqueado() { return desbloqueado; }
 
@@ -125,6 +252,7 @@
       alert("Erro ao carregar lançamentos: " + err.message);
     }
     render();
+    puxarPlanilha();
   }
 
   async function tentarEntrar() {
