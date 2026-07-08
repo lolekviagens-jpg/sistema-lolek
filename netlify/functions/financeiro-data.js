@@ -180,6 +180,77 @@ async function executarAcao(action, data, secretKey) {
       );
     }
 
+    // ===== Fornecedores de milhas =====
+    case "listar_fornecedores":
+      return supabaseRest("/fornecedores?select=*&order=nome.asc", "GET", secretKey);
+
+    case "criar_fornecedor": {
+      if (!data.nome) throw new Error("Nome do fornecedor é obrigatório");
+      return supabaseRest("/fornecedores", "POST", secretKey, {
+        nome: data.nome, pix: data.pix || null, contato: data.contato || null, observacoes: data.observacoes || null,
+      });
+    }
+
+    case "atualizar_fornecedor": {
+      if (!data.id) throw new Error("id é obrigatório");
+      const { id, ...campos } = data;
+      return supabaseRest("/fornecedores?id=eq." + encodeURIComponent(id), "PATCH", secretKey, campos);
+    }
+
+    case "listar_aliases":
+      return supabaseRest("/fornecedor_aliases?select=*", "GET", secretKey);
+
+    // Chamado depois de cada pull da planilha, com os valores da coluna K ainda não vistos.
+    // Idempotente: rodar de novo com o mesmo alias não duplica (ignora se já existir).
+    case "registrar_pendencias_alias": {
+      const lista = Array.isArray(data.aliases) ? data.aliases : [];
+      if (lista.length === 0) return [];
+      return supabaseRest(
+        "/fornecedor_aliases?on_conflict=alias_normalizado", "POST", secretKey,
+        lista.map((a) => ({ alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: null, status: "pendente" })),
+        { "Prefer": "resolution=ignore-duplicates,return=representation" }
+      );
+    }
+
+    // Confirma os grupos revisados pela Thay depois do agrupamento por IA: cria o fornecedor
+    // (se for novo) e vincula os aliases confirmados a ele.
+    case "confirmar_grupos_ia": {
+      const grupos = Array.isArray(data.grupos) ? data.grupos : [];
+      const resultado = [];
+      for (const grupo of grupos) {
+        let fornecedorId = grupo.fornecedor_id;
+        if (!fornecedorId) {
+          if (!grupo.nome_novo) throw new Error("Grupo sem fornecedor_id nem nome_novo");
+          const [criado] = await supabaseRest("/fornecedores", "POST", secretKey, { nome: grupo.nome_novo });
+          fornecedorId = criado.id;
+        }
+        const aliases = Array.isArray(grupo.aliases) ? grupo.aliases : [];
+        if (aliases.length > 0) {
+          await supabaseRest(
+            "/fornecedor_aliases?on_conflict=alias_normalizado", "POST", secretKey,
+            aliases.map((a) => ({ alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: fornecedorId, status: "confirmado" })),
+            { "Prefer": "resolution=merge-duplicates,return=representation" }
+          );
+        }
+        resultado.push({ fornecedor_id: fornecedorId });
+      }
+      return resultado;
+    }
+
+    // Atribuição pontual de um alias pendente (sem re-rodar o agrupamento por IA inteiro).
+    case "resolver_pendencia_alias": {
+      if (!data.id) throw new Error("id é obrigatório");
+      let fornecedorId = data.fornecedor_id;
+      if (!fornecedorId) {
+        if (!data.nome_novo) throw new Error("Informe fornecedor_id ou nome_novo");
+        const [criado] = await supabaseRest("/fornecedores", "POST", secretKey, { nome: data.nome_novo });
+        fornecedorId = criado.id;
+      }
+      return supabaseRest("/fornecedor_aliases?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey, {
+        fornecedor_id: fornecedorId, status: "confirmado",
+      });
+    }
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }
