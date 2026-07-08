@@ -35,7 +35,9 @@
 //     sheet_meta jsonb
 //   );
 //   create unique index financeiro_lancamentos_dedupe_key_idx
-//     on financeiro_lancamentos (dedupe_key) where dedupe_key is not null;
+//     on financeiro_lancamentos (dedupe_key);
+//   -- (indice unico "cheio", nao parcial: o Postgres ja trata varios NULLs como
+//   -- distintos entre si, e o on_conflict do PostgREST nao reconhece indices parciais)
 //   alter table financeiro_lancamentos enable row level security;
 //
 //   create table fornecedor_aliases (
