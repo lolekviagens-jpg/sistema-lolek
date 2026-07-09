@@ -224,15 +224,18 @@ async function executarAcao(action, data, secretKey) {
       const semFornecedor = grupos.filter((g) => !g.fornecedor_id);
       const comFornecedor  = grupos.filter((g) => g.fornecedor_id);
 
-      let criados = [];
-      if (semFornecedor.length > 0) {
-        criados = await supabaseRest("/fornecedores", "POST", secretKey, semFornecedor.map((g) => ({ nome: g.nome_novo })));
+      // Gera o id de cada fornecedor aqui em vez de deixar o Postgres gerar (gen_random_uuid()) —
+      // o bulk insert do PostgREST não garante que a resposta volta na mesma ordem do envio, então
+      // não dá pra confiar em "criados[i]" pra saber qual id corresponde a qual grupo.
+      const novosFornecedores = semFornecedor.map((g) => ({ id: crypto.randomUUID(), nome: g.nome_novo }));
+      if (novosFornecedores.length > 0) {
+        await supabaseRest("/fornecedores", "POST", secretKey, novosFornecedores);
       }
 
       const todosAliases = [];
       semFornecedor.forEach((g, i) => {
         (g.aliases || []).forEach((a) => todosAliases.push({
-          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: criados[i].id, status: "confirmado",
+          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: novosFornecedores[i].id, status: "confirmado",
         }));
       });
       comFornecedor.forEach((g) => {
@@ -248,7 +251,7 @@ async function executarAcao(action, data, secretKey) {
         );
       }
 
-      return [...criados, ...comFornecedor.map((g) => ({ id: g.fornecedor_id }))];
+      return [...novosFornecedores, ...comFornecedor.map((g) => ({ id: g.fornecedor_id }))];
     }
 
     // Atribuição pontual de um alias pendente (sem re-rodar o agrupamento por IA inteiro).
