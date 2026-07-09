@@ -232,17 +232,15 @@ async function executarAcao(action, data, secretKey) {
         await supabaseRest("/fornecedores", "POST", secretKey, novosFornecedores);
       }
 
-      const todosAliases = [];
-      semFornecedor.forEach((g, i) => {
-        (g.aliases || []).forEach((a) => todosAliases.push({
-          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: novosFornecedores[i].id, status: "confirmado",
-        }));
+      // Um por alias_normalizado: o insert não aceita duas linhas com a mesma chave no mesmo lote
+      // (a IA pode repetir o mesmo nome em dois grupos, ou duplicar dentro do mesmo grupo).
+      const aliasesPorChave = new Map();
+      const addAlias = (a, fornecedorId) => aliasesPorChave.set(a.alias_normalizado, {
+        alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: fornecedorId, status: "confirmado",
       });
-      comFornecedor.forEach((g) => {
-        (g.aliases || []).forEach((a) => todosAliases.push({
-          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: g.fornecedor_id, status: "confirmado",
-        }));
-      });
+      semFornecedor.forEach((g, i) => (g.aliases || []).forEach((a) => addAlias(a, novosFornecedores[i].id)));
+      comFornecedor.forEach((g) => (g.aliases || []).forEach((a) => addAlias(a, g.fornecedor_id)));
+      const todosAliases = Array.from(aliasesPorChave.values());
 
       if (todosAliases.length > 0) {
         await supabaseRest(
