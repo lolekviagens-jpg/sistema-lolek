@@ -161,6 +161,10 @@
         chamar("listar_lancamentos_fornecedor", { fornecedor_id: fornecedorId }),
         chamar("listar_pagamentos_fornecedor", { fornecedor_id: fornecedorId }),
       ]);
+      // Se o modal já foi fechado ou trocou de fornecedor enquanto essa chamada estava no ar,
+      // descarta o resultado — senão uma resposta lenta de um fornecedor antigo pode sobrescrever
+      // a tela de um fornecedor diferente que já está aberto.
+      if (!editando || editando.id !== fornecedorId) return;
       const custoMilhas = vendas.reduce((soma, l) => {
         const m = l.sheet_meta || {};
         return soma + (parseFloat(m.valor_milha) || 0) * (parseFloat(m.qtd_milhas) || 0) / 1000;
@@ -170,7 +174,7 @@
       saldoDevedor = custoMilhas - totalPago;
       renderPagamentos();
     } catch (err) {
-      gel("forn-saldo-devedor").textContent = "erro";
+      if (editando && editando.id === fornecedorId) gel("forn-saldo-devedor").textContent = "erro";
       console.error("Erro ao carregar pagamentos:", err);
     }
   }
