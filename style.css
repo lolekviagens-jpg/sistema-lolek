@@ -2775,7 +2775,8 @@ textarea.input {
   flex-wrap: wrap;
 }
 
-.fin-filtro {
+.fin-filtro,
+.fin-subtab {
   font-family: var(--font-body);
   font-size: 0.82rem;
   font-weight: 600;
@@ -2788,12 +2789,14 @@ textarea.input {
   transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
 }
 
-.fin-filtro:hover {
+.fin-filtro:hover,
+.fin-subtab:hover {
   border-color: var(--gold);
   color: var(--navy);
 }
 
-.fin-filtro.is-active {
+.fin-filtro.is-active,
+.fin-subtab.is-active {
   background: var(--navy);
   border-color: var(--navy);
   color: #fff;

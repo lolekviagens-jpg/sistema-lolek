@@ -652,57 +652,96 @@
         <!-- Conteúdo (visível após desbloqueio) -->
         <div id="fin-conteudo" hidden>
 
-          <div class="toolbar">
-            <span class="toolbar__info" id="fin-updated"></span>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn--ghost btn--icon" id="fin-lock-btn2" type="button" title="Bloquear">🔒</button>
-              <button class="btn btn--ghost" id="fin-importar-btn" type="button">📥 Importar extrato</button>
-              <button class="btn btn--gold" id="fin-novo-btn" type="button">+ Novo lançamento</button>
-            </div>
+          <!-- Sub-navegação: Lançamentos x Fornecedores -->
+          <div class="fin-filtros" style="margin-bottom:20px">
+            <button class="fin-subtab is-active" id="fin-subtab-lancamentos" data-subtab="lancamentos" type="button">📋 Lançamentos</button>
+            <button class="fin-subtab" id="fin-subtab-fornecedores" data-subtab="fornecedores" type="button">🤝 Fornecedores</button>
           </div>
 
-          <!-- Cards resumo -->
-          <div class="stats">
-            <div class="stat">
-              <div class="stat__value" id="fin-stat-saldo">R$ 0,00</div>
-              <div class="stat__label">Saldo (pago)</div>
-            </div>
-            <div class="stat">
-              <div class="stat__value" id="fin-stat-receber">R$ 0,00</div>
-              <div class="stat__label">A receber</div>
-            </div>
-            <div class="stat">
-              <div class="stat__value" id="fin-stat-pagar">R$ 0,00</div>
-              <div class="stat__label">A pagar</div>
-            </div>
-          </div>
+          <div id="fin-sub-lancamentos">
 
-          <!-- Filtros -->
-          <div class="fin-filtros">
-            <button class="fin-filtro is-active" data-filtro="todos" type="button">Todos</button>
-            <button class="fin-filtro" data-filtro="entrada" type="button">Entradas</button>
-            <button class="fin-filtro" data-filtro="saida" type="button">Saídas</button>
-            <button class="fin-filtro" data-filtro="pendente" type="button">Pendentes</button>
-          </div>
+            <div class="toolbar">
+              <span class="toolbar__info" id="fin-updated"></span>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn--ghost btn--icon" id="fin-lock-btn2" type="button" title="Bloquear">🔒</button>
+                <button class="btn btn--ghost" id="fin-importar-btn" type="button">📥 Importar extrato</button>
+                <button class="btn btn--gold" id="fin-novo-btn" type="button">+ Novo lançamento</button>
+              </div>
+            </div>
 
-          <div class="card">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Vencimento</th>
-                  <th>Descrição</th>
-                  <th>Categoria</th>
-                  <th>Origem</th>
-                  <th>Tipo</th>
-                  <th>Valor</th>
-                  <th>Status</th>
-                  <th class="table__actions-col"></th>
-                </tr>
-              </thead>
-              <tbody id="fin-tabela-body"></tbody>
-            </table>
-          </div>
-          <div id="fin-vazio"></div>
+            <!-- Cards resumo -->
+            <div class="stats">
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-saldo">R$ 0,00</div>
+                <div class="stat__label">Saldo (pago)</div>
+              </div>
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-receber">R$ 0,00</div>
+                <div class="stat__label">A receber</div>
+              </div>
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-pagar">R$ 0,00</div>
+                <div class="stat__label">A pagar</div>
+              </div>
+            </div>
+
+            <!-- Filtros -->
+            <div class="fin-filtros">
+              <button class="fin-filtro is-active" data-filtro="todos" type="button">Todos</button>
+              <button class="fin-filtro" data-filtro="entrada" type="button">Entradas</button>
+              <button class="fin-filtro" data-filtro="saida" type="button">Saídas</button>
+              <button class="fin-filtro" data-filtro="pendente" type="button">Pendentes</button>
+            </div>
+
+            <div class="card">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Vencimento</th>
+                    <th>Descrição</th>
+                    <th>Categoria</th>
+                    <th>Origem</th>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th class="table__actions-col"></th>
+                  </tr>
+                </thead>
+                <tbody id="fin-tabela-body"></tbody>
+              </table>
+            </div>
+            <div id="fin-vazio"></div>
+
+          </div><!-- /fin-sub-lancamentos -->
+
+          <div id="fin-sub-fornecedores" hidden>
+
+            <div class="toolbar">
+              <span class="toolbar__info" id="forn-updated"></span>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn--ghost" id="forn-identificar-btn" type="button">🤖 Identificar fornecedores da planilha</button>
+                <button class="btn btn--gold" id="forn-novo-btn" type="button">+ Novo fornecedor</button>
+              </div>
+            </div>
+
+            <div id="forn-pendentes-aviso"></div>
+
+            <div class="card">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>PIX</th>
+                    <th>Contato</th>
+                    <th class="table__actions-col"></th>
+                  </tr>
+                </thead>
+                <tbody id="forn-tabela-body"></tbody>
+              </table>
+            </div>
+            <div id="forn-vazio"></div>
+
+          </div><!-- /fin-sub-fornecedores -->
 
         </div><!-- /fin-conteudo -->
 
@@ -821,6 +860,99 @@
                   <button class="btn btn--ghost" id="fin-imp-cancelar">Cancelar</button>
                   <button class="btn btn--gold" id="fin-imp-confirmar-btn">Importar selecionados</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: novo/editar fornecedor -->
+        <div class="modal" id="forn-modal" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:480px">
+            <div class="modal__header">
+              <span class="modal__title" id="forn-modal-titulo">Novo fornecedor</span>
+              <button class="modal__close" id="forn-modal-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Nome *</span>
+                  <input type="text" id="forn-f-nome" class="input" placeholder="Ex: Daniel Vercelli" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Chave PIX</span>
+                  <input type="text" id="forn-f-pix" class="input" placeholder="E-mail, CPF, telefone..." />
+                </label>
+                <label class="field">
+                  <span class="field__label">Contato</span>
+                  <input type="text" id="forn-f-contato" class="input" placeholder="WhatsApp, Instagram..." />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Observações</span>
+                  <textarea id="forn-f-observacoes" class="input" rows="3"></textarea>
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost btn--danger" id="forn-f-excluir" hidden>Excluir</button>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="forn-f-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="forn-f-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: revisão do agrupamento de fornecedores por IA -->
+        <div class="modal" id="forn-modal-revisao" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:900px">
+            <div class="modal__header">
+              <span class="modal__title">Revisar fornecedores identificados</span>
+              <button class="modal__close" id="forn-revisao-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">
+                A IA agrupou os nomes da planilha que parecem ser o mesmo fornecedor. Confira, renomeie ou desmarque grupos errados antes de confirmar.
+                Grupos com ⚠ não ficaram claros pra IA — dá uma conferida com atenção.
+              </p>
+              <div id="forn-revisao-lista"></div>
+            </div>
+            <div class="modal__footer">
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="forn-revisao-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="forn-revisao-confirmar-btn">Confirmar fornecedores</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: atribuir um alias pendente a um fornecedor -->
+        <div class="modal" id="forn-modal-pendencia" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:460px">
+            <div class="modal__header">
+              <span class="modal__title">A quem pertence "<span id="forn-pend-nome"></span>"?</span>
+              <button class="modal__close" id="forn-pend-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Fornecedor já cadastrado</span>
+                  <select id="forn-pend-select" class="input">
+                    <option value="">— selecione —</option>
+                  </select>
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Ou cadastrar como novo fornecedor</span>
+                  <input type="text" id="forn-pend-novo" class="input" placeholder="Nome do novo fornecedor" />
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="forn-pend-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="forn-pend-salvar">Salvar</button>
               </div>
             </div>
           </div>
@@ -1009,6 +1141,7 @@
   <script src="roteiro.js"></script>
   <script src="followup.js"></script>
   <script src="financeiro.js"></script>
+  <script src="financeiro-fornecedores.js"></script>
   <script src="empresas.js"></script>
 </body>
 </html>

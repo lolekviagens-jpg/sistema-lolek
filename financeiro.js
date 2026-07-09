@@ -190,6 +190,7 @@
       vencimento: paraISO(dataEmissao),
       fonte: "planilha_venda",
       dedupe_key: dedupeKey,
+      fornecedor_id: null, // preenchido depois, se a coluna K já estiver vinculada a um fornecedor conhecido
       sheet_meta: {
         reserva: reserva || null,
         companhia: companhia || null,
@@ -221,11 +222,41 @@
       });
       if (novos.length === 0) return;
 
+      await vincularFornecedoresConhecidos(novos);
+
       await chamar("upsert_sheet_lancamentos", { lancamentos: novos });
       await carregarLancamentos();
       render();
     } catch (err) {
       console.error("Erro ao puxar planilha de vendas:", err);
+    }
+  }
+
+  // Vincula cada lançamento a um fornecedor já cadastrado (por alias conhecido) e enfileira
+  // pra revisão os nomes da coluna K que ainda não foram vistos nenhuma vez.
+  async function vincularFornecedoresConhecidos(novos) {
+    let aliasesConhecidos = [];
+    try { aliasesConhecidos = await chamar("listar_aliases"); }
+    catch { return; } // sem tabela de fornecedores ainda (ou erro pontual) — segue sem vincular
+
+    const porAlias = new Map(aliasesConhecidos.map(a => [a.alias_normalizado, a]));
+    const pendentesNovos = new Map(); // alias_normalizado -> alias_original
+
+    novos.forEach((l) => {
+      const raw = l.sheet_meta.milheiro_raw;
+      if (!raw) return;
+      const norm = normalizarTexto(raw);
+      const existente = porAlias.get(norm);
+      if (existente && existente.fornecedor_id) {
+        l.fornecedor_id = existente.fornecedor_id;
+      } else if (!existente) {
+        pendentesNovos.set(norm, raw);
+      }
+    });
+
+    if (pendentesNovos.size > 0) {
+      const lista = Array.from(pendentesNovos, ([alias_normalizado, alias_original]) => ({ alias_normalizado, alias_original }));
+      try { await chamar("registrar_pendencias_alias", { aliases: lista }); } catch { /* tenta de novo no próximo pull */ }
     }
   }
 
@@ -599,6 +630,13 @@ ${texto}`,
     gel("fin-lock-btn").addEventListener("click", tentarEntrar);
     gel("fin-lock-senha").addEventListener("keydown", e => { if (e.key === "Enter") tentarEntrar(); });
     gel("fin-lock-btn2").addEventListener("click", bloquear);
+
+    gel("fin-subtab-lancamentos").addEventListener("click", () => {
+      gel("fin-subtab-lancamentos").classList.add("is-active");
+      gel("fin-subtab-fornecedores").classList.remove("is-active");
+      gel("fin-sub-lancamentos").hidden = false;
+      gel("fin-sub-fornecedores").hidden = true;
+    });
 
     gel("fin-novo-btn").addEventListener("click", () => abrirForm(null));
     gel("fin-modal-fechar").addEventListener("click", fecharForm);
