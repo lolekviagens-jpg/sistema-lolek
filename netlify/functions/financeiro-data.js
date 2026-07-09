@@ -266,6 +266,53 @@ async function executarAcao(action, data, secretKey) {
       });
     }
 
+    // ===== Pagamentos a fornecedores =====
+    // Vendas da planilha atribuídas a esse fornecedor — usado no cliente pra calcular o saldo
+    // devedor (custo em milhas das vendas menos os pagamentos já registrados).
+    case "listar_lancamentos_fornecedor":
+      if (!data.fornecedor_id) throw new Error("fornecedor_id é obrigatório");
+      return supabaseRest(
+        "/financeiro_lancamentos?select=id,descricao,vencimento,valor,sheet_meta&fornecedor_id=eq." +
+          encodeURIComponent(data.fornecedor_id) + "&fonte=eq.planilha_venda&order=vencimento.desc",
+        "GET", secretKey
+      );
+
+    case "listar_pagamentos_fornecedor":
+      if (!data.fornecedor_id) throw new Error("fornecedor_id é obrigatório");
+      return supabaseRest(
+        "/fornecedor_pagamentos?select=*&fornecedor_id=eq." + encodeURIComponent(data.fornecedor_id) + "&order=data.desc",
+        "GET", secretKey
+      );
+
+    // Cria o pagamento e espelha como saída no razão principal (financeiro_lancamentos), pra
+    // aparecer nos cards/gráficos do Financeiro automaticamente.
+    case "criar_pagamento_fornecedor": {
+      if (!data.fornecedor_id || !data.data || !data.valor_pago) throw new Error("fornecedor_id, data e valor_pago são obrigatórios");
+      const [fornecedor] = await supabaseRest("/fornecedores?id=eq." + encodeURIComponent(data.fornecedor_id) + "&select=nome", "GET", secretKey);
+      const [lancamento] = await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
+        tipo: "saida", status: "pago", fonte: "manual", fornecedor_id: data.fornecedor_id,
+        descricao: "Pagamento a " + (fornecedor?.nome || "fornecedor"),
+        categoria: "Milheiro/Fornecedor",
+        valor: data.valor_pago,
+        vencimento: data.data,
+      });
+      const [pagamento] = await supabaseRest("/fornecedor_pagamentos", "POST", secretKey, {
+        fornecedor_id: data.fornecedor_id, data: data.data, valor_pago: data.valor_pago,
+        milhas_recebidas: data.milhas_recebidas || null, valor_por_milha: data.valor_por_milha || null,
+        observacoes: data.observacoes || null, lancamento_id: lancamento.id,
+      });
+      return pagamento;
+    }
+
+    case "excluir_pagamento_fornecedor": {
+      if (!data.id) throw new Error("id é obrigatório");
+      await supabaseRest("/fornecedor_pagamentos?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      if (data.lancamento_id) {
+        await supabaseRest("/financeiro_lancamentos?id=eq." + encodeURIComponent(data.lancamento_id), "DELETE", secretKey);
+      }
+      return { ok: true };
+    }
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }

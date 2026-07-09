@@ -14,6 +14,8 @@
   let grupos        = [];   // grupos sugeridos pela IA, aguardando revisão
   let contagemBruta = new Map(); // alias original -> nº de vendas (pro passo de revisão)
   let pendenciaAtual = null; // alias pendente selecionado no modal de atribuição
+  let pagamentos    = []; // pagamentos do fornecedor em edição
+  let saldoDevedor  = 0;
 
   function gel(id) { return document.getElementById(id); }
 
@@ -24,6 +26,26 @@
   }
 
   function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+
+  function fBRL(v) {
+    return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function parseData(str) {
+    const m = String(str || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return null;
+    return new Date(+m[3], +m[2] - 1, +m[1]);
+  }
+  function paraISO(strBR) {
+    const d = parseData(strBR);
+    if (!d) return null;
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function paraBR(iso) {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return d && m && y ? `${d}/${m}/${y}` : iso;
+  }
 
   // A senha só é digitada uma vez, na trava do financeiro.js — lê o valor direto do campo
   // (continua no DOM depois do desbloqueio; é o mesmo canal de comunicação via DOM do resto do app).
@@ -122,11 +144,113 @@
     gel("forn-f-contato").value     = f ? (f.contato || "") : "";
     gel("forn-f-observacoes").value = f ? (f.observacoes || "") : "";
     gel("forn-f-excluir").hidden    = !f;
+    gel("forn-pagamentos-secao").hidden = !f;
     gel("forn-modal").hidden = false;
     gel("forn-f-nome").focus();
+    if (f) carregarPagamentos(f.id);
   }
 
-  function fecharForm() { gel("forn-modal").hidden = true; editando = null; }
+  function fecharForm() { gel("forn-modal").hidden = true; editando = null; pagamentos = []; }
+
+  // ===== Pagamentos a fornecedores =====
+  async function carregarPagamentos(fornecedorId) {
+    gel("forn-saldo-devedor").textContent = "…";
+    gel("forn-pag-tabela-body").innerHTML = "";
+    try {
+      const [vendas, pagos] = await Promise.all([
+        chamar("listar_lancamentos_fornecedor", { fornecedor_id: fornecedorId }),
+        chamar("listar_pagamentos_fornecedor", { fornecedor_id: fornecedorId }),
+      ]);
+      const custoMilhas = vendas.reduce((soma, l) => {
+        const m = l.sheet_meta || {};
+        return soma + (parseFloat(m.valor_milha) || 0) * (parseFloat(m.qtd_milhas) || 0) / 1000;
+      }, 0);
+      const totalPago = pagos.reduce((soma, p) => soma + (parseFloat(p.valor_pago) || 0), 0);
+      pagamentos = pagos;
+      saldoDevedor = custoMilhas - totalPago;
+      renderPagamentos();
+    } catch (err) {
+      gel("forn-saldo-devedor").textContent = "erro";
+      console.error("Erro ao carregar pagamentos:", err);
+    }
+  }
+
+  function renderPagamentos() {
+    gel("forn-saldo-devedor").textContent = fBRL(saldoDevedor);
+    const body  = gel("forn-pag-tabela-body");
+    const vazio = gel("forn-pag-vazio");
+
+    if (pagamentos.length === 0) {
+      body.innerHTML = "";
+      vazio.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum pagamento registrado ainda</p></div>';
+    } else {
+      vazio.innerHTML = "";
+      body.innerHTML = pagamentos.map(p => `
+        <tr data-id="${escHtml(p.id)}" data-lancamento-id="${escHtml(p.lancamento_id || "")}">
+          <td>${escHtml(paraBR(p.data))}</td>
+          <td>${fBRL(p.valor_pago)}</td>
+          <td class="table__muted">${p.milhas_recebidas ? Number(p.milhas_recebidas).toLocaleString("pt-BR") : "—"}</td>
+          <td class="table__muted">${p.valor_por_milha ? fBRL(p.valor_por_milha) : "—"}</td>
+          <td class="table__actions-col">
+            <div class="table__actions">
+              <button class="btn btn--ghost btn--icon forn-pag-excluir" title="Excluir">✕</button>
+            </div>
+          </td>
+        </tr>`).join("");
+
+      body.querySelectorAll(".forn-pag-excluir").forEach(btn => {
+        btn.addEventListener("click", () => excluirPagamento(btn.closest("tr").dataset.id, btn.closest("tr").dataset.lancamentoId));
+      });
+    }
+  }
+
+  function abrirModalPagamento() {
+    gel("forn-pag-data").value = "";
+    gel("forn-pag-valor").value = "";
+    gel("forn-pag-milhas").value = "";
+    gel("forn-pag-valor-milha").value = "";
+    gel("forn-pag-observacoes").value = "";
+    gel("forn-modal-pagamento").hidden = false;
+    gel("forn-pag-data").focus();
+  }
+
+  function fecharModalPagamento() { gel("forn-modal-pagamento").hidden = true; }
+
+  async function salvarPagamento() {
+    if (!editando) return;
+    const dados = {
+      fornecedor_id: editando.id,
+      data: paraISO(gel("forn-pag-data").value.trim()),
+      valor_pago: parseFloat(gel("forn-pag-valor").value) || 0,
+      milhas_recebidas: parseFloat(gel("forn-pag-milhas").value) || null,
+      valor_por_milha: parseFloat(gel("forn-pag-valor-milha").value) || null,
+      observacoes: gel("forn-pag-observacoes").value.trim() || null,
+    };
+    if (!dados.data)       { alert("Informe a data do pagamento (DD/MM/AAAA)."); return; }
+    if (!dados.valor_pago) { alert("Informe o valor pago."); return; }
+
+    const btn = gel("forn-pag-salvar");
+    btn.disabled = true;
+    try {
+      await chamar("criar_pagamento_fornecedor", dados);
+      fecharModalPagamento();
+      await carregarPagamentos(editando.id);
+    } catch (err) {
+      alert("Erro ao registrar pagamento: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function excluirPagamento(id, lancamentoId) {
+    if (!confirm("Excluir esse pagamento?")) return;
+    try {
+      await chamar("excluir_pagamento_fornecedor", { id, lancamento_id: lancamentoId || undefined });
+      await carregarPagamentos(editando.id);
+    } catch (err) {
+      alert("Erro ao excluir pagamento: " + err.message);
+    }
+  }
 
   async function salvarForm() {
     const dados = {
@@ -391,6 +515,12 @@ ${listaTexto}`,
     gel("forn-pend-cancelar").addEventListener("click", fecharPendencia);
     gel("forn-pend-salvar").addEventListener("click", salvarPendencia);
     gel("forn-modal-pendencia").addEventListener("click", e => { if (e.target === gel("forn-modal-pendencia")) fecharPendencia(); });
+
+    gel("forn-pag-novo-btn").addEventListener("click", abrirModalPagamento);
+    gel("forn-pag-fechar").addEventListener("click", fecharModalPagamento);
+    gel("forn-pag-cancelar").addEventListener("click", fecharModalPagamento);
+    gel("forn-pag-salvar").addEventListener("click", salvarPagamento);
+    gel("forn-modal-pagamento").addEventListener("click", e => { if (e.target === gel("forn-modal-pagamento")) fecharModalPagamento(); });
 
     // financeiro.js cuida da senha/desbloqueio; só carrega os dados quando #fin-conteudo
     // deixar de estar escondido (comunicação só via DOM, sem chamar função de outro arquivo).

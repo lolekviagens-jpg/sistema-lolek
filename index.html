@@ -868,7 +868,7 @@
         <!-- Modal: novo/editar fornecedor -->
         <div class="modal" id="forn-modal" hidden>
           <div class="modal__backdrop"></div>
-          <div class="modal__dialog" style="max-width:480px">
+          <div class="modal__dialog" style="max-width:560px">
             <div class="modal__header">
               <span class="modal__title" id="forn-modal-titulo">Novo fornecedor</span>
               <button class="modal__close" id="forn-modal-fechar">✕</button>
@@ -892,12 +892,82 @@
                   <textarea id="forn-f-observacoes" class="input" rows="3"></textarea>
                 </label>
               </div>
+
+              <!-- Só aparece editando um fornecedor já existente -->
+              <div id="forn-pagamentos-secao" hidden style="margin-top:22px;border-top:1px solid var(--border);padding-top:16px">
+                <div class="stats" style="margin-bottom:14px">
+                  <div class="stat stat--gold">
+                    <div class="stat__value" id="forn-saldo-devedor">R$ 0,00</div>
+                    <div class="stat__label">Saldo devedor</div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                  <span class="field__label">Histórico de pagamentos</span>
+                  <button type="button" class="btn btn--ghost" id="forn-pag-novo-btn">+ Registrar pagamento</button>
+                </div>
+                <div class="card">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Valor pago</th>
+                        <th>Milhas</th>
+                        <th>Valor/milha</th>
+                        <th class="table__actions-col"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="forn-pag-tabela-body"></tbody>
+                  </table>
+                </div>
+                <div id="forn-pag-vazio"></div>
+              </div>
             </div>
             <div class="modal__footer">
               <button class="btn btn--ghost btn--danger" id="forn-f-excluir" hidden>Excluir</button>
               <div style="display:flex;gap:8px;margin-left:auto">
                 <button class="btn btn--ghost" id="forn-f-cancelar">Cancelar</button>
                 <button class="btn btn--gold" id="forn-f-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: registrar pagamento a fornecedor -->
+        <div class="modal" id="forn-modal-pagamento" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:440px">
+            <div class="modal__header">
+              <span class="modal__title">Registrar pagamento</span>
+              <button class="modal__close" id="forn-pag-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Data *</span>
+                  <input type="text" id="forn-pag-data" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Valor pago (R$) *</span>
+                  <input type="number" id="forn-pag-valor" class="input" step="0.01" min="0" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Milhas recebidas</span>
+                  <input type="number" id="forn-pag-milhas" class="input" step="1" min="0" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Valor por milha (R$)</span>
+                  <input type="number" id="forn-pag-valor-milha" class="input" step="0.01" min="0" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Observações</span>
+                  <textarea id="forn-pag-observacoes" class="input" rows="2"></textarea>
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="forn-pag-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="forn-pag-salvar">Salvar</button>
               </div>
             </div>
           </div>
