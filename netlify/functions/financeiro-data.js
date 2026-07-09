@@ -214,27 +214,41 @@ async function executarAcao(action, data, secretKey) {
 
     // Confirma os grupos revisados pela Thay depois do agrupamento por IA: cria o fornecedor
     // (se for novo) e vincula os aliases confirmados a ele.
+    // Cria tudo em lote (no máximo 2 chamadas ao Supabase, não importa quantos grupos) — a versão
+    // anterior criava um fornecedor por vez em sequência e estourava o tempo limite da function
+    // com listas grandes (só uns 130 grupos já era o suficiente pra travar no meio do processo).
     case "confirmar_grupos_ia": {
       const grupos = Array.isArray(data.grupos) ? data.grupos : [];
-      const resultado = [];
-      for (const grupo of grupos) {
-        let fornecedorId = grupo.fornecedor_id;
-        if (!fornecedorId) {
-          if (!grupo.nome_novo) throw new Error("Grupo sem fornecedor_id nem nome_novo");
-          const [criado] = await supabaseRest("/fornecedores", "POST", secretKey, { nome: grupo.nome_novo });
-          fornecedorId = criado.id;
-        }
-        const aliases = Array.isArray(grupo.aliases) ? grupo.aliases : [];
-        if (aliases.length > 0) {
-          await supabaseRest(
-            "/fornecedor_aliases?on_conflict=alias_normalizado", "POST", secretKey,
-            aliases.map((a) => ({ alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: fornecedorId, status: "confirmado" })),
-            { "Prefer": "resolution=merge-duplicates,return=representation" }
-          );
-        }
-        resultado.push({ fornecedor_id: fornecedorId });
+      if (grupos.length === 0) return [];
+
+      const semFornecedor = grupos.filter((g) => !g.fornecedor_id);
+      const comFornecedor  = grupos.filter((g) => g.fornecedor_id);
+
+      let criados = [];
+      if (semFornecedor.length > 0) {
+        criados = await supabaseRest("/fornecedores", "POST", secretKey, semFornecedor.map((g) => ({ nome: g.nome_novo })));
       }
-      return resultado;
+
+      const todosAliases = [];
+      semFornecedor.forEach((g, i) => {
+        (g.aliases || []).forEach((a) => todosAliases.push({
+          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: criados[i].id, status: "confirmado",
+        }));
+      });
+      comFornecedor.forEach((g) => {
+        (g.aliases || []).forEach((a) => todosAliases.push({
+          alias_normalizado: a.alias_normalizado, alias_original: a.alias_original, fornecedor_id: g.fornecedor_id, status: "confirmado",
+        }));
+      });
+
+      if (todosAliases.length > 0) {
+        await supabaseRest(
+          "/fornecedor_aliases?on_conflict=alias_normalizado", "POST", secretKey, todosAliases,
+          { "Prefer": "resolution=merge-duplicates,return=representation" }
+        );
+      }
+
+      return [...criados, ...comFornecedor.map((g) => ({ id: g.fornecedor_id }))];
     }
 
     // Atribuição pontual de um alias pendente (sem re-rodar o agrupamento por IA inteiro).

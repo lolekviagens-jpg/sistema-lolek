@@ -232,6 +232,11 @@
       const text = await resp.text();
       const rows = parseCsvPlanilha(text);
 
+      // Só considera nomes ainda sem alias confirmado — assim dá pra rodar de novo quantas vezes
+      // precisar (por ex. depois de resolver as pendências) sem re-agrupar quem já foi confirmado.
+      const aliasesExistentes = await chamar("listar_aliases");
+      const jaConfirmados = new Set(aliasesExistentes.filter(a => a.status === "confirmado").map(a => a.alias_normalizado));
+
       contagemBruta = new Map();
       rows.forEach((cols) => {
         const situacao = (cols[COL_SITUACAO] || "").trim();
@@ -239,12 +244,12 @@
         const raw = (cols[COL_MILHEIRO] || "").trim();
         if (!raw) return;
         const norm = normalizarTexto(raw);
-        if (norm === "-" || norm === "tarifado") return;
+        if (norm === "-" || norm === "tarifado" || jaConfirmados.has(norm)) return;
         contagemBruta.set(raw, (contagemBruta.get(raw) || 0) + 1);
       });
 
       const nomes = Array.from(contagemBruta.keys());
-      if (nomes.length === 0) { alert("Nenhum nome de fornecedor encontrado na coluna K da planilha."); return; }
+      if (nomes.length === 0) { alert("Todos os fornecedores da planilha já foram identificados."); return; }
 
       btn.textContent = "⏳ Agrupando com IA...";
 
@@ -300,11 +305,14 @@ ${listaTexto}`,
     const wrap = gel("forn-revisao-lista");
     wrap.innerHTML = grupos.map((g, i) => {
       const totalVendas = g.aliases.reduce((soma, a) => soma + (contagemBruta.get(a) || 0), 0);
+      // Se a IA esqueceu de sugerir um nome, usa o alias mais frequente do grupo como respaldo
+      // (nunca deixa o campo em branco — um grupo sem nome vira "silenciosamente ignorado" na hora de confirmar).
+      const nomeSugerido = g.nome_sugerido || g.aliases.slice().sort((a, b) => (contagemBruta.get(b) || 0) - (contagemBruta.get(a) || 0))[0] || "";
       return `
       <div class="card forn-revisao-card" data-i="${i}" style="padding:14px;margin-bottom:10px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <input type="checkbox" class="forn-rev-incluir" checked />
-          <input type="text" class="input forn-rev-nome" value="${escHtml(g.nome_sugerido)}" style="flex:1;font-weight:600" />
+          <input type="text" class="input forn-rev-nome" value="${escHtml(nomeSugerido)}" style="flex:1;font-weight:600" />
           <span class="table__muted" style="white-space:nowrap">${totalVendas} venda${totalVendas !== 1 ? "s" : ""}</span>
           ${g.ambiguo ? `<span class="badge badge--pendente" title="${escHtml(g.motivo || "")}">⚠ Ambíguo</span>` : ""}
         </div>
