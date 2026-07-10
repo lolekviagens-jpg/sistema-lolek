@@ -8,6 +8,7 @@
 
   let lancamentos   = [];
   let filtroAtual   = "todos";
+  let periodoAtual  = "mes";
   let editando      = null;
   let desbloqueado  = false; // só em memória: recarregar a página (F5) sempre pede a senha de novo
   let senhaAtual    = "";    // guardada em memória pra autenticar cada chamada à function
@@ -328,9 +329,39 @@
     mostrarLock();
   }
 
+  // ===== Filtro de período =====
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function dataISO(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+
+  // Retorna [inicioISO, fimISO] (ambos inclusive) do período selecionado, ou null pra "tudo".
+  function intervaloPeriodo() {
+    const hoje = new Date();
+    const y = hoje.getFullYear(), m = hoje.getMonth();
+    switch (periodoAtual) {
+      case "tudo": return null;
+      case "hoje": { const iso = dataISO(hoje); return [iso, iso]; }
+      case "mes": return [dataISO(new Date(y, m, 1)), dataISO(new Date(y, m + 1, 0))];
+      case "mes_anterior": return [dataISO(new Date(y, m - 1, 1)), dataISO(new Date(y, m, 0))];
+      case "trimestre": { const q = Math.floor(m / 3); return [dataISO(new Date(y, q * 3, 1)), dataISO(new Date(y, q * 3 + 3, 0))]; }
+      case "ano": return [dataISO(new Date(y, 0, 1)), dataISO(new Date(y, 11, 31))];
+      case "personalizado": {
+        const ini = gel("fin-periodo-inicio").value, fim = gel("fin-periodo-fim").value;
+        return (ini && fim) ? [ini, fim] : null;
+      }
+      default: return null;
+    }
+  }
+
+  function lancamentosNoPeriodo() {
+    const intervalo = intervaloPeriodo();
+    if (!intervalo) return lancamentos.slice();
+    const [ini, fim] = intervalo;
+    return lancamentos.filter(l => l.vencimento && l.vencimento >= ini && l.vencimento <= fim);
+  }
+
   // ===== Lançamentos =====
   function lancamentosFiltrados() {
-    let lista = lancamentos.slice();
+    let lista = lancamentosNoPeriodo();
     if (filtroAtual === "entrada")  lista = lista.filter(l => l.tipo === "entrada");
     if (filtroAtual === "saida")    lista = lista.filter(l => l.tipo === "saida");
     if (filtroAtual === "pendente") lista = lista.filter(l => l.status === "pendente");
@@ -351,7 +382,7 @@
 
   function renderStats() {
     let saldo = 0, receber = 0, pagar = 0;
-    lancamentos.forEach(l => {
+    lancamentosNoPeriodo().forEach(l => {
       const v = parseFloat(l.valor) || 0;
       if (l.status === "pago") {
         saldo += l.tipo === "entrada" ? v : -v;
@@ -816,6 +847,17 @@ ${texto}`;
         renderTabela();
       });
     });
+
+    gel("fin-periodo-select").addEventListener("change", () => {
+      periodoAtual = gel("fin-periodo-select").value;
+      const personalizado = periodoAtual === "personalizado";
+      gel("fin-periodo-inicio").hidden = !personalizado;
+      gel("fin-periodo-ate-lbl").hidden = !personalizado;
+      gel("fin-periodo-fim").hidden = !personalizado;
+      if (!personalizado) render();
+    });
+    gel("fin-periodo-inicio").addEventListener("change", () => { if (gel("fin-periodo-fim").value) render(); });
+    gel("fin-periodo-fim").addEventListener("change", () => { if (gel("fin-periodo-inicio").value) render(); });
 
     if (estaDesbloqueado()) mostrarConteudo();
     else mostrarLock();

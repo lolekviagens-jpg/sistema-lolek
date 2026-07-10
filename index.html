@@ -685,6 +685,23 @@
               </div>
             </div>
 
+            <!-- Filtro de período -->
+            <div class="fin-filtros" style="margin-bottom:10px;align-items:center">
+              <span class="field__label" style="margin:0">Período:</span>
+              <select id="fin-periodo-select" class="input" style="width:auto">
+                <option value="tudo">Tudo</option>
+                <option value="hoje">Hoje</option>
+                <option value="mes" selected>Este mês</option>
+                <option value="mes_anterior">Mês anterior</option>
+                <option value="trimestre">Este trimestre</option>
+                <option value="ano">Este ano</option>
+                <option value="personalizado">Personalizado…</option>
+              </select>
+              <input type="date" id="fin-periodo-inicio" class="input" style="width:auto" hidden />
+              <span id="fin-periodo-ate-lbl" hidden>até</span>
+              <input type="date" id="fin-periodo-fim" class="input" style="width:auto" hidden />
+            </div>
+
             <!-- Filtros -->
             <div class="fin-filtros">
               <button class="fin-filtro is-active" data-filtro="todos" type="button">Todos</button>
