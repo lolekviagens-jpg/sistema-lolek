@@ -669,6 +669,43 @@
               </div>
             </div>
 
+            <!-- Dashboard: receita/custo/lucro + crescimento -->
+            <div class="stats">
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-receita">R$ 0,00</div>
+                <div class="stat__label">Receita bruta</div>
+              </div>
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-custo">R$ 0,00</div>
+                <div class="stat__label">Custo total</div>
+              </div>
+              <div class="stat stat--gold">
+                <div class="stat__value" id="fin-stat-lucro">R$ 0,00</div>
+                <div class="stat__label">Lucro líquido real</div>
+              </div>
+              <div class="stat">
+                <div class="stat__value" id="fin-stat-crescimento">—</div>
+                <div class="stat__label">Crescimento (receita) vs período anterior</div>
+              </div>
+            </div>
+
+            <!-- Gráficos -->
+            <div class="fin-charts-grid">
+              <div class="card fin-chart-card">
+                <div class="fin-chart-card__title">Entradas × Saídas — últimos 6 meses</div>
+                <div class="fin-bar-chart" id="fin-bar-chart"></div>
+                <div class="fin-chart-legend" id="fin-bar-legend"></div>
+              </div>
+              <div class="card fin-chart-card">
+                <div class="fin-chart-card__title">Custo por categoria</div>
+                <div class="fin-donut-wrap">
+                  <div class="fin-donut" id="fin-donut"></div>
+                  <div class="fin-chart-legend fin-chart-legend--donut" id="fin-donut-legend"></div>
+                </div>
+              </div>
+            </div>
+            <div class="fin-chart-tooltip" id="fin-chart-tooltip" hidden></div>
+
             <!-- Cards resumo -->
             <div class="stats">
               <div class="stat">

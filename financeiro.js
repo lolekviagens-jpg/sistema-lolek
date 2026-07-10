@@ -376,6 +376,7 @@
 
   function render() {
     renderStats();
+    renderDashboard();
     renderTabela();
     gel("fin-updated").textContent = lancamentos.length + " lançamento" + (lancamentos.length !== 1 ? "s" : "") + " no total";
   }
@@ -395,6 +396,193 @@
     gel("fin-stat-saldo").textContent   = fBRL(saldo);
     gel("fin-stat-receber").textContent = fBRL(receber);
     gel("fin-stat-pagar").textContent   = fBRL(pagar);
+  }
+
+  // ===== Dashboard (cards de receita/custo/lucro + gráficos) =====
+
+  const COR_ENTRADA = "#1f8a4c";
+  const COR_SAIDA   = "#c0392b";
+  const MES_ABREV   = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const DONUT_CORES = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
+
+  // Retorna [inicioISO, fimISO] do período imediatamente anterior e equivalente ao selecionado (pra comparar crescimento).
+  function intervaloPeriodoAnterior() {
+    const hoje = new Date();
+    const y = hoje.getFullYear(), m = hoje.getMonth();
+    switch (periodoAtual) {
+      case "tudo": return null;
+      case "hoje": { const ontem = new Date(y, m, hoje.getDate() - 1); const iso = dataISO(ontem); return [iso, iso]; }
+      case "mes": return [dataISO(new Date(y, m - 1, 1)), dataISO(new Date(y, m, 0))];
+      case "mes_anterior": return [dataISO(new Date(y, m - 2, 1)), dataISO(new Date(y, m - 1, 0))];
+      case "trimestre": { const q = Math.floor(m / 3); return [dataISO(new Date(y, q * 3 - 3, 1)), dataISO(new Date(y, q * 3, 0))]; }
+      case "ano": return [dataISO(new Date(y - 1, 0, 1)), dataISO(new Date(y - 1, 11, 31))];
+      case "personalizado": {
+        const ini = gel("fin-periodo-inicio").value, fim = gel("fin-periodo-fim").value;
+        if (!ini || !fim) return null;
+        const dIni = new Date(ini + "T00:00:00"), dFim = new Date(fim + "T00:00:00");
+        const dias = Math.round((dFim - dIni) / 86400000) + 1;
+        const iniAnterior = new Date(dIni); iniAnterior.setDate(iniAnterior.getDate() - dias);
+        const fimAnterior = new Date(dIni); fimAnterior.setDate(fimAnterior.getDate() - 1);
+        return [dataISO(iniAnterior), dataISO(fimAnterior)];
+      }
+      default: return null;
+    }
+  }
+
+  function lancamentosNoIntervalo(intervalo) {
+    if (!intervalo) return [];
+    const [ini, fim] = intervalo;
+    return lancamentos.filter(l => l.vencimento && l.vencimento >= ini && l.vencimento <= fim);
+  }
+
+  function somaReceitaCusto(lista) {
+    let receita = 0, custo = 0;
+    lista.forEach(l => {
+      if (l.status !== "pago") return;
+      const v = parseFloat(l.valor) || 0;
+      if (l.tipo === "entrada") receita += v; else custo += v;
+    });
+    return { receita, custo };
+  }
+
+  // Mostra/esconde uma tooltip compartilhada (usada pelas barras do gráfico) perto do elemento hovered/focado.
+  function ativarTooltips(root) {
+    const tip = gel("fin-chart-tooltip");
+    root.querySelectorAll("[data-tip]").forEach(el => {
+      const mostrar = () => {
+        tip.textContent = el.dataset.tip;
+        tip.hidden = false;
+        const rect = el.getBoundingClientRect();
+        const tipRect = tip.getBoundingClientRect();
+        let x = rect.left + rect.width / 2 - tipRect.width / 2;
+        x = Math.max(8, Math.min(x, window.innerWidth - tipRect.width - 8));
+        tip.style.left = x + "px";
+        tip.style.top = (rect.top - tipRect.height - 8) + "px";
+      };
+      const esconder = () => { tip.hidden = true; };
+      el.addEventListener("mouseenter", mostrar);
+      el.addEventListener("mousemove", mostrar);
+      el.addEventListener("mouseleave", esconder);
+      el.addEventListener("focus", mostrar);
+      el.addEventListener("blur", esconder);
+    });
+  }
+
+  function renderBarChart() {
+    const hoje = new Date();
+    const meses = [];
+    for (let i = 5; i >= 0; i--) meses.push(new Date(hoje.getFullYear(), hoje.getMonth() - i, 1));
+
+    const dados = meses.map(d => {
+      const iniISO = dataISO(new Date(d.getFullYear(), d.getMonth(), 1));
+      const fimISO = dataISO(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+      const { receita, custo } = somaReceitaCusto(lancamentosNoIntervalo([iniISO, fimISO]));
+      return { label: MES_ABREV[d.getMonth()] + "/" + String(d.getFullYear()).slice(2), entrada: receita, saida: custo };
+    });
+
+    const max = Math.max(1, ...dados.map(d => Math.max(d.entrada, d.saida)));
+    const ALTURA = 150;
+
+    const container = gel("fin-bar-chart");
+    container.innerHTML = dados.map(d => {
+      const hEntrada = Math.round((d.entrada / max) * ALTURA);
+      const hSaida   = Math.round((d.saida   / max) * ALTURA);
+      return `
+        <div class="fin-bar-group">
+          <div class="fin-bar-cols" style="height:${ALTURA}px">
+            <div class="fin-bar fin-bar--entrada" style="height:${hEntrada}px" tabindex="0" data-tip="Entradas — ${escHtml(d.label)}: ${fBRL(d.entrada)}"></div>
+            <div class="fin-bar fin-bar--saida" style="height:${hSaida}px" tabindex="0" data-tip="Saídas — ${escHtml(d.label)}: ${fBRL(d.saida)}"></div>
+          </div>
+          <div class="fin-bar-month-label">${escHtml(d.label)}</div>
+        </div>`;
+    }).join("");
+
+    gel("fin-bar-legend").innerHTML = `
+      <span class="fin-legend-item"><span class="fin-legend-dot" style="background:${COR_ENTRADA}"></span>Entradas</span>
+      <span class="fin-legend-item"><span class="fin-legend-dot" style="background:${COR_SAIDA}"></span>Saídas</span>`;
+
+    ativarTooltips(container);
+  }
+
+  function renderDonutChart() {
+    const totais = new Map();
+    lancamentosNoPeriodo().forEach(l => {
+      if (l.tipo !== "saida" || l.status !== "pago") return;
+      const v = parseFloat(l.valor) || 0;
+      const cat = (l.categoria || "").trim() || "Outros";
+      totais.set(cat, (totais.get(cat) || 0) + v);
+    });
+
+    let entradas = Array.from(totais.entries()).sort((a, b) => b[1] - a[1]);
+
+    // Dobra categorias além da 7ª dentro de "Outros" — nunca gera um 9º slot de cor.
+    if (entradas.length > 8) {
+      const principais = entradas.slice(0, 7);
+      const resto = entradas.slice(7).reduce((s, [, v]) => s + v, 0);
+      const outrosExistente = principais.find(([cat]) => cat === "Outros");
+      if (outrosExistente) outrosExistente[1] += resto;
+      else principais.push(["Outros", resto]);
+      entradas = principais;
+    }
+
+    const total = entradas.reduce((s, [, v]) => s + v, 0);
+    const donut  = gel("fin-donut");
+    const legend = gel("fin-donut-legend");
+
+    if (total <= 0) {
+      donut.style.background = "var(--border)";
+      legend.innerHTML = '<span class="fin-chart-vazio">Sem saídas pagas no período</span>';
+      return;
+    }
+
+    let acumulado = 0;
+    const stops = entradas.map(([, v], i) => {
+      const cor = DONUT_CORES[i % DONUT_CORES.length];
+      const inicio = (acumulado / total) * 360;
+      acumulado += v;
+      const fim = (acumulado / total) * 360;
+      return `${cor} ${inicio}deg ${fim}deg`;
+    }).join(", ");
+    donut.style.background = `conic-gradient(${stops})`;
+
+    legend.innerHTML = entradas.map(([cat, v], i) => {
+      const pct = (v / total * 100).toFixed(1).replace(".", ",");
+      const cor = DONUT_CORES[i % DONUT_CORES.length];
+      return `
+        <div class="fin-legend-item fin-legend-item--block">
+          <span class="fin-legend-dot" style="background:${cor}"></span>
+          <span class="fin-legend-label">${escHtml(cat)}</span>
+          <span class="fin-legend-value">${fBRL(v)} · ${pct}%</span>
+        </div>`;
+    }).join("");
+  }
+
+  function renderDashboard() {
+    const { receita, custo } = somaReceitaCusto(lancamentosNoPeriodo());
+    const lucro = receita - custo;
+    gel("fin-stat-receita").textContent = fBRL(receita);
+    gel("fin-stat-custo").textContent   = fBRL(custo);
+    gel("fin-stat-lucro").textContent   = fBRL(lucro);
+
+    const elCrescimento = gel("fin-stat-crescimento");
+    const intervaloAnterior = periodoAtual === "tudo" ? null : intervaloPeriodoAnterior();
+    const anterior = somaReceitaCusto(lancamentosNoIntervalo(intervaloAnterior));
+
+    if (!intervaloAnterior || (anterior.receita === 0 && receita === 0)) {
+      elCrescimento.textContent = "—";
+      elCrescimento.style.color = "";
+    } else if (anterior.receita === 0) {
+      elCrescimento.textContent = "▲ novo";
+      elCrescimento.style.color = COR_ENTRADA;
+    } else {
+      const pct = ((receita - anterior.receita) / anterior.receita) * 100;
+      const seta = pct >= 0 ? "▲" : "▼";
+      elCrescimento.textContent = seta + " " + Math.abs(pct).toFixed(1).replace(".", ",") + "%";
+      elCrescimento.style.color = pct >= 0 ? COR_ENTRADA : COR_SAIDA;
+    }
+
+    renderBarChart();
+    renderDonutChart();
   }
 
   function renderTabela() {

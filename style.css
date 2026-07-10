@@ -372,6 +372,169 @@ textarea.input {
   color: var(--gold);
 }
 
+/* ===== Financeiro: dashboard (gráficos) ===== */
+.fin-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+@media (max-width: 900px) {
+  .fin-charts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fin-chart-card {
+  padding: 20px 22px;
+}
+
+.fin-chart-card__title {
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 18px;
+}
+
+.fin-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  height: 170px;
+  padding-top: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fin-bar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.fin-bar-cols {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.fin-bar {
+  width: 16px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.fin-bar:hover,
+.fin-bar:focus-visible {
+  filter: brightness(0.88);
+  outline: none;
+}
+
+.fin-bar--entrada {
+  background: #1f8a4c;
+}
+
+.fin-bar--saida {
+  background: #c0392b;
+}
+
+.fin-bar-month-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.fin-chart-legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.fin-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.fin-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.fin-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.fin-donut {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.fin-donut::after {
+  content: "";
+  position: absolute;
+  inset: 26px;
+  background: var(--surface);
+  border-radius: 50%;
+}
+
+.fin-chart-legend--donut {
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 0;
+  flex: 1;
+  min-width: 180px;
+}
+
+.fin-legend-item--block {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.fin-legend-label {
+  flex: 1;
+}
+
+.fin-legend-value {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fin-chart-vazio {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.fin-chart-tooltip {
+  position: fixed;
+  z-index: 500;
+  background: var(--navy);
+  color: #fff;
+  font-size: 0.78rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+  box-shadow: var(--shadow);
+  max-width: 220px;
+}
+
 /* ===== Card / tabela ===== */
 .card {
   background: var(--surface);
