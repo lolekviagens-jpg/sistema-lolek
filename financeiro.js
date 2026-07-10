@@ -488,6 +488,8 @@
   function abrirImportar() {
     gel("fin-imp-origem").value = "";
     gel("fin-imp-texto").value  = "";
+    gel("fin-imp-arquivo").value = "";
+    gel("fin-imp-arquivo-nome").textContent = "";
     gel("fin-imp-passo1").hidden = false;
     gel("fin-imp-passo2").hidden = true;
     importados = [];
@@ -500,25 +502,10 @@
     importados = [];
   }
 
-  async function extrairExtrato() {
-    const origem = gel("fin-imp-origem").value.trim();
-    const texto  = gel("fin-imp-texto").value.trim();
-    if (!texto) { alert("Cole o texto do extrato antes de extrair."); return; }
+  const CATEGORIAS_EXTRATO = ["Milheiro/Fornecedor", "Taxa de embarque cartão", "Aluguel", "Salário", "Marketing", "Ferramentas/Sistemas", "Outros"];
 
-    const btn = gel("fin-imp-extrair-btn");
-    btn.disabled = true;
-    btn.textContent = "⏳ Extraindo...";
-
-    try {
-      const resp = await fetch("/.netlify/functions/anthropic", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: getModel(),
-          max_tokens: 4096,
-          messages: [{
-            role: "user",
-            content: `Extraia todas as transações do extrato bancário ou fatura de cartão de crédito abaixo. Ignore linhas de saldo, resumo, limite ou totalizadores — só transações individuais.
+  function montarPromptExtrato(texto) {
+    return `Extraia todas as transações do extrato bancário ou fatura de cartão de crédito abaixo. Ignore linhas de saldo, resumo, limite ou totalizadores — só transações individuais.
 
 Para cada transação retorne:
 - data: DD/MM/AAAA
@@ -526,37 +513,194 @@ Para cada transação retorne:
 - valor: número positivo, sem sinal
 - tipo: "entrada" para receita/crédito/estorno, "saida" para despesa/débito/compra
 - confianca: "alta" se o tipo de gasto é claro pelo texto (ex: tarifa bancária, PIX identificado, pagamento de fatura, juros, anuidade), ou "baixa" se for uma compra genérica sem contexto do que foi (ex: "COMPRA CARTAO ESTABELECIMENTO X", nome de maquininha, código numérico)
-- categoria: sugestão curta de categoria quando confianca for "alta"; deixe "" (vazio) quando for "baixa"
+- categoria: uma das opções a seguir quando confianca for "alta" (escolha a mais parecida): ${CATEGORIAS_EXTRATO.join(", ")}; deixe "" (vazio) quando for "baixa"
 
 Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
 {"transacoes":[{"data":"","descricao":"","valor":0,"tipo":"","confianca":"","categoria":""}]}
 
 EXTRATO:
-${texto}`,
-          }],
-        }),
-      });
+${texto}`;
+  }
 
-      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
+  async function extrairViaIA(content) {
+    const resp = await fetch("/.netlify/functions/anthropic", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: getModel(), max_tokens: 4096, messages: [{ role: "user", content }] }),
+    });
+    if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
 
-      const data = await resp.json();
-      const jsonStr = extractJson(data.content?.[0]?.text || "");
-      if (!jsonStr) throw new Error("Resposta inesperada da IA");
+    const data = await resp.json();
+    const jsonStr = extractJson(data.content?.[0]?.text || "");
+    if (!jsonStr) throw new Error("Resposta inesperada da IA");
 
-      const parsed = JSON.parse(jsonStr);
-      const transacoes = Array.isArray(parsed.transacoes) ? parsed.transacoes : [];
-      if (transacoes.length === 0) { alert("Nenhuma transação encontrada nesse texto."); return; }
+    const parsed = JSON.parse(jsonStr);
+    const transacoes = Array.isArray(parsed.transacoes) ? parsed.transacoes : [];
+    return transacoes.map(t => ({
+      data:      t.data || "",
+      descricao: t.descricao || "",
+      valor:     parseFloat(t.valor) || 0,
+      tipo:      t.tipo === "entrada" ? "entrada" : "saida",
+      categoria: t.categoria || "",
+      confianca: t.confianca === "alta" ? "alta" : "baixa",
+    }));
+  }
 
-      importados = transacoes.map(t => ({
-        data:      t.data || "",
-        descricao: t.descricao || "",
-        valor:     parseFloat(t.valor) || 0,
-        tipo:      t.tipo === "entrada" ? "entrada" : "saida",
-        categoria: t.categoria || "",
-        confianca: t.confianca === "alta" ? "alta" : "baixa",
-        origem,
-      }));
+  function lerArquivoComoTexto(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Não consegui ler o arquivo"));
+      reader.readAsText(file);
+    });
+  }
 
+  function lerArquivoComoBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = () => reject(new Error("Não consegui ler o arquivo"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ===== OFX (client-side, sem IA) =====
+  // Aceita OFX 1.x (SGML, tags sem fechamento) e OFX 2.x (XML, com fechamento) com o mesmo
+  // parser: cada linha "<TAG>valor" ou "<TAG>valor</TAG>" vira uma chave dentro da transação
+  // atual, delimitada por <STMTTRN>...</STMTTRN>.
+  function parseOfxTransacoes(texto) {
+    const linhas = texto.split(/\r?\n/);
+    const transacoes = [];
+    let atual = null;
+    for (const linhaRaw of linhas) {
+      const linha = linhaRaw.trim();
+      if (!linha.startsWith("<")) continue;
+      if (/^<\/STMTTRN>$/i.test(linha)) { if (atual) transacoes.push(atual); atual = null; continue; }
+      if (/^<STMTTRN>$/i.test(linha))   { atual = {}; continue; }
+      if (!atual) continue;
+      const comFechamento = linha.match(/^<([A-Z0-9.]+)>(.*)<\/\1>$/i);
+      if (comFechamento) { atual[comFechamento[1].toUpperCase()] = comFechamento[2]; continue; }
+      const semFechamento = linha.match(/^<([A-Z0-9.]+)>(.*)$/i);
+      if (semFechamento) { atual[semFechamento[1].toUpperCase()] = semFechamento[2]; }
+    }
+    return transacoes;
+  }
+
+  const OFX_TIPOS_SAIDA = ["DEBIT", "PAYMENT", "CHECK", "FEE", "SRVCHG", "CASH", "ATM", "POS", "DIRECTDEBIT", "REPEATPMT"];
+
+  function mapearOfx(transacoes) {
+    return transacoes.map(t => {
+      const valorNum = parseFloat(String(t.TRNAMT || "0").replace(",", ".")) || 0;
+      const dataRaw  = String(t.DTPOSTED || "").slice(0, 8);
+      const data = dataRaw.length === 8 ? `${dataRaw.slice(6, 8)}/${dataRaw.slice(4, 6)}/${dataRaw.slice(0, 4)}` : "";
+      const tipo = valorNum < 0 || OFX_TIPOS_SAIDA.includes(String(t.TRNTYPE || "").toUpperCase()) ? "saida" : "entrada";
+      return { data, descricao: t.MEMO || t.NAME || "Transação OFX", valor: Math.abs(valorNum), tipo, categoria: "", confianca: "alta" };
+    }).filter(t => t.valor > 0);
+  }
+
+  // ===== CSV de extrato bancário (heurístico, sem IA — diferente do CSV da planilha de vendas) =====
+  // Extratos de banco podem vir em qualquer formato de número ("2500.00" americano ou "2.500,00"
+  // brasileiro) — parseNumPlanilha assume sempre o formato brasileiro e erra o americano.
+  function parseNumExtrato(s) {
+    let str = String(s || "").trim().replace(/[R$\s]/g, "");
+    if (!str) return 0;
+    const temVirgula = str.includes(","), temPonto = str.includes(".");
+    if (temVirgula && temPonto) {
+      // O separador que aparece por último é o decimal.
+      if (str.lastIndexOf(",") > str.lastIndexOf(".")) str = str.replace(/\./g, "").replace(",", ".");
+      else str = str.replace(/,/g, "");
+    } else if (temVirgula) {
+      str = str.replace(",", ".");
+    } else if (temPonto) {
+      // Só ponto: 2 dígitos depois dele é decimal ("150.30"), senão é milhar ("1.234").
+      const partes = str.split(".");
+      if (partes.length > 1 && partes[partes.length - 1].length !== 2) str = str.replace(/\./g, "");
+    }
+    const n = parseFloat(str);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function detectarColunasCsv(header) {
+    const norm = header.map(h => normalizarTexto(h));
+    const usados = new Set();
+    // Cada coluna só pode ser usada uma vez — sem isso, um cabeçalho tipo "Data Lançamento" batia
+    // tanto no regex de data quanto no de descrição (por causa de "lancamento"), e a descrição
+    // acabava virando a própria data.
+    function achar(regex) {
+      const i = norm.findIndex((h, idx) => !usados.has(idx) && regex.test(h));
+      if (i >= 0) usados.add(i);
+      return i;
+    }
+    const idxData    = achar(/\bdata\b|date/);
+    const idxDesc    = achar(/descri|historic|memo|lancamento|description/);
+    const idxValor   = achar(/^valor|amount|value/);
+    const idxCredito = achar(/credito|credit/);
+    const idxDebito  = achar(/debito|debit/);
+    const reconhecido = idxData >= 0 && idxDesc >= 0 && (idxValor >= 0 || (idxCredito >= 0 && idxDebito >= 0));
+    return { idxData, idxDesc, idxValor, idxCredito, idxDebito, reconhecido };
+  }
+
+  function mapearLinhaCsv(cols, colunas) {
+    let valor = 0, tipo = "saida";
+    if (colunas.idxValor >= 0) {
+      valor = parseNumExtrato(cols[colunas.idxValor]);
+      tipo = valor < 0 ? "saida" : "entrada";
+      valor = Math.abs(valor);
+    } else {
+      const credito = parseNumExtrato(cols[colunas.idxCredito] || "0");
+      const debito  = parseNumExtrato(cols[colunas.idxDebito] || "0");
+      if (credito > 0) { valor = credito; tipo = "entrada"; } else { valor = debito; tipo = "saida"; }
+    }
+    return {
+      data: (cols[colunas.idxData] || "").trim(),
+      descricao: (cols[colunas.idxDesc] || "Transação").trim(),
+      valor, tipo, categoria: "", confianca: "alta",
+    };
+  }
+
+  async function extrairExtrato() {
+    const arquivo = gel("fin-imp-arquivo").files[0];
+    const texto   = gel("fin-imp-texto").value.trim();
+
+    const btn = gel("fin-imp-extrair-btn");
+    btn.disabled = true;
+    btn.textContent = "⏳ Extraindo...";
+
+    try {
+      let extraidos;
+
+      if (arquivo) {
+        const nome = arquivo.name.toLowerCase();
+        if (nome.endsWith(".ofx") || nome.endsWith(".qfx")) {
+          extraidos = mapearOfx(parseOfxTransacoes(await lerArquivoComoTexto(arquivo)));
+          if (extraidos.length === 0) throw new Error("Nenhuma transação encontrada no arquivo OFX.");
+        } else if (nome.endsWith(".csv")) {
+          const linhas = parseCsvPlanilha(await lerArquivoComoTexto(arquivo)).filter(l => l.some(c => c.trim()));
+          const colunas = linhas[0] ? detectarColunasCsv(linhas[0]) : null;
+          if (colunas && colunas.reconhecido) {
+            extraidos = linhas.slice(1).map(cols => mapearLinhaCsv(cols, colunas));
+            if (extraidos.length === 0) throw new Error("Nenhuma transação encontrada no CSV.");
+          } else {
+            // Layout não reconhecido — cai pro caminho de IA com o texto cru, em vez de dar erro.
+            extraidos = await extrairViaIA([{ type: "text", text: montarPromptExtrato(await lerArquivoComoTexto(arquivo)) }]);
+          }
+        } else if (nome.endsWith(".pdf")) {
+          const base64 = await lerArquivoComoBase64(arquivo);
+          extraidos = await extrairViaIA([
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+            { type: "text", text: montarPromptExtrato("(o extrato está no arquivo PDF anexado a esta mensagem)") },
+          ]);
+        } else {
+          throw new Error("Formato de arquivo não suportado — envie .ofx, .csv ou .pdf.");
+        }
+      } else {
+        if (!texto) { alert("Cole o texto do extrato ou envie um arquivo antes de extrair."); return; }
+        extraidos = await extrairViaIA([{ type: "text", text: montarPromptExtrato(texto) }]);
+      }
+
+      if (extraidos.length === 0) { alert("Nenhuma transação encontrada."); return; }
+
+      importados = extraidos;
       renderImportRevisao();
       gel("fin-imp-passo1").hidden = true;
       gel("fin-imp-passo2").hidden = false;
@@ -582,7 +726,12 @@ ${texto}`,
             <option value="saida"${t.tipo === "saida" ? " selected" : ""}>Saída</option>
           </select>
         </td>
-        <td><input type="text" class="input fin-imp-categoria" value="${escHtml(t.categoria)}" placeholder="${t.confianca === "baixa" ? "O que é isso?" : ""}" /></td>
+        <td>
+          <select class="input fin-imp-categoria">
+            <option value="">${t.confianca === "baixa" ? "— o que é isso? —" : "— selecione —"}</option>
+            ${CATEGORIAS_EXTRATO.map(c => `<option value="${escHtml(c)}"${t.categoria === c ? " selected" : ""}>${escHtml(c)}</option>`).join("")}
+          </select>
+        </td>
       </tr>`).join("");
   }
 
@@ -649,6 +798,10 @@ ${texto}`,
     gel("fin-imp-fechar").addEventListener("click", fecharImportar);
     gel("fin-imp-cancelar").addEventListener("click", fecharImportar);
     gel("fin-imp-extrair-btn").addEventListener("click", extrairExtrato);
+    gel("fin-imp-arquivo").addEventListener("change", () => {
+      const f = gel("fin-imp-arquivo").files[0];
+      gel("fin-imp-arquivo-nome").textContent = f ? "Selecionado: " + f.name : "";
+    });
     gel("fin-imp-voltar").addEventListener("click", () => {
       gel("fin-imp-passo1").hidden = false;
       gel("fin-imp-passo2").hidden = true;
