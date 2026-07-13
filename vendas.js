@@ -156,8 +156,38 @@
   // ===== Configuração (metas) =====
   let cfg = { funcs: [], metas: {} };
 
-  function loadCfg()  { try { return JSON.parse(localStorage.getItem(CFG_KEY) || '{"funcs":[],"metas":{}}'); } catch { return { funcs: [], metas: {} }; } }
-  function saveCfg()  { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)); }
+  async function fetchCfgRemoto() {
+    const resp = await fetch("/.netlify/functions/vendas-config");
+    if (!resp.ok) throw new Error("Erro ao buscar configuração");
+    return await resp.json();
+  }
+
+  async function salvarCfgRemoto(valorCfg) {
+    const resp = await fetch("/.netlify/functions/vendas-config", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ valor: valorCfg }),
+    });
+    if (!resp.ok) throw new Error("Erro ao salvar configuração");
+  }
+
+  // Carrega a config do Supabase (sincroniza entre computadores). Se ainda não existir remotamente,
+  // migra a config antiga do localStorage desse navegador uma única vez.
+  async function carregarCfg() {
+    let remoto = null;
+    try { remoto = await fetchCfgRemoto(); } catch { /* segue pro fallback local */ }
+
+    if (remoto) { cfg = remoto; return; }
+
+    let local = null;
+    try { local = JSON.parse(localStorage.getItem(CFG_KEY) || "null"); } catch {}
+    if (local && (local.funcs?.length || Object.keys(local.metas || {}).length)) {
+      cfg = local;
+      try { await salvarCfgRemoto(cfg); } catch { /* tenta de novo no próximo salvamento */ }
+    } else {
+      cfg = { funcs: [], metas: {} };
+    }
+  }
 
   function chaveAtual() {
     const n = new Date();
@@ -413,7 +443,7 @@
     });
   }
 
-  function salvarMetas() {
+  async function salvarMetas() {
     const chave  = chaveAtual();
     const metas  = { _empresa: parseFloat(gel("metas-meta-emp").value) || 0 };
     gel("metas-funcs").querySelectorAll("[data-id]").forEach(row => {
@@ -425,9 +455,18 @@
       if (func.nome && m) metas[func.nome] = m;
     });
     cfg.metas[chave] = metas;
-    saveCfg();
-    gel("metas-modal").hidden = true;
-    if (ultimoDado) render(ultimoDado);
+
+    const btn = gel("metas-modal-save");
+    btn.disabled = true;
+    try {
+      await salvarCfgRemoto(cfg);
+      gel("metas-modal").hidden = true;
+      if (ultimoDado) render(ultimoDado);
+    } catch (e) {
+      alert("Erro ao salvar metas: " + e.message);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function addFuncRow() {
@@ -438,9 +477,7 @@
   }
 
   // ===== Init =====
-  function init() {
-    cfg = loadCfg();
-
+  async function init() {
     gel("vendas-metas-btn").addEventListener("click", abrirMetas);
     gel("vendas-refresh-btn").addEventListener("click", fetchSheet);
     gel("metas-modal-close").addEventListener("click", () => { gel("metas-modal").hidden = true; });
@@ -449,6 +486,7 @@
     gel("metas-add-func").addEventListener("click", addFuncRow);
     gel("metas-modal").addEventListener("click", e => { if (e.target === gel("metas-modal")) gel("metas-modal").hidden = true; });
 
+    await carregarCfg();
     fetchSheet();
   }
 
