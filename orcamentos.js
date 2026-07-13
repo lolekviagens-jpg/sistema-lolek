@@ -91,6 +91,7 @@
   const addDestinoBtn= document.getElementById("orc-add-destino");
   const gerarBtn     = document.getElementById("orc-gerar");
   const editBtn      = document.getElementById("orc-edit-btn");
+  const novoBtn      = document.getElementById("orc-novo-btn");
   const pdfBtn       = document.getElementById("orc-pdf-btn");
   const copyBtn      = document.getElementById("orc-copy-btn");
 
@@ -201,6 +202,29 @@
   function removeDestino(id) {
     destinos = destinos.filter((d) => d.id !== id);
     renderDestinos();
+  }
+
+  // Zera o formulário inteiro pra montar um novo orçamento sem precisar recarregar a página.
+  function novoOrcamento() {
+    if (!confirm("Iniciar um novo orçamento? Os dados atuais serão perdidos.")) return;
+
+    destinos = [];
+    destCounter = 0;
+    Object.keys(fotoStore).forEach((k) => delete fotoStore[k]);
+    Object.keys(fotoStorePrint).forEach((k) => delete fotoStorePrint[k]);
+
+    document.getElementById("o-nome").value     = "";
+    document.getElementById("o-adultos").value  = "1";
+    document.getElementById("o-criancas").value = "0";
+    document.getElementById("o-bebes").value    = "0";
+    document.getElementById("o-obs").value      = "";
+
+    addDestino();
+
+    document.getElementById("orc-preview-wrap").innerHTML = "";
+    outputWrap.hidden = true;
+    formWrap.hidden   = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function addProduto(destId, tipo) {
@@ -1057,6 +1081,7 @@
   addDestinoBtn.addEventListener("click", addDestino);
   gerarBtn.addEventListener("click", gerarOrcamento);
   editBtn.addEventListener("click", () => { formWrap.hidden = false; outputWrap.hidden = true; });
+  novoBtn.addEventListener("click", novoOrcamento);
   pdfBtn.addEventListener("click", baixarPDF);
   copyBtn.addEventListener("click", copiarTexto);
 
