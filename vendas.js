@@ -133,13 +133,17 @@
       const valor = parseNum(cols[COL_VALOR_TOTAL]);
       const tipo  = tipoProduto(situacao);
 
-      if (!porFunc[func]) porFunc[func] = { total: 0, count: 0, produtos: {} };
-      porFunc[func].total += lucro;
-      porFunc[func].count++;
-      if (tipo) {
-        porFunc[func].produtos[tipo] = (porFunc[func].produtos[tipo] || 0) + 1;
-        produtosTotal[tipo] = (produtosTotal[tipo] || 0) + 1;
-      }
+      // Venda conjunta (ex: "Letícia/Emily") — divide o lucro entre as funcionárias listadas,
+      // mas cada uma leva o crédito cheio de "1 produto vendido" (pra meta/comissão de cada uma
+      // refletir o trabalho, sem inventar 0,5 produto no card de cada uma).
+      const nomesFunc = func.split("/").map(n => n.trim()).filter(Boolean);
+      nomesFunc.forEach(nome => {
+        if (!porFunc[nome]) porFunc[nome] = { total: 0, count: 0, produtos: {} };
+        porFunc[nome].total += lucro / nomesFunc.length;
+        porFunc[nome].count++;
+        if (tipo) porFunc[nome].produtos[tipo] = (porFunc[nome].produtos[tipo] || 0) + 1;
+      });
+      if (tipo) produtosTotal[tipo] = (produtosTotal[tipo] || 0) + 1;
 
       faturamento += valor;
       lucroTotal  += lucro;
