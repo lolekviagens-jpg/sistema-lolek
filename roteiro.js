@@ -19,6 +19,15 @@
   function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
   function gel(id) { return document.getElementById(id); }
 
+  // Contexto pra IA não "chutar" um ano errado (ex: 2024) quando o print não mostra o ano da data.
+  function contextoDataAtual() {
+    const hoje = new Date();
+    const dd = String(hoje.getDate()).padStart(2, "0");
+    const mm = String(hoje.getMonth() + 1).padStart(2, "0");
+    const yyyy = hoje.getFullYear();
+    return `Hoje é ${dd}/${mm}/${yyyy}. Datas de viagem são sempre no presente ou futuro a partir de hoje — nunca deduza um ano passado. Se o print/texto não mostrar o ano de uma data, infira o mais provável: se o mês da data já passou em relação ao mês atual (${mm}/${yyyy}), o ano certo é ${yyyy + 1}; caso contrário, é ${yyyy}.`;
+  }
+
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
@@ -83,7 +92,9 @@
     const btn = gel("rot-extrair-btn");
     btn.disabled = true; btn.textContent = "⏳ Extraindo...";
 
-    const prompt = `Analise o texto/print abaixo sobre a viagem de um cliente e retorne SOMENTE um JSON válido, sem texto adicional:
+    const prompt = `${contextoDataAtual()}
+
+Analise o texto/print abaixo sobre a viagem de um cliente e retorne SOMENTE um JSON válido, sem texto adicional:
 {
   "nome_cliente": "nome do cliente, se identificável, ou null",
   "destino": "cidade/país de destino",
