@@ -210,8 +210,10 @@
     const chave = d.year + "-" + String(d.month + 1).padStart(2, "0");
     const metas = cfg.metas[chave] || {};
 
-    let totalGeral = 0;
-    cfg.funcs.forEach(f => { totalGeral += (d.porFunc[f.nome] || {}).total || 0; });
+    // Lucro total da empresa no mês — precisa ser o mesmo valor do card "Lucro" (todas as vendas),
+    // não só a soma das funcionárias cadastradas em Metas (senão vendas conjuntas como "Letícia/Emily"
+    // na planilha, que não batem com nenhum nome cadastrado, ficam de fora do total da empresa).
+    const totalGeral = d.lucroTotal || 0;
 
     const metaEmp  = metas._empresa || 0;
     const pctEmp   = metaEmp > 0 ? Math.min(100, (totalGeral / metaEmp) * 100) : 0;
