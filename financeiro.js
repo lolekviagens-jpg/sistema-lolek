@@ -721,7 +721,11 @@
     importados = [];
   }
 
-  const CATEGORIAS_EXTRATO = ["Milheiro/Fornecedor", "Taxa de embarque cartão", "Aluguel", "Salário", "Marketing", "Ferramentas/Sistemas", "Outros"];
+  const CATEGORIAS_EXTRATO = [
+    "Milheiro/Fornecedor", "Taxa de embarque cartão", "Aluguel", "Salário/Comissão", "Pró-labore/Distribuição de lucro",
+    "Adiantamento de cartão", "Marketing", "Ferramentas/Sistemas", "Imposto", "Transporte", "Utilidades/Energia",
+    "Tarifa bancária", "Alimentação", "Interno/Estorno", "Outros",
+  ];
 
   function montarPromptExtrato(texto) {
     return `Extraia todas as transações do extrato bancário ou fatura de cartão de crédito abaixo. Ignore linhas de saldo, resumo, limite ou totalizadores — só transações individuais.
