@@ -342,6 +342,12 @@
       case "hoje": { const iso = dataISO(hoje); return [iso, iso]; }
       case "mes": return [dataISO(new Date(y, m, 1)), dataISO(new Date(y, m + 1, 0))];
       case "mes_anterior": return [dataISO(new Date(y, m - 1, 1)), dataISO(new Date(y, m, 0))];
+      case "mes_especifico": {
+        const valor = gel("fin-periodo-mes").value; // "AAAA-MM"
+        if (!valor) return null;
+        const [ay, am] = valor.split("-").map(Number);
+        return [dataISO(new Date(ay, am - 1, 1)), dataISO(new Date(ay, am, 0))];
+      }
       case "trimestre": { const q = Math.floor(m / 3); return [dataISO(new Date(y, q * 3, 1)), dataISO(new Date(y, q * 3 + 3, 0))]; }
       case "ano": return [dataISO(new Date(y, 0, 1)), dataISO(new Date(y, 11, 31))];
       case "personalizado": {
@@ -414,6 +420,12 @@
       case "hoje": { const ontem = new Date(y, m, hoje.getDate() - 1); const iso = dataISO(ontem); return [iso, iso]; }
       case "mes": return [dataISO(new Date(y, m - 1, 1)), dataISO(new Date(y, m, 0))];
       case "mes_anterior": return [dataISO(new Date(y, m - 2, 1)), dataISO(new Date(y, m - 1, 0))];
+      case "mes_especifico": {
+        const valor = gel("fin-periodo-mes").value;
+        if (!valor) return null;
+        const [ay, am] = valor.split("-").map(Number);
+        return [dataISO(new Date(ay, am - 2, 1)), dataISO(new Date(ay, am - 1, 0))];
+      }
       case "trimestre": { const q = Math.floor(m / 3); return [dataISO(new Date(y, q * 3 - 3, 1)), dataISO(new Date(y, q * 3, 0))]; }
       case "ano": return [dataISO(new Date(y - 1, 0, 1)), dataISO(new Date(y - 1, 11, 31))];
       case "personalizado": {
@@ -1043,13 +1055,16 @@ ${texto}`;
     gel("fin-periodo-select").addEventListener("change", () => {
       periodoAtual = gel("fin-periodo-select").value;
       const personalizado = periodoAtual === "personalizado";
+      const mesEspecifico = periodoAtual === "mes_especifico";
       gel("fin-periodo-inicio").hidden = !personalizado;
       gel("fin-periodo-ate-lbl").hidden = !personalizado;
       gel("fin-periodo-fim").hidden = !personalizado;
-      if (!personalizado) render();
+      gel("fin-periodo-mes").hidden = !mesEspecifico;
+      if (!personalizado && !mesEspecifico) render();
     });
     gel("fin-periodo-inicio").addEventListener("change", () => { if (gel("fin-periodo-fim").value) render(); });
     gel("fin-periodo-fim").addEventListener("change", () => { if (gel("fin-periodo-inicio").value) render(); });
+    gel("fin-periodo-mes").addEventListener("change", () => { if (gel("fin-periodo-mes").value) render(); });
 
     if (estaDesbloqueado()) mostrarConteudo();
     else mostrarLock();
