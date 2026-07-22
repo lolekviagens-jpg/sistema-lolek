@@ -1529,6 +1529,18 @@ textarea.input {
   font-weight: 400;
 }
 
+.orc-prev-destino-body {
+  padding: 14px;
+}
+
+.orc-prev-destino-body .orc-prev-table {
+  margin-top: 14px;
+}
+
+.orc-prev-destino-body .orc-prev-flight-card:last-child {
+  margin-bottom: 0;
+}
+
 .orc-prev-col-header {
   display: flex;
   justify-content: space-between;

@@ -160,22 +160,29 @@
     return null;
   }
 
-  // Agrupa os trechos de passagem em linhas de preço (valor + taxa já somados):
-  // ida+volta vira uma única linha; com 3+ trechos (itinerário multi-cidade),
-  // cada trecho continua em linha própria, para não perder a separação necessária.
+  // Rótulo de uma linha de passagem: menciona "+ taxa de embarque" só quando ela
+  // existe, pra taxa continuar visível pro cliente mesmo já somada ao valor.
+  function labelPassagem(base, taxa) {
+    return taxa > 0 ? base + " + taxa de embarque" : base;
+  }
+
+  // Agrupa os trechos de passagem em linhas de preço (valor + taxa já somados,
+  // mas taxa nomeada no rótulo): ida+volta vira uma única linha; com 3+ trechos
+  // (itinerário multi-cidade), cada trecho continua em linha própria.
   function agruparPassagens(itens) {
     const passagens = itens.filter((it) => it.tipo === "passagem");
     const outros    = itens.filter((it) => it.tipo !== "passagem");
     const linhas = [];
 
     if (passagens.length === 2) {
-      const valor = passagens[0].totalPassagem + passagens[1].totalPassagem +
-                    passagens[0].totalTaxa     + passagens[1].totalTaxa;
-      linhas.push({ label: "Passagem aérea (ida e volta)", pax: passagens[0].adultos, valor });
+      const totalTaxa = passagens[0].totalTaxa + passagens[1].totalTaxa;
+      const valor = passagens[0].totalPassagem + passagens[1].totalPassagem + totalTaxa;
+      linhas.push({ label: labelPassagem("Passagem aérea (ida e volta)", totalTaxa), pax: passagens[0].adultos, valor });
     } else {
       passagens.forEach((it) => {
+        const base = passagens.length > 1 ? "Passagem aérea — " + it.flightLabel : "Passagem aérea";
         linhas.push({
-          label: passagens.length > 1 ? "Passagem aérea — " + it.flightLabel : "Passagem aérea",
+          label: labelPassagem(base, it.totalTaxa),
           pax: it.adultos,
           valor: it.totalPassagem + it.totalTaxa,
         });
@@ -963,19 +970,15 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
       (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
       (d.bebes    > 0 ? " + " + d.bebes    + " bebê"    + (d.bebes    !== 1 ? "s"    : "") : "");
 
-    // Cartões de voo (todos os trechos de todas as passagens)
-    let flightCardsHtml = "";
-    const tableRows = [];
-
-    d.destsData.forEach((dest) => {
-      dest.itens.forEach((it) => { if (it.tipo === "passagem") flightCardsHtml += renderFlightCard(it); });
-
+    // Linhas de preço (voo + serviços) de um destino, já com passagens agrupadas.
+    function linhasDestino(dest) {
+      const rows = [];
       const { linhas, outros } = agruparPassagens(dest.itens);
 
       linhas.forEach((l) => {
         const paxLbl = l.pax + " adulto" + (l.pax !== 1 ? "s" : "");
         const valorTxt = l.valor > 0 ? fBRL(l.valor) : "Incluso em outro trecho";
-        tableRows.push(`<tr>
+        rows.push(`<tr>
           <td>${escapeHtml(l.label)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
           <td>${valorTxt}</td>
         </tr>`);
@@ -984,25 +987,63 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
       outros.forEach((it) => {
         let label = escapeHtml(it.nomeItem);
         if (it.desc) label += `<span class="orc-prev-table-desc"> · ${escapeHtml(it.desc)}</span>`;
-        tableRows.push(`<tr>
+        rows.push(`<tr>
           <td>${label}</td>
           <td>${fBRL(it.venda)}</td>
         </tr>`);
         if (it.fotos && it.fotos.length) {
-          tableRows.push(`<tr class="orc-prev-table-fotos-row"><td colspan="2"><div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div></td></tr>`);
+          rows.push(`<tr class="orc-prev-table-fotos-row"><td colspan="2"><div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div></td></tr>`);
         }
       });
-    });
 
-    document.getElementById("orc-preview-wrap").innerHTML = `
-      <div class="orc-prev-wrap">
-        <div class="orc-prev-header">
-          <img src="Lolek_logotipo_3.png" class="orc-prev-logo-img" alt="Lolek Viagens">
-          <div class="orc-prev-contatos">${escapeHtml(LOLEK_EMAIL)}<br>${escapeHtml(LOLEK_TEL)}<br>${escapeHtml(LOLEK_END)}</div>
-        </div>
-        <div class="orc-prev-divider"></div>
-        <div class="orc-prev-titulo">PROPOSTA PERSONALIZADA DE VIAGEM</div>
-        <div class="orc-prev-subtitulo">Para: <strong>${escapeHtml(d.nome)}</strong> &nbsp;·&nbsp; ${escapeHtml(paxStr)}</div>
+      return rows;
+    }
+
+    // Com 2+ destinos, cada um vira um bloco próprio (voo + hotel daquele destino
+    // juntos, com cabeçalho), em vez de misturar tudo numa tabela só.
+    const multiDestino = d.destsData.length > 1;
+    let corpoHtml;
+
+    if (multiDestino) {
+      corpoHtml = d.destsData.map((dest, i) => {
+        let flightCards = "";
+        dest.itens.forEach((it) => { if (it.tipo === "passagem") flightCards += renderFlightCard(it); });
+
+        return `
+          <div class="orc-prev-destino">
+            <div class="orc-prev-dest-header">
+              <span>${i + 1}. ${escapeHtml(dest.nome)}</span>
+              ${dest.periodo ? `<span class="orc-prev-dest-periodo">${escapeHtml(dest.periodo)}</span>` : ""}
+            </div>
+            <div class="orc-prev-destino-body">
+              ${flightCards}
+              <table class="orc-prev-table">
+                <tbody>${linhasDestino(dest).join("")}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }).join("") + `
+        <table class="orc-prev-table">
+          <tfoot>
+            <tr class="orc-prev-table-total">
+              <td>VALOR TOTAL</td>
+              <td>${fBRL(d.totalGeral)}</td>
+            </tr>
+            ${d.totalPax > 1 ? `<tr class="orc-prev-table-porpessoa">
+              <td>Valor por pessoa</td>
+              <td>${fBRL(d.porPessoa)}</td>
+            </tr>` : ""}
+          </tfoot>
+        </table>`;
+    } else {
+      let flightCardsHtml = "";
+      const tableRows = [];
+      d.destsData.forEach((dest) => {
+        dest.itens.forEach((it) => { if (it.tipo === "passagem") flightCardsHtml += renderFlightCard(it); });
+        tableRows.push(...linhasDestino(dest));
+      });
+
+      corpoHtml = `
         ${flightCardsHtml}
         <table class="orc-prev-table">
           <thead>
@@ -1024,7 +1065,19 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
               <td>${fBRL(d.porPessoa)}</td>
             </tr>` : ""}
           </tfoot>
-        </table>
+        </table>`;
+    }
+
+    document.getElementById("orc-preview-wrap").innerHTML = `
+      <div class="orc-prev-wrap">
+        <div class="orc-prev-header">
+          <img src="Lolek_logotipo_3.png" class="orc-prev-logo-img" alt="Lolek Viagens">
+          <div class="orc-prev-contatos">${escapeHtml(LOLEK_EMAIL)}<br>${escapeHtml(LOLEK_TEL)}<br>${escapeHtml(LOLEK_END)}</div>
+        </div>
+        <div class="orc-prev-divider"></div>
+        <div class="orc-prev-titulo">PROPOSTA PERSONALIZADA DE VIAGEM</div>
+        <div class="orc-prev-subtitulo">Para: <strong>${escapeHtml(d.nome)}</strong> &nbsp;·&nbsp; ${escapeHtml(paxStr)}</div>
+        ${corpoHtml}
         <div class="orc-prev-pag">
           <strong>Formas de pagamento</strong>
           ◆ PIX &nbsp;&nbsp; ▬ Cartão de crédito em até 12x (mediante taxas)
