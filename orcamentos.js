@@ -160,12 +160,29 @@
     return null;
   }
 
-  // Preço de exibição de um trecho de passagem: se zerado, indica que o valor
-  // está embutido no outro trecho (round-trip cotado como preço único) em vez de mostrar R$ 0,00.
-  function textoValorPassagem(it) {
-    if (it.totalPassagem > 0) return fBRL(it.totalPassagem);
-    const outroTrecho = /IDA/i.test(it.flightLabel || "") ? "volta" : "ida";
-    return "Incluso na passagem de " + outroTrecho;
+  // Agrupa os trechos de passagem em linhas de preço (valor + taxa já somados):
+  // ida+volta vira uma única linha; com 3+ trechos (itinerário multi-cidade),
+  // cada trecho continua em linha própria, para não perder a separação necessária.
+  function agruparPassagens(itens) {
+    const passagens = itens.filter((it) => it.tipo === "passagem");
+    const outros    = itens.filter((it) => it.tipo !== "passagem");
+    const linhas = [];
+
+    if (passagens.length === 2) {
+      const valor = passagens[0].totalPassagem + passagens[1].totalPassagem +
+                    passagens[0].totalTaxa     + passagens[1].totalTaxa;
+      linhas.push({ label: "Passagem aérea (ida e volta)", pax: passagens[0].adultos, valor });
+    } else {
+      passagens.forEach((it) => {
+        linhas.push({
+          label: passagens.length > 1 ? "Passagem aérea — " + it.flightLabel : "Passagem aérea",
+          pax: it.adultos,
+          valor: it.totalPassagem + it.totalTaxa,
+        });
+      });
+    }
+
+    return { linhas, outros };
   }
 
   function diffD(a, b) {
@@ -240,7 +257,7 @@
     const dest = destinos.find((d) => d.id === destId);
     if (!dest) return;
     const pid = tipo + "-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
-    dest.produtos.push({ pid, tipo });
+    dest.produtos.push({ pid, tipo, extras: tipo === "passagem" ? [] : undefined });
     fotoStore[pid] = [];
     fotoStorePrint[pid] = [];
     renderDestinos();
@@ -252,6 +269,27 @@
     dest.produtos = dest.produtos.filter((p) => p.pid !== pid);
     delete fotoStore[pid];
     delete fotoStorePrint[pid];
+    renderDestinos();
+  }
+
+  // Itens adicionais de uma passagem (bagagem extra, assento, pet, etc.) — cada um
+  // com descrição e valor livres, somados ao total do orçamento como linhas próprias.
+  function addExtraItem(destId, pid) {
+    const dest = destinos.find((d) => d.id === destId);
+    const p = dest?.produtos.find((x) => x.pid === pid);
+    if (!p) return;
+    if (!p.extras) p.extras = [];
+    const exId = "ex-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+    p.extras.push(exId);
+    renderDestinos();
+    setTimeout(() => document.getElementById(`${destId}-${pid}-extra-${exId}-desc`)?.focus(), 50);
+  }
+
+  function removeExtraItem(destId, pid, exId) {
+    const dest = destinos.find((d) => d.id === destId);
+    const p = dest?.produtos.find((x) => x.pid === pid);
+    if (!p) return;
+    p.extras = (p.extras || []).filter((id) => id !== exId);
     renderDestinos();
   }
 
@@ -297,6 +335,18 @@
           return `<label class="field${extra}" style="${span}"><span class="field__label">${escapeHtml(f.label)}</span>${inp}</label>`;
         }).join("");
 
+        const extrasHtml = isPassagem ? `
+          <div class="orc-extras-wrap">
+            <div class="orc-extras-label">Itens adicionais (bagagem extra, assento, pet...)</div>
+            ${(p.extras || []).map((exId) => `
+              <div class="orc-extra-row">
+                <input id="${dest.id}-${p.pid}-extra-${exId}-desc" type="text" class="input" placeholder="Ex: Bagagem 23kg">
+                <input id="${dest.id}-${p.pid}-extra-${exId}-valor" type="number" class="input" placeholder="Valor (R$)" step="0.01">
+                <button type="button" class="orc-extra-remove" data-dest="${dest.id}" data-pid="${p.pid}" data-extra="${exId}" title="Remover">✕</button>
+              </div>`).join("")}
+            <button type="button" class="btn btn--ghost btn--sm orc-extra-add" data-dest="${dest.id}" data-pid="${p.pid}">+ Adicionar item</button>
+          </div>` : "";
+
         const zoneId = "fotozone-" + p.pid;
         const zoneClass = isPassagem ? "orc-foto-zone orc-print-zone" : "orc-foto-zone";
         const zoneHint  = isPassagem
@@ -324,6 +374,7 @@
               <div class="form__grid orc-produto-fields">
                 ${fieldsHtml}
               </div>
+              ${extrasHtml}
               ${printZoneHtml}
               <div class="${zoneClass}" id="${zoneId}" tabindex="0">
                 <span class="orc-foto-hint">${zoneHint}</span>
@@ -381,6 +432,8 @@
       div.querySelectorAll(".orc-destino-remove").forEach((b) => b.addEventListener("click", () => removeDestino(b.dataset.dest)));
       div.querySelectorAll(".orc-produto-remove").forEach((b) => b.addEventListener("click", () => removeProduto(b.dataset.dest, b.dataset.pid)));
       div.querySelectorAll(".orc-prod-toggle").forEach((b) => b.addEventListener("click", () => addProduto(b.dataset.dest, b.dataset.tipo)));
+      div.querySelectorAll(".orc-extra-add").forEach((b) => b.addEventListener("click", () => addExtraItem(b.dataset.dest, b.dataset.pid)));
+      div.querySelectorAll(".orc-extra-remove").forEach((b) => b.addEventListener("click", () => removeExtraItem(b.dataset.dest, b.dataset.pid, b.dataset.extra)));
 
       dest.produtos.forEach((p) => {
         const zoneId = "fotozone-" + p.pid;
@@ -788,7 +841,7 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
 
       dest.produtos.forEach((p) => {
         const cfg = PROD_CFG[p.tipo];
-        let nomeItem = cfg.label, desc = "", venda = 0;
+        let nomeItem = cfg.label, desc = "", venda = 0, extrasVenda = 0;
 
         if (p.tipo === "passagem") {
           const valorPax      = gN(dest.id + "-" + p.pid + "-valor_pax");
@@ -816,6 +869,14 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
             cidadeOrigem: gV(dest.id + "-" + p.pid + "-cidade_orig"),
             cidadeDestino:gV(dest.id + "-" + p.pid + "-cidade_dest"),
           });
+
+          (p.extras || []).forEach((exId) => {
+            const exDesc  = gV(`${dest.id}-${p.pid}-extra-${exId}-desc`);
+            const exValor = gN(`${dest.id}-${p.pid}-extra-${exId}-valor`);
+            if (!exDesc && !exValor) return;
+            itens.push({ nomeItem: exDesc || "Item adicional", desc: flightLabel, venda: exValor, tipo: "extra", fotos: [] });
+            extrasVenda += exValor;
+          });
         } else {
           const custo  = gN(dest.id + "-" + p.pid + "-custo");
           const markup = gN(dest.id + "-" + p.pid + "-markup");
@@ -841,15 +902,16 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
           }
           itens.push({ nomeItem, desc, venda, fotos: (fotoStore[p.pid] || []).map((f) => f.src), tipo: p.tipo });
         }
-        totalDest += venda;
+        totalDest += venda + extrasVenda;
       });
 
       totalGeral += totalDest;
       destsData.push({ nome: dNome, periodo, itens, totalDest });
     });
 
-    const roteiro = destinos.map((d, i) => gV("o-nome-" + d.id) || "Destino " + (i + 1)).join(" · ");
-    return { nome, roteiro, adultos, criancas, bebes, obs, totalGeral, destsData, porPessoa: totalGeral / (adultos || 1) };
+    const roteiro  = destinos.map((d, i) => gV("o-nome-" + d.id) || "Destino " + (i + 1)).join(" · ");
+    const totalPax = adultos + criancas;
+    return { nome, roteiro, adultos, criancas, bebes, obs, totalGeral, destsData, totalPax, porPessoa: totalGeral / (totalPax || 1) };
   }
 
   // ===== Cartão visual de voo =====
@@ -906,30 +968,28 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     const tableRows = [];
 
     d.destsData.forEach((dest) => {
-      dest.itens.forEach((it) => {
-        if (it.tipo === "passagem") {
-          flightCardsHtml += renderFlightCard(it);
-          const paxLbl = it.adultos + " adulto" + (it.adultos !== 1 ? "s" : "");
-          tableRows.push(`<tr>
-            <td>Passagem aérea — ${escapeHtml(it.flightLabel)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
-            <td>${textoValorPassagem(it)}</td>
-          </tr>`);
-          if (it.taxaEmbarque > 0) {
-            tableRows.push(`<tr class="orc-prev-table-row--taxa">
-              <td>Taxa de embarque — ${escapeHtml(it.flightLabel)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
-              <td>${fBRL(it.taxaEmbarque * it.adultos)}</td>
-            </tr>`);
-          }
-        } else {
-          let label = escapeHtml(it.nomeItem);
-          if (it.desc) label += `<span class="orc-prev-table-desc"> · ${escapeHtml(it.desc)}</span>`;
-          tableRows.push(`<tr>
-            <td>${label}</td>
-            <td>${fBRL(it.venda)}</td>
-          </tr>`);
-          if (it.fotos && it.fotos.length) {
-            tableRows.push(`<tr class="orc-prev-table-fotos-row"><td colspan="2"><div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div></td></tr>`);
-          }
+      dest.itens.forEach((it) => { if (it.tipo === "passagem") flightCardsHtml += renderFlightCard(it); });
+
+      const { linhas, outros } = agruparPassagens(dest.itens);
+
+      linhas.forEach((l) => {
+        const paxLbl = l.pax + " adulto" + (l.pax !== 1 ? "s" : "");
+        const valorTxt = l.valor > 0 ? fBRL(l.valor) : "Incluso em outro trecho";
+        tableRows.push(`<tr>
+          <td>${escapeHtml(l.label)} &nbsp;·&nbsp; ${escapeHtml(paxLbl)}</td>
+          <td>${valorTxt}</td>
+        </tr>`);
+      });
+
+      outros.forEach((it) => {
+        let label = escapeHtml(it.nomeItem);
+        if (it.desc) label += `<span class="orc-prev-table-desc"> · ${escapeHtml(it.desc)}</span>`;
+        tableRows.push(`<tr>
+          <td>${label}</td>
+          <td>${fBRL(it.venda)}</td>
+        </tr>`);
+        if (it.fotos && it.fotos.length) {
+          tableRows.push(`<tr class="orc-prev-table-fotos-row"><td colspan="2"><div class="orc-prev-fotos">${it.fotos.map((s) => `<img src="${s}">`).join("")}</div></td></tr>`);
         }
       });
     });
@@ -959,6 +1019,10 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
               <td>VALOR TOTAL</td>
               <td>${fBRL(d.totalGeral)}</td>
             </tr>
+            ${d.totalPax > 1 ? `<tr class="orc-prev-table-porpessoa">
+              <td>Valor por pessoa</td>
+              <td>${fBRL(d.porPessoa)}</td>
+            </tr>` : ""}
           </tfoot>
         </table>
         <div class="orc-prev-pag">
@@ -1061,26 +1125,32 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     txt += "\n\n";
     d.destsData.forEach((dest, i) => {
       txt += "📍 " + (i + 1) + ". " + dest.nome + (dest.periodo ? " (" + dest.periodo + ")" : "") + "\n";
-      dest.itens.forEach((it) => {
-        if (it.tipo === "passagem") {
-          txt += "   ✈ " + it.nomeItem;
-          const meta = [
-            it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
-            it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
-            it.conexoes || "",
-            it.duracao  || "",
-          ].filter(Boolean).join(" · ");
-          if (meta) txt += " — " + meta;
-          txt += "\n";
-          txt += "     Passagem: " + textoValorPassagem(it) + "\n";
-          if (it.taxaEmbarque > 0) txt += "     Taxa de embarque: " + fBRL(it.taxaEmbarque * it.adultos) + "\n";
-        } else {
-          txt += "   • " + it.nomeItem + (it.desc ? " — " + it.desc : "") + ": " + fBRL(it.venda) + "\n";
-        }
+      dest.itens.filter((it) => it.tipo === "passagem").forEach((it) => {
+        txt += "   ✈ " + it.nomeItem;
+        const meta = [
+          it.companhia && it.voo ? it.companhia + " " + it.voo : (it.companhia || it.voo || ""),
+          it.partida && it.chegada ? it.partida + " → " + it.chegada : (it.partida || it.chegada || ""),
+          it.conexoes || "",
+          it.duracao  || "",
+        ].filter(Boolean).join(" · ");
+        if (meta) txt += " — " + meta;
+        txt += "\n";
       });
+
+      const { linhas, outros } = agruparPassagens(dest.itens);
+      linhas.forEach((l) => {
+        const paxLbl = l.pax + " adulto" + (l.pax !== 1 ? "s" : "");
+        const valorTxt = l.valor > 0 ? fBRL(l.valor) : "Incluso em outro trecho";
+        txt += "     " + l.label + " · " + paxLbl + ": " + valorTxt + "\n";
+      });
+      outros.forEach((it) => {
+        txt += "   • " + it.nomeItem + (it.desc ? " — " + it.desc : "") + ": " + fBRL(it.venda) + "\n";
+      });
+
       txt += "   Subtotal: " + fBRL(dest.totalDest) + "\n\n";
     });
-    txt += "Por pessoa: " + fBRL(d.porPessoa) + "\n💰 Total: " + fBRL(d.totalGeral) + "\n";
+    if (d.totalPax > 1) txt += "Por pessoa: " + fBRL(d.porPessoa) + "\n";
+    txt += "💰 Total: " + fBRL(d.totalGeral) + "\n";
     if (d.obs) txt += "\n📝 " + d.obs + "\n";
     txt += "\n📞 " + LOLEK_TEL + " | " + LOLEK_EMAIL;
 
