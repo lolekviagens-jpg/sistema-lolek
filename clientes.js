@@ -139,6 +139,8 @@
   }
 
   // ===== Modal de detalhe =====
+  let camposDetalheAtual = [];
+
   function abrirDetalhe(id) {
     const c = clientes.find(x => x.id === id);
     if (!c) return;
@@ -154,6 +156,7 @@
       { l: "E-mail",                v: c.email },
       { l: "Telefone",              v: c.telefone },
     ];
+    camposDetalheAtual = campos;
 
     gel("cli-detalhe-nome").textContent = c.nome || "—";
     gel("cli-detalhe-campos").innerHTML = campos.map(f => `
@@ -173,6 +176,21 @@
     });
 
     gel("cli-modal-detalhe").hidden = false;
+  }
+
+  function copiarTudo() {
+    const texto = camposDetalheAtual
+      .filter(f => f.v)
+      .map(f => `${f.l}: ${f.v}`)
+      .join("\n");
+    if (!texto) return;
+
+    const btn = gel("cli-detalhe-copiar-tudo");
+    navigator.clipboard.writeText(texto).catch(() => {});
+    if (btn) {
+      btn.textContent = "✓ Copiado";
+      setTimeout(() => { btn.textContent = "⧉ Copiar tudo"; }, 1500);
+    }
   }
 
   function fecharDetalhe() { gel("cli-modal-detalhe").hidden = true; clienteEditando = null; }
@@ -296,6 +314,7 @@
     // Modal detalhe
     gel("cli-modal-detalhe").addEventListener("click", e => { if (e.target === gel("cli-modal-detalhe")) fecharDetalhe(); });
     gel("cli-detalhe-fechar").addEventListener("click", fecharDetalhe);
+    gel("cli-detalhe-copiar-tudo").addEventListener("click", copiarTudo);
     gel("cli-detalhe-editar").addEventListener("click", () => {
       const c = clienteEditando;
       fecharDetalhe();
