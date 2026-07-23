@@ -16,6 +16,7 @@
     roteiro:     "Roteiro",
     followup:    "Follow-up",
     financeiro:  "Financeiro",
+    contratos:   "Contratos",
     empresas:    "Empresas",
   };
 

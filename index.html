@@ -61,6 +61,10 @@
           <span class="nav__icon">💰</span>
           <span class="nav__label">Financeiro</span>
         </button>
+        <button class="nav__item" data-tab="contratos">
+          <span class="nav__icon">📝</span>
+          <span class="nav__label">Contratos</span>
+        </button>
         <button class="nav__item" data-tab="empresas">
           <span class="nav__icon">🏢</span>
           <span class="nav__label">Empresas</span>
@@ -1095,6 +1099,52 @@
 
       </section>
 
+      <!-- ===== PAINEL CONTRATOS ===== -->
+      <section class="panel" data-panel="contratos">
+
+        <div class="orc-card">
+          <div class="orc-card__header">Gerar contrato de prestação de serviços</div>
+          <div class="orc-card__body">
+            <div class="form__grid">
+              <label class="field field--full"><span class="field__label">Nome completo do cliente *</span><input type="text" id="ctr-nome_cliente" class="input" /></label>
+              <label class="field"><span class="field__label">CPF/CNPJ *</span><input type="text" id="ctr-cpf_cnpj" class="input" /></label>
+              <label class="field"><span class="field__label">Telefone/WhatsApp *</span><input type="tel" id="ctr-telefone_cliente" class="input" placeholder="(85) 99999-9999" /></label>
+              <label class="field field--full"><span class="field__label">E-mail</span><input type="email" id="ctr-email_cliente" class="input" /></label>
+              <label class="field field--full"><span class="field__label">Endereço *</span><input type="text" id="ctr-endereco_cliente" class="input" /></label>
+              <label class="field field--full"><span class="field__label">Descrição do serviço contratado *</span><textarea id="ctr-descricao_servico" class="input" rows="2"></textarea></label>
+              <label class="field"><span class="field__label">Valor total *</span><input type="text" id="ctr-valor_total" class="input" placeholder="Ex: R$ 8.500,00" /></label>
+              <label class="field field--full"><span class="field__label">Valor por extenso *</span><input type="text" id="ctr-valor_extenso" class="input" placeholder="Ex: oito mil e quinhentos reais" /></label>
+              <label class="field"><span class="field__label">Forma de pagamento *</span><input type="text" id="ctr-forma_pagamento" class="input" placeholder="Ex: PIX à vista" /></label>
+              <label class="field"><span class="field__label">Prazo de entrega dos documentos *</span><input type="text" id="ctr-prazo_entrega" class="input" placeholder="Ex: 48 horas" /></label>
+            </div>
+            <div id="ctr-status"></div>
+            <button type="button" class="btn btn--gold" id="ctr-gerar-btn" style="margin-top:14px">📝 Gerar e enviar contrato</button>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <span class="toolbar__info" id="ctr-count"></span>
+          <button class="btn btn--ghost btn--icon" id="ctr-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
+        </div>
+
+        <div class="card">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Valor</th>
+                <th>Enviado em</th>
+                <th>Status</th>
+                <th class="table__actions-col"></th>
+              </tr>
+            </thead>
+            <tbody id="ctr-tabela-body"></tbody>
+          </table>
+        </div>
+        <div id="ctr-vazio"></div>
+
+      </section>
+
       <!-- ===== PAINEL EMPRESAS (portal corporativo) ===== -->
       <section class="panel" data-panel="empresas">
 
@@ -1277,6 +1327,7 @@
   <script src="followup.js"></script>
   <script src="financeiro.js"></script>
   <script src="financeiro-fornecedores.js"></script>
+  <script src="contratos.js"></script>
   <script src="empresas.js"></script>
 </body>
 </html>

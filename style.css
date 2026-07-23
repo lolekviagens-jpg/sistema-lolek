@@ -637,6 +637,43 @@ textarea.input {
   color: #1f8a4c;
 }
 
+.badge--erro {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ===== Mensagem de status (aba Contratos) ===== */
+.ctr-status-msg {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  border-left: 3px solid;
+}
+
+.ctr-status-msg a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.ctr-status-msg--ok {
+  background: #e8f6ed;
+  color: #1f8a4c;
+  border-color: #1f8a4c;
+}
+
+.ctr-status-msg--warn {
+  background: #fdf3e7;
+  color: #b9791b;
+  border-color: #b9791b;
+}
+
+.ctr-status-msg--erro {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #b91c1c;
+}
+
 /* Badges de tipo de serviço (emissões do portal corporativo) */
 .badge--servico-passagem {
   background: #eef0fc;
