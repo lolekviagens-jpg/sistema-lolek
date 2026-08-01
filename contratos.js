@@ -24,6 +24,7 @@
   }
 
   let contratos = [];
+  let filtroAtual = "todos";
 
   async function carregar() {
     try {
@@ -42,6 +43,12 @@
     return { label: "Aguardando assinatura", cls: "badge--andamento" };
   }
 
+  function filtrar(lista) {
+    if (filtroAtual === "assinados") return lista.filter((c) => c.status === "assinado");
+    if (filtroAtual === "aguardando") return lista.filter((c) => c.status !== "assinado");
+    return lista;
+  }
+
   function renderLista() {
     const body  = gel("ctr-tabela-body");
     const vazio = gel("ctr-vazio");
@@ -55,16 +62,17 @@
       return;
     }
 
-    count.textContent = contratos.length + " contrato" + (contratos.length !== 1 ? "s" : "");
+    const lista = filtrar(contratos);
+    count.textContent = lista.length + " contrato" + (lista.length !== 1 ? "s" : "");
 
-    if (contratos.length === 0) {
+    if (lista.length === 0) {
       body.innerHTML = "";
-      vazio.innerHTML = '<div class="empty-state"><p>Nenhum contrato gerado ainda</p></div>';
+      vazio.innerHTML = '<div class="empty-state"><p>Nenhum contrato encontrado</p></div>';
       return;
     }
 
     vazio.innerHTML = "";
-    body.innerHTML = contratos.map((c) => {
+    body.innerHTML = lista.map((c) => {
       const st = statusInfo(c);
       return `
         <tr>
@@ -77,6 +85,7 @@
           <td><span class="badge ${st.cls}">${st.label}</span></td>
           <td class="table__actions-col">
             <div class="table__actions">
+              ${c.status === "assinado" && c.arquivo_path ? `<button type="button" class="btn btn--ghost btn--icon ctr-abrir-arquivo" data-token="${escHtml(c.doc_token)}" title="Abrir contrato assinado">📄</button>` : ""}
               ${c.link_assinatura ? `<button type="button" class="btn btn--ghost btn--icon ctr-copiar-link" data-link="${escHtml(c.link_assinatura)}" title="Copiar link de assinatura">⧉</button>` : ""}
             </div>
           </td>
@@ -90,6 +99,25 @@
         setTimeout(() => { btn.textContent = "⧉"; }, 1500);
       });
     });
+
+    body.querySelectorAll(".ctr-abrir-arquivo").forEach((btn) => {
+      btn.addEventListener("click", () => abrirArquivoAssinado(btn));
+    });
+  }
+
+  async function abrirArquivoAssinado(btn) {
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = "⏳";
+    try {
+      const resp = await fetch("/.netlify/functions/zapsign-webhook?arquivo=" + encodeURIComponent(btn.dataset.token));
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok || !json.url) throw new Error(json.error || "Não foi possível abrir o contrato assinado");
+      window.open(json.url, "_blank", "noopener");
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
   }
 
   function mostrarStatus(html) { gel("ctr-status").innerHTML = html; }
@@ -148,6 +176,14 @@
   async function init() {
     gel("ctr-gerar-btn")?.addEventListener("click", gerarContrato);
     gel("ctr-atualizar-btn")?.addEventListener("click", async () => { await carregar(); renderLista(); });
+
+    document.querySelectorAll(".ctr-filtro").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        filtroAtual = btn.dataset.filtro;
+        document.querySelectorAll(".ctr-filtro").forEach((b) => b.classList.toggle("is-active", b === btn));
+        renderLista();
+      });
+    });
 
     await carregar();
     renderLista();

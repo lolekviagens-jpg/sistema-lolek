@@ -3023,7 +3023,8 @@ textarea.input {
   text-align: left;
 }
 
-.fin-filtros {
+.fin-filtros,
+.ctr-filtros {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
@@ -3031,7 +3032,8 @@ textarea.input {
 }
 
 .fin-filtro,
-.fin-subtab {
+.fin-subtab,
+.ctr-filtro {
   font-family: var(--font-body);
   font-size: 0.82rem;
   font-weight: 600;
@@ -3045,13 +3047,15 @@ textarea.input {
 }
 
 .fin-filtro:hover,
-.fin-subtab:hover {
+.fin-subtab:hover,
+.ctr-filtro:hover {
   border-color: var(--gold);
   color: var(--navy);
 }
 
 .fin-filtro.is-active,
-.fin-subtab.is-active {
+.fin-subtab.is-active,
+.ctr-filtro.is-active {
   background: var(--navy);
   border-color: var(--navy);
   color: #fff;

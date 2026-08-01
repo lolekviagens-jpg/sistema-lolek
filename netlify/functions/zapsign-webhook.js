@@ -4,15 +4,26 @@
 // evento "doc_signed" (documento assinado por todos os signatários):
 //   https://sistema-lolek.netlify.app/.netlify/functions/zapsign-webhook
 //
-// GET  — usado pelo painel (aba Contratos) para listar o histórico.
-// POST — recebido da ZapSign quando um contrato é assinado.
+// GET  — usado pelo painel (aba Contratos):
+//   sem parâmetros      -> lista o histórico de contratos.
+//   ?arquivo=<doc_token> -> devolve { url } com um link temporário (5 min)
+//                           pra abrir o PDF assinado arquivado no Storage.
+// POST — recebido da ZapSign quando um contrato é assinado. Baixa o PDF
+//        assinado (o link que a ZapSign manda é temporário, ~60min) e
+//        arquiva ele no Supabase Storage pra ficar disponível pra sempre.
 //
 // Variável de ambiente necessária no painel do Netlify:
 //   SUPABASE_SECRET_KEY — já configurada (mesma usada por clientes-data.js)
+//
+// Setup necessário no Supabase (uma vez só):
+//   1) Storage > New bucket > nome "contratos-assinados", privado (não público).
+//   2) SQL Editor:
+//        alter table contratos add column arquivo_path text;
 
 const https = require("https");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
+const STORAGE_BUCKET = "contratos-assinados";
 
 exports.handler = async (event) => {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -22,6 +33,20 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
+      const docToken = event.queryStringParameters?.arquivo;
+      if (docToken) {
+        const rows = await supabaseRest(
+          "/contratos?doc_token=eq." + encodeURIComponent(docToken) + "&select=arquivo_path",
+          "GET", secretKey
+        );
+        const arquivoPath = rows && rows[0] && rows[0].arquivo_path;
+        if (!arquivoPath) {
+          return { statusCode: 404, body: JSON.stringify({ error: "PDF assinado não encontrado para este contrato" }) };
+        }
+        const signed = await supabaseStorageSign(arquivoPath, secretKey, 300);
+        return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: SUPABASE_URL + signed.signedURL }) };
+      }
+
       const rows = await supabaseRest("/contratos?select=*&order=criado_em.desc", "GET", secretKey);
       return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows || []) };
     }
@@ -35,10 +60,24 @@ exports.handler = async (event) => {
       // payload.data.token -> token do documento (mesmo salvo como doc_token na criação)
       // payload.data.signed_file -> link do PDF assinado (temporário, 60 min)
       if (payload.event === "doc_signed" && payload.data?.token) {
+        const token = payload.data.token;
+        let arquivoPath = null;
+
+        if (payload.data.signed_file) {
+          try {
+            const pdfBuffer = await httpsGetBuffer(payload.data.signed_file);
+            arquivoPath = token + ".pdf";
+            await supabaseStorageUpload(arquivoPath, secretKey, pdfBuffer);
+          } catch (e) {
+            console.error("[zapsign-webhook] falha ao arquivar PDF assinado:", e.message);
+            arquivoPath = null; // sem arquivo salvo, mas o status ainda é atualizado
+          }
+        }
+
         await supabaseRest(
-          "/contratos?doc_token=eq." + encodeURIComponent(payload.data.token),
+          "/contratos?doc_token=eq." + encodeURIComponent(token),
           "PATCH", secretKey,
-          { status: "assinado", assinado_em: new Date().toISOString() },
+          { status: "assinado", assinado_em: new Date().toISOString(), ...(arquivoPath ? { arquivo_path: arquivoPath } : {}) },
           { "Prefer": "return=minimal" }
         );
       }
@@ -52,6 +91,90 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+// ===== Baixa um arquivo binário (segue redirecionamentos) =====
+function httpsGetBuffer(targetUrl, redirects) {
+  redirects = redirects || 0;
+  return new Promise((resolve, reject) => {
+    https.get(targetUrl, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects < 5) {
+        res.resume();
+        resolve(httpsGetBuffer(res.headers.location, redirects + 1));
+        return;
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        reject(new Error("Falha ao baixar arquivo assinado: HTTP " + res.statusCode));
+        return;
+      }
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+    }).on("error", reject);
+  });
+}
+
+// ===== Envia (upload) um PDF pro Supabase Storage =====
+function supabaseStorageUpload(path, secretKey, buffer) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(SUPABASE_URL + "/storage/v1/object/" + STORAGE_BUCKET + "/" + encodeURIComponent(path));
+    const options = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        "apikey": secretKey,
+        "Authorization": "Bearer " + secretKey,
+        "Content-Type": "application/pdf",
+        "Content-Length": buffer.length,
+        "x-upsert": "true",
+      },
+    };
+    const req = https.request(options, (res) => {
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+        else reject(new Error("Supabase Storage " + res.statusCode + ": " + chunks));
+      });
+    });
+    req.on("error", reject);
+    req.write(buffer);
+    req.end();
+  });
+}
+
+// ===== Gera um link temporário de download pra um arquivo privado do Storage =====
+function supabaseStorageSign(path, secretKey, expiresInSegundos) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(SUPABASE_URL + "/storage/v1/object/sign/" + STORAGE_BUCKET + "/" + encodeURIComponent(path));
+    const payload = JSON.stringify({ expiresIn: expiresInSegundos });
+    const options = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: {
+        "apikey": secretKey,
+        "Authorization": "Bearer " + secretKey,
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(payload),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try { resolve(JSON.parse(chunks)); } catch (e) { reject(e); }
+        } else {
+          reject(new Error("Supabase Storage sign " + res.statusCode + ": " + chunks));
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
+}
 
 // ===== Chamada genérica para a REST API do Supabase (PostgREST) =====
 function supabaseRest(path, method, secretKey, body, extraHeaders) {

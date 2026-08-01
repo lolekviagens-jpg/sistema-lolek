@@ -25,7 +25,8 @@
 //     status text not null default 'enviado',
 //     erro_envio text,
 //     criado_em timestamptz not null default now(),
-//     assinado_em timestamptz
+//     assinado_em timestamptz,
+//     arquivo_path text
 //   );
 //   alter table contratos enable row level security;
 
