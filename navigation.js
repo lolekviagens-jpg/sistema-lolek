@@ -14,7 +14,6 @@
     "nova-emissao": "Novas Emissões",
     emissoes:    "Emissões",
     clientes:    "Clientes",
-    confirmacao: "Confirmação de Emissão",
     roteiro:     "Roteiro",
     followup:    "Follow-up",
     financeiro:  "Financeiro",

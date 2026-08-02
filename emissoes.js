@@ -81,6 +81,7 @@
   const DADOS_CFG = {
     passagem: [
       { id: "trecho", label: "Trecho", placeholder: "Ex: FOR → LIS" },
+      { id: "localizador", label: "Localizador / código" },
       { id: "companhia", label: "Companhia aérea" },
       { id: "voo", label: "Nº do voo" },
       { id: "horario_partida", label: "Horário de partida" },
@@ -604,16 +605,171 @@
     gel("emi-status").innerHTML = "";
     try {
       await chamarEmissoes("criar_emissao", payload);
-      gel("emi-status").innerHTML = '<div class="ctr-status-msg ctr-status-msg--ok">✓ Emissão salva com sucesso.</div>';
+
+      // Nomes dos passageiros pro comprovante — montado antes de limpar o formulário,
+      // porque passageiros novos só têm o nome no input, não no array de estado.
+      const nomesPorIndice = passageiros.map((p, i) =>
+        p.cliente_id ? p.nome : ((payload.passageiros[i].dados_novos && payload.passageiros[i].dados_novos.nome) || "Passageiro"));
+      const produtosInfo = payload.produtos.map((p) => ({
+        tipo: p.tipo,
+        dados: p.dados,
+        valor_venda: p.valor_venda,
+        nomesPax: p.passageiro_indices.map((i) => nomesPorIndice[i]).filter(Boolean).join(", "),
+      }));
+
       limparFormulario();
       await carregarClientes();
       await carregarListaEmissoes();
       renderListaEmissoes();
+
+      mostrarComprovante(payload.emissao, nomesPorIndice, produtosInfo);
     } catch (err) {
       gel("emi-status").innerHTML = `<div class="ctr-status-msg ctr-status-msg--erro">Erro ao salvar: ${escHtml(err.message)}</div>`;
     } finally {
       btn.disabled = false; btn.textContent = "💾 Salvar emissão";
     }
+  }
+
+  // ===== Comprovante de emissão (documento pro cliente) =====
+  // Reaproveita o mesmo estilo visual do antigo "Confirmação de Emissão" (classes
+  // orc-prev-* / conf-*), que foi aposentado: a Nova Emissão já cobre esse papel agora.
+  let comprovanteAtual = null; // { emissaoInfo, nomesPax, produtosInfo } — pro botão de PDF/copiar do preview pós-salvar
+
+  function linhaProdutoComprovante(tipo, dados, valorVenda, nomesPax) {
+    const detalhes = (DADOS_CFG[tipo] || [])
+      .filter((f) => dados && dados[f.id])
+      .map((f) => `<div class="conf-obs-item"><span class="conf-obs-icon">•</span><span>${escHtml(f.label)}: <strong>${escHtml(dados[f.id])}</strong></span></div>`)
+      .join("");
+    return `
+      <div class="orc-prev-flight-card">
+        <div class="orc-prev-flight-card-header">
+          <span class="orc-prev-flight-label">${PROD_ICON[tipo] || "📦"} ${escHtml((PROD_LABEL[tipo] || tipo).toUpperCase())}</span>
+          <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
+        </div>
+        <div style="padding:12px 16px;font-size:0.85rem;color:var(--navy-light)">
+          ${nomesPax ? `<div style="margin-bottom:6px"><strong>Passageiro(s):</strong> ${escHtml(nomesPax)}</div>` : ""}
+          ${detalhes || '<div class="table__muted">Sem detalhes adicionais</div>'}
+        </div>
+      </div>`;
+  }
+
+  function montarComprovanteHtml(emissaoInfo, nomesPax, produtosInfo) {
+    const agora = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+    const dataIda = fData(emissaoInfo.data_ida);
+    const dataVolta = emissaoInfo.data_volta ? fData(emissaoInfo.data_volta) : "";
+    const total = produtosInfo.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
+
+    const paxHtml = nomesPax.map((n) => `<div class="conf-pax-row">👤 ${escHtml(n)}</div>`).join("");
+    const produtosHtml = produtosInfo.map((p) => linhaProdutoComprovante(p.tipo, p.dados, p.valor_venda, p.nomesPax)).join("");
+
+    return `
+      <div class="orc-prev-wrap conf-prev-wrap">
+        <div class="orc-prev-header">
+          <img src="Lolek_logotipo_3.png" class="orc-prev-logo-img" alt="Lolek Viagens">
+          <div class="orc-prev-contatos">
+            <strong>Lolek Viagens</strong><br>
+            CNPJ 54.795.384/0001-05<br>
+            thaynara@agencialolekviagens.com.br<br>
+            (85) 99632-7092<br>
+            Av. Santos Dumont, 2789, Sala 402 — Fortaleza/CE
+          </div>
+        </div>
+        <div class="orc-prev-divider"></div>
+
+        <div class="orc-prev-titulo">COMPROVANTE DE EMISSÃO</div>
+        <div class="conf-emitido-em">Emitido em ${agora}</div>
+
+        ${emissaoInfo.destino ? `<div class="conf-section-title">Viagem</div><div class="conf-pax-row">📍 ${escHtml(emissaoInfo.destino)}${dataIda !== "—" ? " — " + dataIda + (dataVolta ? " a " + dataVolta : "") : ""}</div>` : ""}
+
+        ${nomesPax.length ? `<div class="conf-section-title">Passageiro${nomesPax.length !== 1 ? "s" : ""}</div>${paxHtml}` : ""}
+
+        <div class="conf-section-title">Itens</div>
+        ${produtosHtml}
+
+        <div class="conf-valor-row"><span>Valor total</span><span class="conf-valor">${fBRL(total)}</span></div>
+
+        <div class="conf-obs-section">
+          <div class="conf-obs-title">Informações importantes</div>
+          <ul class="conf-obs-lista">
+            <li class="conf-obs-item"><span class="conf-obs-icon">📞</span><span>Em caso de dúvidas ou alterações, entre em contato com a Lolek Viagens pelo <strong>(85) 99632-7092</strong> ou <strong>thaynara@agencialolekviagens.com.br</strong>.</span></li>
+          </ul>
+        </div>
+
+        <div class="orc-prev-footer">
+          Este documento é um comprovante de emissão emitido pela Lolek Viagens como intermediária junto às operadoras e companhias contratadas. As condições de transporte e hospedagem são regidas pelas respectivas prestadoras de serviço.
+        </div>
+      </div>`;
+  }
+
+  // Abre uma aba limpa só com o comprovante e dispara a impressão (mesmo truque do
+  // antigo confirmacao.js) — usuária escolhe "Salvar como PDF" na caixa de impressão.
+  function abrirComprovantePDF(html) {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) { alert("Permita pop-ups para salvar o PDF."); return; }
+    const baseUrl = location.href.replace(/\/[^/]*$/, "/");
+    win.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Comprovante de Emissão — Lolek Viagens</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="${baseUrl}style.css">
+  <style>
+    body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-body, Montserrat, sans-serif); }
+    .orc-prev-wrap { box-shadow: none; border: 1px solid #e3e6ec; max-width: 800px; margin: 0 auto; }
+    @media print {
+      body { padding: 0; }
+      .orc-prev-wrap { border: none; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  ${html}
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 600);
+    };
+  <\/script>
+</body>
+</html>`);
+    win.document.close();
+  }
+
+  function copiarComprovanteTexto(emissaoInfo, nomesPax, produtosInfo) {
+    let txt = "COMPROVANTE DE EMISSÃO — LOLEK VIAGENS\nCNPJ: 54.795.384/0001-05\nthaynara@agencialolekviagens.com.br | (85) 99632-7092\n\n";
+    if (emissaoInfo.destino) txt += `Viagem: ${emissaoInfo.destino} — ${fData(emissaoInfo.data_ida)}${emissaoInfo.data_volta ? " a " + fData(emissaoInfo.data_volta) : ""}\n`;
+    if (nomesPax.length) txt += `Passageiro(s): ${nomesPax.join(", ")}\n\n`;
+    produtosInfo.forEach((p) => {
+      txt += `[${(PROD_LABEL[p.tipo] || p.tipo).toUpperCase()}] ${fBRL(p.valor_venda)}${p.nomesPax ? " — " + p.nomesPax : ""}\n`;
+      (DADOS_CFG[p.tipo] || []).forEach((f) => { if (p.dados && p.dados[f.id]) txt += `  ${f.label}: ${p.dados[f.id]}\n`; });
+    });
+    const total = produtosInfo.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
+    txt += `\nValor total: ${fBRL(total)}\n`;
+    navigator.clipboard.writeText(txt);
+  }
+
+  function mostrarComprovante(emissaoInfo, nomesPax, produtosInfo) {
+    comprovanteAtual = { emissaoInfo, nomesPax, produtosInfo };
+    gel("emi-comprovante-preview").innerHTML = montarComprovanteHtml(emissaoInfo, nomesPax, produtosInfo);
+    gel("emi-form-wrap").hidden = true;
+    gel("emi-comprovante-wrap").hidden = false;
+    window.scrollTo(0, 0);
+  }
+
+  // Botão "📄 Comprovante" na listagem — reconstrói o documento de uma emissão já salva
+  // (pra baixar de novo se não gerou na hora, ou se outra funcionária precisar depois).
+  function baixarComprovanteSalvo(emissaoId, mapaPax) {
+    const e = (emissoesSalvas || []).find((x) => x.id === emissaoId);
+    if (!e) return;
+    const nomesPax = (e.venda_emissoes_passageiros || []).map(paxNome);
+    const produtosInfo = (e.venda_emissoes_produtos || []).map((p) => ({
+      tipo: p.tipo,
+      dados: p.dados,
+      valor_venda: p.valor_venda,
+      nomesPax: (p.passageiro_ids || []).map((id) => (mapaPax.get(id) || {}).nome).filter(Boolean).join(", "),
+    }));
+    abrirComprovantePDF(montarComprovanteHtml(e, nomesPax, produtosInfo));
   }
 
   // ===== Listagem =====
@@ -629,59 +785,19 @@
     return cliente ? cliente.nome : "Passageiro";
   }
 
-  function renderViagemCard(e) {
-    const pax = e.venda_emissoes_passageiros || [];
-    const prods = e.venda_emissoes_produtos || [];
-    const totalVenda = prods.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
-    return `
-      <div class="emi-viagem-card">
-        <div class="emi-viagem-header">
-          <strong>${escHtml(e.destino || "Sem destino informado")}</strong>
-          <span style="opacity:0.8">${fData(e.data_ida)}${e.data_volta ? " – " + fData(e.data_volta) : ""}</span>
-          ${e.tipo_viagem ? `<span class="badge badge--andamento">${escHtml(e.tipo_viagem)}</span>` : ""}
-          <button type="button" class="orc-produto-remove" style="margin-left:auto;color:#fff" data-excluir-emissao="${e.id}">✕ Excluir</button>
-        </div>
-        <div class="emi-viagem-body">
-          <div class="table__muted" style="margin-bottom:8px">${pax.map((p) => escHtml(paxNome(p))).join(", ") || "—"}</div>
-          <div class="card">
-            <table class="table">
-              <thead><tr><th>Produto</th><th>Pax</th><th>Valor</th><th>Pagamento</th></tr></thead>
-              <tbody>${prods.map((p) => `
-                <tr>
-                  <td>${PROD_ICON[p.tipo] || "📦"} ${escHtml(PROD_LABEL[p.tipo] || p.tipo)}</td>
-                  <td class="table__muted">${(p.passageiro_ids || []).length || 1}</td>
-                  <td>${fBRL(p.valor_venda)}</td>
-                  <td class="table__muted">${escHtml(FORMAS_PAGAMENTO.find((f) => f.v === p.forma_pagamento)?.l || p.forma_pagamento || "—")}</td>
-                </tr>`).join("")}
-              </tbody>
-            </table>
-          </div>
-          <div style="text-align:right;margin-top:8px;font-weight:600">Total: ${fBRL(totalVenda)}</div>
-        </div>
-      </div>`;
+  function fornecedorNome(id) {
+    if (!id) return "—";
+    const f = fornecedoresCache.find((f) => f.id === id);
+    return f ? f.nome : "—";
   }
 
-  function renderProdutoRow(p, mapaPax) {
-    const nomes = (p.passageiro_ids || []).map((id) => (mapaPax.get(id) || {}).nome || "—").join(", ") || "—";
-    return `
-      <tr>
-        <td class="table__muted">${fData(p.data_venda)}</td>
-        <td>${escHtml(nomes)}</td>
-        <td>${escHtml(p._destino || "—")}</td>
-        <td>${PROD_ICON[p.tipo] || "📦"} ${escHtml(PROD_LABEL[p.tipo] || p.tipo)}</td>
-        <td>${fBRL(p.valor_venda)}</td>
-        <td class="table__muted">${escHtml(FORMAS_PAGAMENTO.find((f) => f.v === p.forma_pagamento)?.l || p.forma_pagamento || "—")}</td>
-      </tr>`;
+  // Reconstrói o custo total de um produto: usa a coluna custo se preenchida, senão
+  // calcula pelo valor do milheiro × qtd. de milhas (caso de compra com milhas).
+  function custoProdutoTotal(p) {
+    if (p.custo != null) return Number(p.custo);
+    if (p.valor_milha != null && p.qtd_milhas != null) return Number(p.valor_milha) * Number(p.qtd_milhas) / 1000;
+    return 0;
   }
-
-  function tabelaProdutos(produtos, mapaPax) {
-    return `<div class="card"><table class="table">
-      <thead><tr><th>Data</th><th>Cliente(s)</th><th>Viagem</th><th>Produto</th><th>Valor</th><th>Pagamento</th></tr></thead>
-      <tbody>${produtos.map((p) => renderProdutoRow(p, mapaPax)).join("")}</tbody>
-    </table></div>`;
-  }
-
-  function somaValor(produtos) { return produtos.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0); }
 
   // id do passageiro (venda_emissoes_passageiros.id) -> { nome, clienteId }
   function construirMapaPax() {
@@ -694,18 +810,92 @@
     return mapa;
   }
 
-  function todosProdutosOrdenados() {
+  // Um produto que cobre N passageiros (ex: 1 passagem comprada pra 3 pessoas de uma vez)
+  // vira N linhas na listagem — valor/custo/lucro rateados entre elas — porque foram
+  // 3 vendas do ponto de vista de quem confere a lista, mesmo sendo 1 reserva só.
+  function expandirProdutoEmLinhas(p, destino, mapaPax) {
+    const ids = (p.passageiro_ids && p.passageiro_ids.length) ? p.passageiro_ids : [null];
+    const n = ids.length;
+    const custoTotal = custoProdutoTotal(p);
+    return ids.map((id) => {
+      const info = id ? mapaPax.get(id) : null;
+      return {
+        produtoId: p.id,
+        data_venda: p.data_venda,
+        destino,
+        tipo: p.tipo,
+        nome: info ? info.nome : "—",
+        clienteId: info ? info.clienteId : null,
+        valor_venda: (Number(p.valor_venda) || 0) / n,
+        custo: custoTotal / n,
+        lucro: (Number(p.lucro) || 0) / n,
+        fornecedor_id: p.fornecedor_id,
+        forma_pagamento: p.forma_pagamento,
+        funcionaria: p.funcionaria,
+      };
+    });
+  }
+
+  function todasLinhasOrdenadas(mapaPax) {
     return (emissoesSalvas || [])
-      .flatMap((e) => (e.venda_emissoes_produtos || []).map((p) => ({ ...p, _destino: e.destino })))
+      .flatMap((e) => (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e.destino, mapaPax)))
       .sort((a, b) => (b.data_venda || "").localeCompare(a.data_venda || ""));
   }
 
-  function renderPorData(produtos, mapaPax) {
+  function renderLinhaRow(l) {
+    return `
+      <tr>
+        <td class="table__muted">${fData(l.data_venda)}</td>
+        <td>${escHtml(l.nome)}</td>
+        <td>${escHtml(l.destino || "—")}</td>
+        <td>${PROD_ICON[l.tipo] || "📦"} ${escHtml(PROD_LABEL[l.tipo] || l.tipo)}</td>
+        <td class="table__muted">${escHtml(fornecedorNome(l.fornecedor_id))}</td>
+        <td class="table__muted">${fBRL(l.custo)}</td>
+        <td>${fBRL(l.valor_venda)}</td>
+        <td class="table__muted">${fBRL(l.lucro)}</td>
+        <td class="table__muted">${escHtml(FORMAS_PAGAMENTO.find((f) => f.v === l.forma_pagamento)?.l || l.forma_pagamento || "—")}</td>
+        <td class="table__muted">${escHtml(l.funcionaria || "—")}</td>
+        <td><button type="button" class="orc-produto-remove" data-excluir-produto="${l.produtoId}" title="Exclui este produto (todos os passageiros cobertos por ele)">✕</button></td>
+      </tr>`;
+  }
+
+  function tabelaLinhas(linhas) {
+    if (linhas.length === 0) return '<div class="empty-state empty-state--compact"><p>Nada por aqui</p></div>';
+    return `<div class="card"><table class="table">
+      <thead><tr><th>Data</th><th>Cliente</th><th>Viagem</th><th>Produto</th><th>Fornecedor</th><th>Custo</th><th>Valor</th><th>Lucro</th><th>Pagamento</th><th>Funcionária</th><th></th></tr></thead>
+      <tbody>${linhas.map(renderLinhaRow).join("")}</tbody>
+    </table></div>`;
+  }
+
+  function somaValor(linhas) { return linhas.reduce((s, l) => s + (Number(l.valor_venda) || 0), 0); }
+
+  function renderViagemCard(e, mapaPax) {
+    const pax = e.venda_emissoes_passageiros || [];
+    const linhas = (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e.destino, mapaPax));
+    const totalVenda = somaValor(linhas);
+    return `
+      <div class="emi-viagem-card">
+        <div class="emi-viagem-header">
+          <strong>${escHtml(e.destino || "Sem destino informado")}</strong>
+          <span style="opacity:0.8">${fData(e.data_ida)}${e.data_volta ? " – " + fData(e.data_volta) : ""}</span>
+          ${e.tipo_viagem ? `<span class="badge badge--andamento">${escHtml(e.tipo_viagem)}</span>` : ""}
+          <button type="button" class="btn btn--ghost btn--sm" style="margin-left:auto" data-comprovante-emissao="${e.id}">📄 Comprovante</button>
+          <button type="button" class="orc-produto-remove" data-excluir-emissao="${e.id}">✕ Excluir</button>
+        </div>
+        <div class="emi-viagem-body">
+          <div class="table__muted" style="margin-bottom:8px">${pax.map((p) => escHtml(paxNome(p))).join(", ") || "—"}</div>
+          ${tabelaLinhas(linhas)}
+          <div style="text-align:right;margin-top:8px;font-weight:600">Total: ${fBRL(totalVenda)}</div>
+        </div>
+      </div>`;
+  }
+
+  function renderPorData(linhas) {
     const grupos = new Map();
-    produtos.forEach((p) => {
-      const chave = (p.data_venda || "").slice(0, 7) || "sem-data";
+    linhas.forEach((l) => {
+      const chave = (l.data_venda || "").slice(0, 7) || "sem-data";
       if (!grupos.has(chave)) grupos.set(chave, []);
-      grupos.get(chave).push(p);
+      grupos.get(chave).push(l);
     });
     const chavesOrdenadas = [...grupos.keys()].sort((a, b) => b.localeCompare(a));
     return chavesOrdenadas.map((chave) => {
@@ -715,29 +905,25 @@
           <strong>${escHtml(mesLabel(chave))}</strong>
           <span class="emi-grupo-total">${itens.length} produto${itens.length !== 1 ? "s" : ""} · ${fBRL(somaValor(itens))}</span>
         </div>
-        ${tabelaProdutos(itens, mapaPax)}
+        ${tabelaLinhas(itens)}
       </div>`;
     }).join("");
   }
 
-  function renderPorCliente(produtos, mapaPax) {
-    const porCliente = new Map(); // clienteId -> { nome, produtos: [] }
-    produtos.forEach((p) => {
-      (p.passageiro_ids || []).forEach((id) => {
-        const info = mapaPax.get(id);
-        if (!info) return;
-        const chave = info.clienteId || info.nome;
-        if (!porCliente.has(chave)) porCliente.set(chave, { nome: info.nome, produtos: [] });
-        porCliente.get(chave).produtos.push(p);
-      });
+  function renderPorCliente(linhas) {
+    const porCliente = new Map(); // clienteId -> { nome, linhas: [] }
+    linhas.forEach((l) => {
+      if (!l.clienteId) return;
+      if (!porCliente.has(l.clienteId)) porCliente.set(l.clienteId, { nome: l.nome, linhas: [] });
+      porCliente.get(l.clienteId).linhas.push(l);
     });
     const entradas = [...porCliente.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
     return entradas.map((c) => `<div class="emi-grupo-wrap">
       <div class="emi-grupo-header">
         <strong>${escHtml(c.nome)}</strong>
-        <span class="emi-grupo-total">${c.produtos.length} produto${c.produtos.length !== 1 ? "s" : ""} · ${fBRL(somaValor(c.produtos))}</span>
+        <span class="emi-grupo-total">${c.linhas.length} produto${c.linhas.length !== 1 ? "s" : ""} · ${fBRL(somaValor(c.linhas))}</span>
       </div>
-      ${tabelaProdutos(c.produtos, mapaPax)}
+      ${tabelaLinhas(c.linhas)}
     </div>`).join("");
   }
 
@@ -757,32 +943,47 @@
       return;
     }
 
+    const mapaPax = construirMapaPax();
+
     if (filtroListaEmi === "viagem") {
       count.textContent = emissoesSalvas.length + " viagem" + (emissoesSalvas.length !== 1 ? "ns" : "");
-      wrap.innerHTML = emissoesSalvas.map(renderViagemCard).join("");
+      wrap.innerHTML = emissoesSalvas.map((e) => renderViagemCard(e, mapaPax)).join("");
       wrap.querySelectorAll("[data-excluir-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => excluirEmissao(btn.dataset.excluirEmissao)));
-      return;
-    }
-
-    const mapaPax = construirMapaPax();
-    const todosProdutos = todosProdutosOrdenados();
-
-    if (filtroListaEmi === "cliente") {
-      const clientesUnicos = new Set(todosProdutos.flatMap((p) => (p.passageiro_ids || []).map((id) => (mapaPax.get(id) || {}).clienteId).filter(Boolean)));
-      count.textContent = clientesUnicos.size + " cliente" + (clientesUnicos.size !== 1 ? "s" : "");
-      wrap.innerHTML = renderPorCliente(todosProdutos, mapaPax);
+      wrap.querySelectorAll("[data-comprovante-emissao]").forEach((btn) =>
+        btn.addEventListener("click", () => baixarComprovanteSalvo(btn.dataset.comprovanteEmissao, mapaPax)));
     } else {
-      // Lista mensal (mais recente primeiro), como na planilha antiga.
-      count.textContent = todosProdutos.length + " produto" + (todosProdutos.length !== 1 ? "s" : "");
-      wrap.innerHTML = renderPorData(todosProdutos, mapaPax);
+      const linhas = todasLinhasOrdenadas(mapaPax);
+      if (filtroListaEmi === "cliente") {
+        const clientesUnicos = new Set(linhas.map((l) => l.clienteId).filter(Boolean));
+        count.textContent = clientesUnicos.size + " cliente" + (clientesUnicos.size !== 1 ? "s" : "");
+        wrap.innerHTML = renderPorCliente(linhas);
+      } else {
+        // Lista mensal (mais recente primeiro), como na planilha antiga.
+        count.textContent = linhas.length + " produto" + (linhas.length !== 1 ? "s" : "");
+        wrap.innerHTML = renderPorData(linhas);
+      }
     }
+
+    wrap.querySelectorAll("[data-excluir-produto]").forEach((btn) =>
+      btn.addEventListener("click", () => excluirProduto(btn.dataset.excluirProduto)));
   }
 
   async function excluirEmissao(id) {
     if (!confirm("Excluir esta viagem e todos os produtos/lançamentos financeiros ligados a ela?")) return;
     try {
       await chamarEmissoes("excluir_emissao", { id });
+      await carregarListaEmissoes();
+      renderListaEmissoes();
+    } catch (err) {
+      alert("Erro ao excluir: " + err.message);
+    }
+  }
+
+  async function excluirProduto(id) {
+    if (!confirm("Excluir este produto? Isso também remove o lançamento financeiro gerado por ele.")) return;
+    try {
+      await chamarEmissoes("excluir_produto", { id });
       await carregarListaEmissoes();
       renderListaEmissoes();
     } catch (err) {
@@ -800,6 +1001,23 @@
 
     gel("emi-salvar-btn").addEventListener("click", salvarEmissao);
     gel("emi-atualizar-btn").addEventListener("click", async () => { await carregarListaEmissoes(); renderListaEmissoes(); });
+
+    gel("emi-comprovante-nova-btn").addEventListener("click", () => {
+      gel("emi-comprovante-wrap").hidden = true;
+      gel("emi-form-wrap").hidden = false;
+      gel("emi-status").innerHTML = "";
+    });
+    gel("emi-comprovante-pdf-btn").addEventListener("click", () => {
+      if (!comprovanteAtual) return;
+      abrirComprovantePDF(montarComprovanteHtml(comprovanteAtual.emissaoInfo, comprovanteAtual.nomesPax, comprovanteAtual.produtosInfo));
+    });
+    gel("emi-comprovante-copy-btn").addEventListener("click", () => {
+      if (!comprovanteAtual) return;
+      copiarComprovanteTexto(comprovanteAtual.emissaoInfo, comprovanteAtual.nomesPax, comprovanteAtual.produtosInfo);
+      const b = gel("emi-comprovante-copy-btn");
+      b.textContent = "✓ Copiado!";
+      setTimeout(() => { b.textContent = "Copiar texto"; }, 2000);
+    });
 
     document.querySelectorAll("[data-filtro-emi]").forEach((btn) => {
       btn.addEventListener("click", () => {

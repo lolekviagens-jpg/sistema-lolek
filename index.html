@@ -53,10 +53,6 @@
           <span class="nav__icon">👥</span>
           <span class="nav__label">Clientes</span>
         </button>
-        <button class="nav__item" data-tab="confirmacao">
-          <span class="nav__icon">📋</span>
-          <span class="nav__label">Confirmação</span>
-        </button>
         <button class="nav__item" data-tab="roteiro">
           <span class="nav__icon">🗺</span>
           <span class="nav__label">Roteiro</span>
@@ -368,6 +364,17 @@
           <button type="button" id="emi-salvar-btn" class="btn btn--gold orc-gerar-btn">💾 Salvar emissão</button>
         </div><!-- /emi-form-wrap -->
 
+        <div id="emi-comprovante-wrap" hidden>
+          <div id="emi-comprovante-preview"></div>
+          <div class="toolbar" style="margin-top:20px">
+            <button type="button" id="emi-comprovante-nova-btn" class="btn btn--ghost">← Nova emissão</button>
+            <div style="display:flex;gap:10px">
+              <button type="button" id="emi-comprovante-pdf-btn" class="btn btn--gold">↓ Salvar como PDF</button>
+              <button type="button" id="emi-comprovante-copy-btn" class="btn btn--ghost">Copiar texto</button>
+            </div>
+          </div>
+        </div>
+
       </section>
 
       <!-- ===== PAINEL EMISSÕES (listagem) ===== -->
@@ -452,112 +459,6 @@
                 <button class="btn btn--ghost" id="cli-form-cancelar">Cancelar</button>
                 <button class="btn btn--gold"  id="cli-form-salvar">Salvar</button>
               </div>
-            </div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ===== PAINEL CONFIRMAÇÃO DE EMISSÃO ===== -->
-      <section class="panel" data-panel="confirmacao">
-
-        <!-- INPUT -->
-        <div id="conf-input-wrap">
-          <div class="orc-card">
-            <div class="orc-card__header">Cole o texto, print ou arquivo da confirmação</div>
-            <div class="orc-card__body">
-
-              <!-- Zona de entrada (Ctrl+V ou arrastar) -->
-              <div class="conf-print-zone orc-print-zone" id="conf-print-zone" tabindex="0">
-                <span class="conf-print-hint">📋 Cole um print (Ctrl+V) ou arraste um arquivo aqui</span>
-                <input type="file" id="conf-print-input" accept="image/*,.pdf" hidden />
-              </div>
-              <div style="display:flex;justify-content:center;margin:8px 0 4px">
-                <button type="button" id="conf-btn-arquivo" class="btn btn--ghost" style="font-size:0.82rem">📎 Selecionar arquivo (imagem ou PDF)</button>
-              </div>
-
-              <!-- OU texto -->
-              <div class="cli-form-divider">— ou cole o texto abaixo —</div>
-              <label class="field field--full">
-                <textarea id="conf-paste" class="input" rows="5"
-                  placeholder="Cole aqui o e-mail / texto de confirmação da reserva (companhia aérea, hotel, plataforma de reserva...)"></textarea>
-              </label>
-
-              <div style="display:flex;justify-content:flex-end;margin-top:12px">
-                <button type="button" id="conf-extrair-btn" class="btn btn--gold">🤖 Extrair dados</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- FORMULÁRIO DE REVISÃO -->
-          <div id="conf-form-section" class="orc-card" style="margin-top:16px">
-            <div class="orc-card__header">Revise os dados extraídos</div>
-            <div class="orc-card__body">
-              <div class="form__grid">
-                <label class="field">
-                  <span class="field__label">Tipo de reserva</span>
-                  <select id="conf-tipo" class="input">
-                    <option value="aereo">Aéreo</option>
-                    <option value="hotel">Hotel</option>
-                    <option value="pacote">Pacote (aéreo + hotel)</option>
-                    <option value="outro">Outro</option>
-                  </select>
-                </label>
-                <label class="field">
-                  <span class="field__label">Localizador / Código</span>
-                  <input type="text" id="conf-localizador" class="input" placeholder="Ex: ABC123" />
-                </label>
-                <label class="field field--full">
-                  <span class="field__label">Passageiro(s) — um por linha</span>
-                  <textarea id="conf-passageiros" class="input" rows="3" placeholder="Nome Completo 1&#10;Nome Completo 2"></textarea>
-                </label>
-                <label class="field field--full">
-                  <span class="field__label">Bagagens *</span>
-                  <input type="text" id="conf-bagagens" class="input" placeholder="Ex: 1 bagagem despachada de 23kg por pessoa + 1 de mão" />
-                </label>
-              </div>
-
-              <!-- Campos aéreo — trechos dinâmicos -->
-              <div id="conf-section-aereo">
-                <div class="orc-cost-divider" style="margin:14px 0 10px"><span>Trechos do voo</span></div>
-                <div id="conf-trechos-list"><!-- renderizado por confirmacao.js --></div>
-                <button type="button" id="conf-add-trecho" class="btn btn--ghost" style="margin-top:10px;font-size:0.82rem">+ Adicionar trecho</button>
-              </div>
-
-              <!-- Campos hotel -->
-              <div id="conf-section-hotel">
-                <div class="orc-cost-divider" style="margin:14px 0 10px"><span>Dados do hotel</span></div>
-                <div class="form__grid">
-                  <label class="field field--full"><span class="field__label">Nome do hotel</span><input type="text" id="conf-hotel_nome" class="input" /></label>
-                  <label class="field field--full"><span class="field__label">Endereço</span><input type="text" id="conf-hotel_endereco" class="input" /></label>
-                  <label class="field"><span class="field__label">Tipo de quarto</span><input type="text" id="conf-quarto" class="input" placeholder="Ex: Standard duplo" /></label>
-                  <label class="field"><span class="field__label">Regime</span><input type="text" id="conf-regime" class="input" placeholder="Ex: Café da manhã incluso" /></label>
-                  <label class="field"><span class="field__label">Check-in</span><input type="text" id="conf-check_in" class="input" placeholder="DD/MM/AAAA" /></label>
-                  <label class="field"><span class="field__label">Check-out</span><input type="text" id="conf-check_out" class="input" placeholder="DD/MM/AAAA" /></label>
-                </div>
-              </div>
-
-              <div class="form__grid" style="margin-top:10px">
-                <label class="field"><span class="field__label">Valor total</span><input type="text" id="conf-valor_total" class="input" placeholder="Ex: R$ 2.500,00" /></label>
-                <label class="field field--full"><span class="field__label">Observações (uma por linha)</span><textarea id="conf-observacoes" class="input" rows="3" placeholder="Informações adicionais sobre a reserva..."></textarea></label>
-                <input type="hidden" id="conf-data_emissao" />
-              </div>
-
-              <div style="display:flex;justify-content:flex-end;margin-top:16px">
-                <button type="button" id="conf-gerar-btn" class="btn btn--gold">Gerar comprovante →</button>
-              </div>
-            </div>
-          </div>
-        </div><!-- /conf-input-wrap -->
-
-        <!-- OUTPUT -->
-        <div id="conf-output-wrap" hidden>
-          <div id="conf-preview"></div>
-          <div class="toolbar" style="margin-top:20px">
-            <button type="button" id="conf-editar-btn" class="btn btn--ghost">← Editar</button>
-            <div style="display:flex;gap:10px">
-              <button type="button" id="conf-pdf-btn"  class="btn btn--gold">↓ Salvar como PDF</button>
-              <button type="button" id="conf-copy-btn" class="btn btn--ghost">Copiar texto</button>
             </div>
           </div>
         </div>
@@ -1414,7 +1315,6 @@
   <script src="vendas.js"></script>
   <script src="emissoes.js"></script>
   <script src="clientes.js"></script>
-  <script src="confirmacao.js"></script>
   <script src="roteiro.js"></script>
   <script src="followup.js"></script>
   <script src="financeiro.js"></script>

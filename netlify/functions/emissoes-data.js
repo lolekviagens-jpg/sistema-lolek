@@ -131,6 +131,29 @@ async function executarAcao(action, data, secretKey) {
       return { ok: true };
     }
 
+    case "excluir_produto": {
+      if (!data.id) throw new Error("id é obrigatório");
+      const [produto] = await supabaseRest(
+        "/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id) + "&select=id,emissao_id",
+        "GET", secretKey
+      );
+      if (!produto) throw new Error("Produto não encontrado");
+
+      await supabaseRest("/financeiro_lancamentos?emissao_produto_id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+
+      // Se a viagem ficou sem nenhum produto, apaga a viagem (e os passageiros ligados a
+      // ela) também, pra não deixar um card vazio boiando na aba Emissões.
+      const restantes = await supabaseRest(
+        "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(produto.emissao_id) + "&select=id",
+        "GET", secretKey
+      );
+      if (!restantes || restantes.length === 0) {
+        await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(produto.emissao_id), "DELETE", secretKey);
+      }
+      return { ok: true };
+    }
+
     case "listar_produtos_periodo": {
       if (!data.de || !data.ate) throw new Error("de e ate são obrigatórios");
       return supabaseRest(
@@ -165,89 +188,117 @@ async function criarEmissao(data, secretKey) {
   if (passageiros.length === 0) throw new Error("Informe ao menos um passageiro");
   if (produtos.length === 0) throw new Error("Informe ao menos um produto");
 
-  const [emissaoCriada] = await supabaseRest("/venda_emissoes", "POST", secretKey, {
-    destino:            emissao.destino || null,
-    data_ida:           emissao.data_ida || null,
-    data_volta:         emissao.data_volta || null,
-    tipo_viagem:        emissao.tipo_viagem || null,
-    observacoes_gerais: emissao.observacoes_gerais || null,
-  });
-
-  // Criados em sequência (não em lote) porque a ordem da resposta do PostgREST não é
-  // garantida em inserts múltiplos — e os produtos abaixo precisam saber o id exato de
-  // cada passageiro pela posição no array que o front mandou.
-  const passageirosCriados = [];
-  for (const p of passageiros) {
-    let clienteId = p.cliente_id || null;
-    if (!clienteId) {
-      if (!p.dados_novos || !p.dados_novos.nome) throw new Error("Passageiro sem cliente_id precisa de dados_novos.nome");
-      const registroCliente = {};
-      CLIENTE_CAMPOS.forEach((c) => { registroCliente[c] = p.dados_novos[c] || null; });
-      const [clienteCriado] = await supabaseRest("/clientes", "POST", secretKey, registroCliente);
-      clienteId = clienteCriado.id;
-    }
-    const [passageiroCriado] = await supabaseRest("/venda_emissoes_passageiros", "POST", secretKey, {
-      emissao_id: emissaoCriada.id,
-      cliente_id: clienteId,
-      tamanho_mala: p.tamanho_mala || null,
-      observacoes: p.observacoes || null,
-    });
-    passageirosCriados.push(passageiroCriado);
-  }
-
-  const hoje = new Date().toISOString().slice(0, 10);
+  // Os inserts abaixo são feitos em sequência via REST (sem transação real do Postgres).
+  // Se qualquer etapa falhar no meio do caminho, o catch desfaz manualmente tudo que já
+  // foi criado nesta chamada — senão o usuário reenvia o formulário depois de corrigir o
+  // erro e acaba duplicando a emissão (aconteceu: erro no financeiro_lancamentos do 2º
+  // produto deixou a emissão e o 1º produto já salvos, e o reenvio criou tudo de novo).
+  const clientesCriadosNestaChamada = [];
   const produtosCriados = [];
+  let emissaoCriada = null;
 
-  for (const prod of produtos) {
-    if (!TIPO_LABEL[prod.tipo]) throw new Error("Tipo de produto inválido: " + prod.tipo);
-
-    const custoMilhas = (prod.valor_milha != null && prod.qtd_milhas != null)
-      ? (Number(prod.valor_milha) * Number(prod.qtd_milhas) / 1000) : 0;
-    const custoTotal  = prod.custo != null ? Number(prod.custo) : custoMilhas;
-    const valorVenda  = Number(prod.valor_venda) || 0;
-    const lucro       = valorVenda - custoTotal;
-    const faturado    = prod.forma_pagamento === "faturado";
-
-    const idxList = Array.isArray(prod.passageiro_indices) ? prod.passageiro_indices : [];
-    const passageiroIds = idxList.map((i) => passageirosCriados[i] && passageirosCriados[i].id).filter(Boolean);
-    const dataVenda = prod.data_venda || hoje;
-
-    const [produtoCriado] = await supabaseRest("/venda_emissoes_produtos", "POST", secretKey, {
-      emissao_id: emissaoCriada.id,
-      tipo: prod.tipo,
-      passageiro_ids: passageiroIds,
-      dados: prod.dados || {},
-      fornecedor_id: prod.fornecedor_id || null,
-      valor_milha: prod.valor_milha || null,
-      qtd_milhas: prod.qtd_milhas || null,
-      custo: prod.custo || null,
-      valor_venda: valorVenda,
-      lucro,
-      forma_pagamento: prod.forma_pagamento,
-      data_faturamento: faturado ? (prod.data_faturamento || null) : null,
-      funcionaria: prod.funcionaria || null,
-      origem_lead: prod.tipo === "passagem" ? (prod.origem_lead || null) : null,
-      data_venda: dataVenda,
+  try {
+    [emissaoCriada] = await supabaseRest("/venda_emissoes", "POST", secretKey, {
+      destino:            emissao.destino || null,
+      data_ida:           emissao.data_ida || null,
+      data_volta:         emissao.data_volta || null,
+      tipo_viagem:        emissao.tipo_viagem || null,
+      observacoes_gerais: emissao.observacoes_gerais || null,
     });
-    produtosCriados.push(produtoCriado);
 
-    const paxCount = passageiroIds.length || 1;
-    await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
-      tipo: "entrada",
-      status: faturado ? "pendente" : "pago",
-      fonte: "emissao_app",
-      descricao: TIPO_LABEL[prod.tipo] + (emissao.destino ? " — " + emissao.destino : "") + (paxCount > 1 ? " (" + paxCount + " pax)" : ""),
-      categoria: TIPO_LABEL[prod.tipo],
-      valor: valorVenda,
-      vencimento: faturado ? (prod.data_faturamento || null) : dataVenda,
-      fornecedor_id: prod.fornecedor_id || null,
-      sheet_meta: (prod.valor_milha != null && prod.qtd_milhas != null)
-        ? { valor_milha: prod.valor_milha, qtd_milhas: prod.qtd_milhas } : null,
-      emissao_produto_id: produtoCriado.id,
-    });
+    // Criados em sequência (não em lote) porque a ordem da resposta do PostgREST não é
+    // garantida em inserts múltiplos — e os produtos abaixo precisam saber o id exato de
+    // cada passageiro pela posição no array que o front mandou.
+    const passageirosCriados = [];
+    for (const p of passageiros) {
+      let clienteId = p.cliente_id || null;
+      if (!clienteId) {
+        if (!p.dados_novos || !p.dados_novos.nome) throw new Error("Passageiro sem cliente_id precisa de dados_novos.nome");
+        const registroCliente = {};
+        CLIENTE_CAMPOS.forEach((c) => { registroCliente[c] = p.dados_novos[c] || null; });
+        const [clienteCriado] = await supabaseRest("/clientes", "POST", secretKey, registroCliente);
+        clienteId = clienteCriado.id;
+        clientesCriadosNestaChamada.push(clienteId);
+      }
+      const [passageiroCriado] = await supabaseRest("/venda_emissoes_passageiros", "POST", secretKey, {
+        emissao_id: emissaoCriada.id,
+        cliente_id: clienteId,
+        tamanho_mala: p.tamanho_mala || null,
+        observacoes: p.observacoes || null,
+      });
+      passageirosCriados.push(passageiroCriado);
+    }
+
+    const hoje = new Date().toISOString().slice(0, 10);
+
+    for (const prod of produtos) {
+      if (!TIPO_LABEL[prod.tipo]) throw new Error("Tipo de produto inválido: " + prod.tipo);
+
+      const custoMilhas = (prod.valor_milha != null && prod.qtd_milhas != null)
+        ? (Number(prod.valor_milha) * Number(prod.qtd_milhas) / 1000) : 0;
+      const custoTotal  = prod.custo != null ? Number(prod.custo) : custoMilhas;
+      const valorVenda  = Number(prod.valor_venda) || 0;
+      const lucro       = valorVenda - custoTotal;
+      const faturado    = prod.forma_pagamento === "faturado";
+
+      const idxList = Array.isArray(prod.passageiro_indices) ? prod.passageiro_indices : [];
+      const passageiroIds = idxList.map((i) => passageirosCriados[i] && passageirosCriados[i].id).filter(Boolean);
+      const dataVenda = prod.data_venda || hoje;
+
+      const [produtoCriado] = await supabaseRest("/venda_emissoes_produtos", "POST", secretKey, {
+        emissao_id: emissaoCriada.id,
+        tipo: prod.tipo,
+        passageiro_ids: passageiroIds,
+        dados: prod.dados || {},
+        fornecedor_id: prod.fornecedor_id || null,
+        valor_milha: prod.valor_milha || null,
+        qtd_milhas: prod.qtd_milhas || null,
+        custo: prod.custo || null,
+        valor_venda: valorVenda,
+        lucro,
+        forma_pagamento: prod.forma_pagamento,
+        data_faturamento: faturado ? (prod.data_faturamento || null) : null,
+        funcionaria: prod.funcionaria || null,
+        origem_lead: prod.tipo === "passagem" ? (prod.origem_lead || null) : null,
+        data_venda: dataVenda,
+      });
+      produtosCriados.push(produtoCriado);
+
+      const paxCount = passageiroIds.length || 1;
+      await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
+        tipo: "entrada",
+        status: faturado ? "pendente" : "pago",
+        fonte: "emissao_app",
+        descricao: TIPO_LABEL[prod.tipo] + (emissao.destino ? " — " + emissao.destino : "") + (paxCount > 1 ? " (" + paxCount + " pax)" : ""),
+        categoria: TIPO_LABEL[prod.tipo],
+        valor: valorVenda,
+        vencimento: faturado ? (prod.data_faturamento || null) : dataVenda,
+        fornecedor_id: prod.fornecedor_id || null,
+        sheet_meta: (prod.valor_milha != null && prod.qtd_milhas != null)
+          ? { valor_milha: prod.valor_milha, qtd_milhas: prod.qtd_milhas } : null,
+        emissao_produto_id: produtoCriado.id,
+      });
+    }
+
+    return { emissao: emissaoCriada, passageiros: passageirosCriados, produtos: produtosCriados };
+  } catch (err) {
+    await reverterEmissaoParcial(emissaoCriada, produtosCriados, clientesCriadosNestaChamada, secretKey);
+    throw err;
   }
+}
 
-  return { emissao: emissaoCriada, passageiros: passageirosCriados, produtos: produtosCriados };
+async function reverterEmissaoParcial(emissaoCriada, produtosCriados, clientesCriadosNestaChamada, secretKey) {
+  const idsProdutos = produtosCriados.map((p) => p.id);
+  if (idsProdutos.length > 0) {
+    await supabaseRest("/financeiro_lancamentos?emissao_produto_id=in.(" + idsProdutos.join(",") + ")", "DELETE", secretKey).catch(() => {});
+  }
+  if (emissaoCriada) {
+    // Cascata apaga também venda_emissoes_passageiros e venda_emissoes_produtos.
+    await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(emissaoCriada.id), "DELETE", secretKey).catch(() => {});
+  }
+  for (const clienteId of clientesCriadosNestaChamada) {
+    await supabaseRest("/clientes?id=eq." + encodeURIComponent(clienteId), "DELETE", secretKey).catch(() => {});
+  }
 }
 
 // ===== Chamada genérica para a REST API do Supabase (PostgREST) =====
