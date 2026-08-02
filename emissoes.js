@@ -130,6 +130,7 @@
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
+  let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
 
   // ===== Rede =====
   async function chamarEmissoes(action, data) {
@@ -396,7 +397,7 @@
                   <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
                 </label>
               `}
-              <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora)</span>
+              <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
                 <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
               </label>
               <label class="field orc-field--highlight"><span class="field__label">Valor total cobrado do cliente (R$) ★</span>
@@ -598,13 +599,19 @@
     if (payload.produtos.length === 0) { alert("Adicione ao menos um produto."); return; }
     for (const p of payload.produtos) {
       if (!p.valor_venda) { alert("Informe o valor cobrado do cliente em todos os produtos."); return; }
+      if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
     }
 
+    const editando = !!emissaoEmEdicaoId;
     const btn = gel("emi-salvar-btn");
-    btn.disabled = true; btn.textContent = "⏳ Salvando...";
+    btn.disabled = true; btn.textContent = editando ? "⏳ Salvando edição..." : "⏳ Salvando...";
     gel("emi-status").innerHTML = "";
     try {
-      await chamarEmissoes("criar_emissao", payload);
+      if (editando) {
+        await chamarEmissoes("editar_emissao", { id: emissaoEmEdicaoId, ...payload });
+      } else {
+        await chamarEmissoes("criar_emissao", payload);
+      }
 
       // Nomes dos passageiros pro comprovante — montado antes de limpar o formulário,
       // porque passageiros novos só têm o nome no input, não no array de estado.
@@ -617,6 +624,8 @@
         nomesPax: p.passageiro_indices.map((i) => nomesPorIndice[i]).filter(Boolean).join(", "),
       }));
 
+      emissaoEmEdicaoId = null;
+      gel("emi-editando-aviso").hidden = true;
       limparFormulario();
       await carregarClientes();
       await carregarListaEmissoes();
@@ -628,6 +637,87 @@
     } finally {
       btn.disabled = false; btn.textContent = "💾 Salvar emissão";
     }
+  }
+
+  // ===== Editar emissão existente =====
+  // Recarrega os dados de uma emissão já salva de volta no formulário de Nova Emissão pra
+  // corrigir algo cadastrado errado. Ao salvar, editar_emissao recria tudo do zero (mesma
+  // lógica do cadastro normal) e só depois apaga a versão antiga.
+  function editarEmissao(id) {
+    const e = (emissoesSalvas || []).find((x) => x.id === id);
+    if (!e) return;
+
+    emissaoEmEdicaoId = id;
+
+    gel("emi-destino").value = e.destino || "";
+    gel("emi-data-ida").value = e.data_ida || "";
+    gel("emi-data-volta").value = e.data_volta || "";
+    gel("emi-tipo-viagem").value = e.tipo_viagem || "";
+    gel("emi-obs-gerais").value = e.observacoes_gerais || "";
+
+    const paxOriginais = e.venda_emissoes_passageiros || [];
+    passageiros = paxOriginais.map((pax) => ({ id: novoId("pax"), cliente_id: pax.cliente_id, nome: paxNome(pax) }));
+    const mapaOriginalParaNovo = new Map();
+    paxOriginais.forEach((pax, i) => mapaOriginalParaNovo.set(pax.id, passageiros[i].id));
+
+    Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
+    const prodsOriginais = e.venda_emissoes_produtos || [];
+    produtos = prodsOriginais.map((p) => ({ id: novoId("prod"), tipo: p.tipo }));
+
+    renderPassageiros();
+    paxOriginais.forEach((pax, i) => {
+      const novoPaxId = passageiros[i].id;
+      const mala = gel(`emi-pax-${novoPaxId}-mala`); if (mala) mala.value = pax.tamanho_mala || "";
+      const obs = gel(`emi-pax-${novoPaxId}-obs`); if (obs) obs.value = pax.observacoes || "";
+    });
+
+    renderProdutos();
+    prodsOriginais.forEach((p, i) => {
+      const novoProdId = produtos[i].id;
+      paxSelecionados[novoProdId] = new Set((p.passageiro_ids || []).map((pid) => mapaOriginalParaNovo.get(pid)).filter(Boolean));
+      renderProdutoPaxChecks(novoProdId);
+
+      (DADOS_CFG[p.tipo] || []).forEach((f) => {
+        const el = gel(`emi-prod-${novoProdId}-dados-${f.id}`);
+        if (el && p.dados && p.dados[f.id] != null) el.value = p.dados[f.id];
+      });
+
+      const fornecedorEl = gel(`emi-prod-${novoProdId}-fornecedor`);
+      if (fornecedorEl) fornecedorEl.value = p.fornecedor_id || "";
+
+      const compraTipoEl = gel(`emi-prod-${novoProdId}-compra_tipo`);
+      if (compraTipoEl) {
+        compraTipoEl.value = (p.valor_milha != null && p.qtd_milhas != null) ? "milhas" : "tarifado";
+        compraTipoEl.dispatchEvent(new Event("change"));
+      }
+      const valorMilhaEl = gel(`emi-prod-${novoProdId}-valor_milha`); if (valorMilhaEl && p.valor_milha != null) valorMilhaEl.value = p.valor_milha;
+      const qtdMilhasEl = gel(`emi-prod-${novoProdId}-qtd_milhas`); if (qtdMilhasEl && p.qtd_milhas != null) qtdMilhasEl.value = p.qtd_milhas;
+      const custoEl = gel(`emi-prod-${novoProdId}-custo`); if (custoEl && p.custo != null) custoEl.value = p.custo;
+
+      const valorVendaEl = gel(`emi-prod-${novoProdId}-valor_venda`); if (valorVendaEl) valorVendaEl.value = p.valor_venda;
+
+      const formaPagEl = gel(`emi-prod-${novoProdId}-forma_pagamento`);
+      if (formaPagEl) { formaPagEl.value = p.forma_pagamento; formaPagEl.dispatchEvent(new Event("change")); }
+      const dataFatEl = gel(`emi-prod-${novoProdId}-data_faturamento`); if (dataFatEl && p.data_faturamento) dataFatEl.value = p.data_faturamento;
+
+      const funcEl = gel(`emi-prod-${novoProdId}-funcionaria`); if (funcEl) funcEl.value = p.funcionaria || "";
+      const origemEl = gel(`emi-prod-${novoProdId}-origem_lead`); if (origemEl && p.origem_lead) origemEl.value = p.origem_lead;
+    });
+
+    gel("emi-editando-aviso").hidden = false;
+    gel("emi-status").innerHTML = "";
+    gel("emi-form-wrap").hidden = false;
+    gel("emi-comprovante-wrap").hidden = true;
+
+    document.querySelector('[data-tab="nova-emissao"]')?.click();
+    window.scrollTo(0, 0);
+  }
+
+  function cancelarEdicao() {
+    emissaoEmEdicaoId = null;
+    limparFormulario();
+    gel("emi-editando-aviso").hidden = true;
+    gel("emi-status").innerHTML = "";
   }
 
   // ===== Comprovante de emissão (documento pro cliente) =====
@@ -829,6 +919,7 @@
         valor_venda: (Number(p.valor_venda) || 0) / n,
         custo: custoTotal / n,
         lucro: (Number(p.lucro) || 0) / n,
+        qtd_milhas: p.qtd_milhas != null ? Number(p.qtd_milhas) / n : 0,
         fornecedor_id: p.fornecedor_id,
         forma_pagamento: p.forma_pagamento,
         funcionaria: p.funcionaria,
@@ -869,6 +960,25 @@
 
   function somaValor(linhas) { return linhas.reduce((s, l) => s + (Number(l.valor_venda) || 0), 0); }
 
+  function resumoLinhas(linhas) {
+    const faturamento = somaValor(linhas);
+    const lucro = linhas.reduce((s, l) => s + (Number(l.lucro) || 0), 0);
+    const margem = faturamento > 0 ? (lucro / faturamento * 100) : 0;
+    const milhas = linhas.reduce((s, l) => s + (Number(l.qtd_milhas) || 0), 0);
+    return { count: linhas.length, faturamento, lucro, margem, milhas };
+  }
+
+  function renderResumoStats(linhas) {
+    const r = resumoLinhas(linhas);
+    return `<div class="stats" style="margin:14px 0 0;padding:0 16px 16px">
+      <div class="stat"><div class="stat__value">${r.count}</div><div class="stat__label">Produtos</div></div>
+      <div class="stat"><div class="stat__value">${fBRL(r.faturamento)}</div><div class="stat__label">Faturamento</div></div>
+      <div class="stat stat--gold"><div class="stat__value">${fBRL(r.lucro)}</div><div class="stat__label">Lucro</div></div>
+      <div class="stat"><div class="stat__value">${r.margem.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</div><div class="stat__label">Margem</div></div>
+      ${r.milhas > 0 ? `<div class="stat"><div class="stat__value">${Math.round(r.milhas).toLocaleString("pt-BR")}</div><div class="stat__label">Milhas</div></div>` : ""}
+    </div>`;
+  }
+
   function renderViagemCard(e, mapaPax) {
     const pax = e.venda_emissoes_passageiros || [];
     const linhas = (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e.destino, mapaPax));
@@ -881,6 +991,7 @@
           ${e.tipo_viagem ? `<span class="badge badge--andamento">${escHtml(e.tipo_viagem)}</span>` : ""}
           <div class="emi-viagem-header-actions">
             <button type="button" class="emi-btn-comprovante" data-comprovante-emissao="${e.id}">📄 Comprovante</button>
+            <button type="button" class="emi-btn-comprovante" data-editar-emissao="${e.id}">✏ Editar</button>
             <button type="button" class="orc-produto-remove" data-excluir-emissao="${e.id}">✕ Excluir</button>
           </div>
         </div>
@@ -908,6 +1019,7 @@
           <span class="emi-grupo-total">${itens.length} produto${itens.length !== 1 ? "s" : ""} · ${fBRL(somaValor(itens))}</span>
         </div>
         ${tabelaLinhas(itens)}
+        ${renderResumoStats(itens)}
       </div>`;
     }).join("");
   }
@@ -954,6 +1066,8 @@
         btn.addEventListener("click", () => excluirEmissao(btn.dataset.excluirEmissao)));
       wrap.querySelectorAll("[data-comprovante-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => baixarComprovanteSalvo(btn.dataset.comprovanteEmissao, mapaPax)));
+      wrap.querySelectorAll("[data-editar-emissao]").forEach((btn) =>
+        btn.addEventListener("click", () => editarEmissao(btn.dataset.editarEmissao)));
     } else {
       const linhas = todasLinhasOrdenadas(mapaPax);
       if (filtroListaEmi === "cliente") {
@@ -1003,6 +1117,7 @@
 
     gel("emi-salvar-btn").addEventListener("click", salvarEmissao);
     gel("emi-atualizar-btn").addEventListener("click", async () => { await carregarListaEmissoes(); renderListaEmissoes(); });
+    gel("emi-cancelar-edicao-btn").addEventListener("click", cancelarEdicao);
 
     gel("emi-comprovante-nova-btn").addEventListener("click", () => {
       gel("emi-comprovante-wrap").hidden = true;

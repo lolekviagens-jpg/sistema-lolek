@@ -131,6 +131,26 @@ async function executarAcao(action, data, secretKey) {
       return { ok: true };
     }
 
+    case "editar_emissao": {
+      if (!data.id) throw new Error("id é obrigatório");
+      // Cria a versão nova primeiro; só apaga a antiga depois de confirmar sucesso — se a
+      // criação falhar no meio do caminho (criarEmissao já reverte o que criou), a emissão
+      // antiga continua intacta em vez de a usuária perder os dados.
+      const resultado = await criarEmissao(data, secretKey);
+
+      const produtosAntigos = await supabaseRest(
+        "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
+        "GET", secretKey
+      ).catch(() => []);
+      const idsAntigos = (produtosAntigos || []).map((p) => p.id);
+      if (idsAntigos.length > 0) {
+        await supabaseRest("/financeiro_lancamentos?emissao_produto_id=in.(" + idsAntigos.join(",") + ")", "DELETE", secretKey).catch(() => {});
+      }
+      await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey).catch(() => {});
+
+      return resultado;
+    }
+
     case "excluir_produto": {
       if (!data.id) throw new Error("id é obrigatório");
       const [produto] = await supabaseRest(
