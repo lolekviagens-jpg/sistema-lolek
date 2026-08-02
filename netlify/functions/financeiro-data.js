@@ -33,7 +33,7 @@
 //     dedupe_key text,
 //     fornecedor_id uuid references fornecedores(id),
 //     sheet_meta jsonb,
-//     emissao_produto_id uuid references emissoes_produtos(id) on delete set null -- ver emissoes-data.js
+//     emissao_produto_id uuid references venda_emissoes_produtos(id) on delete set null -- ver emissoes-data.js
 //   );
 //   create unique index financeiro_lancamentos_dedupe_key_idx
 //     on financeiro_lancamentos (dedupe_key);

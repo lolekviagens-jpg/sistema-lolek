@@ -10,7 +10,11 @@
 // Tabelas necessárias no Supabase (criar uma vez via SQL Editor — nessa ordem, depois
 // de já existirem "clientes" e "fornecedores"):
 //
-//   create table emissoes (
+// IMPORTANTE: o nome é "venda_emissoes" (não "emissoes") porque já existe uma tabela
+// "emissoes" nesse mesmo projeto Supabase, usada pelo Portal Corporativo
+// (empresas-admin.js) — nada a ver com esta aba. Usar "emissoes" aqui colidiria com ela.
+//
+//   create table venda_emissoes (
 //     id uuid primary key default gen_random_uuid(),
 //     destino text,
 //     data_ida date,
@@ -19,21 +23,21 @@
 //     observacoes_gerais text,
 //     criado_em timestamptz not null default now()
 //   );
-//   alter table emissoes enable row level security;
+//   alter table venda_emissoes enable row level security;
 //
-//   create table emissoes_passageiros (
+//   create table venda_emissoes_passageiros (
 //     id uuid primary key default gen_random_uuid(),
-//     emissao_id uuid not null references emissoes(id) on delete cascade,
+//     emissao_id uuid not null references venda_emissoes(id) on delete cascade,
 //     cliente_id uuid not null references clientes(id),
 //     tamanho_mala text,
 //     observacoes text,
 //     criado_em timestamptz not null default now()
 //   );
-//   alter table emissoes_passageiros enable row level security;
+//   alter table venda_emissoes_passageiros enable row level security;
 //
-//   create table emissoes_produtos (
+//   create table venda_emissoes_produtos (
 //     id uuid primary key default gen_random_uuid(),
-//     emissao_id uuid not null references emissoes(id) on delete cascade,
+//     emissao_id uuid not null references venda_emissoes(id) on delete cascade,
 //     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala')),
 //     passageiro_ids jsonb not null default '[]',
 //     dados jsonb not null default '{}',
@@ -50,11 +54,11 @@
 //     data_venda date not null default current_date,
 //     criado_em timestamptz not null default now()
 //   );
-//   alter table emissoes_produtos enable row level security;
+//   alter table venda_emissoes_produtos enable row level security;
 //
 //   -- Liga cada lançamento de entrada gerado automaticamente ao produto de origem, e
 //   -- libera a nova fonte 'emissao_app' (além de 'planilha_venda' já existente):
-//   alter table financeiro_lancamentos add column emissao_produto_id uuid references emissoes_produtos(id) on delete set null;
+//   alter table financeiro_lancamentos add column emissao_produto_id uuid references venda_emissoes_produtos(id) on delete set null;
 //   alter table financeiro_lancamentos drop constraint financeiro_lancamentos_fonte_check;
 //   alter table financeiro_lancamentos add constraint financeiro_lancamentos_fonte_check
 //     check (fonte in ('manual','extrato_texto','extrato_ofx','extrato_csv','extrato_pdf','planilha_venda','emissao_app'));
@@ -83,7 +87,7 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod === "GET") {
       const rows = await supabaseRest(
-        "/emissoes?select=*,emissoes_passageiros(*),emissoes_produtos(*)&order=criado_em.desc",
+        "/venda_emissoes?select=*,venda_emissoes_passageiros(*),venda_emissoes_produtos(*)&order=criado_em.desc",
         "GET", secretKey
       );
       return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows || []) };
@@ -113,7 +117,7 @@ async function executarAcao(action, data, secretKey) {
     case "excluir_emissao": {
       if (!data.id) throw new Error("id é obrigatório");
       const produtos = await supabaseRest(
-        "/emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
+        "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
         "GET", secretKey
       );
       const idsProdutos = (produtos || []).map((p) => p.id);
@@ -123,14 +127,14 @@ async function executarAcao(action, data, secretKey) {
           "DELETE", secretKey
         );
       }
-      await supabaseRest("/emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
       return { ok: true };
     }
 
     case "listar_produtos_periodo": {
       if (!data.de || !data.ate) throw new Error("de e ate são obrigatórios");
       return supabaseRest(
-        "/emissoes_produtos?select=*,emissoes(destino)" +
+        "/venda_emissoes_produtos?select=*,venda_emissoes(destino)" +
           "&data_venda=gte." + encodeURIComponent(data.de) +
           "&data_venda=lte." + encodeURIComponent(data.ate) +
           "&order=data_venda.asc",
@@ -161,7 +165,7 @@ async function criarEmissao(data, secretKey) {
   if (passageiros.length === 0) throw new Error("Informe ao menos um passageiro");
   if (produtos.length === 0) throw new Error("Informe ao menos um produto");
 
-  const [emissaoCriada] = await supabaseRest("/emissoes", "POST", secretKey, {
+  const [emissaoCriada] = await supabaseRest("/venda_emissoes", "POST", secretKey, {
     destino:            emissao.destino || null,
     data_ida:           emissao.data_ida || null,
     data_volta:         emissao.data_volta || null,
@@ -182,7 +186,7 @@ async function criarEmissao(data, secretKey) {
       const [clienteCriado] = await supabaseRest("/clientes", "POST", secretKey, registroCliente);
       clienteId = clienteCriado.id;
     }
-    const [passageiroCriado] = await supabaseRest("/emissoes_passageiros", "POST", secretKey, {
+    const [passageiroCriado] = await supabaseRest("/venda_emissoes_passageiros", "POST", secretKey, {
       emissao_id: emissaoCriada.id,
       cliente_id: clienteId,
       tamanho_mala: p.tamanho_mala || null,
@@ -208,7 +212,7 @@ async function criarEmissao(data, secretKey) {
     const passageiroIds = idxList.map((i) => passageirosCriados[i] && passageirosCriados[i].id).filter(Boolean);
     const dataVenda = prod.data_venda || hoje;
 
-    const [produtoCriado] = await supabaseRest("/emissoes_produtos", "POST", secretKey, {
+    const [produtoCriado] = await supabaseRest("/venda_emissoes_produtos", "POST", secretKey, {
       emissao_id: emissaoCriada.id,
       tipo: prod.tipo,
       passageiro_ids: passageiroIds,

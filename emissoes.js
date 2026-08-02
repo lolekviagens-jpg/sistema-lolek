@@ -624,8 +624,8 @@
   }
 
   function renderViagemCard(e) {
-    const pax = e.emissoes_passageiros || [];
-    const prods = e.emissoes_produtos || [];
+    const pax = e.venda_emissoes_passageiros || [];
+    const prods = e.venda_emissoes_produtos || [];
     const totalVenda = prods.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
     return `
       <div class="emi-viagem-card">
@@ -688,7 +688,7 @@
       wrap.querySelectorAll("[data-excluir-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => excluirEmissao(btn.dataset.excluirEmissao)));
     } else {
-      const todosProdutos = emissoesSalvas.flatMap((e) => (e.emissoes_produtos || []).map((p) => ({ ...p, _destino: e.destino })));
+      const todosProdutos = emissoesSalvas.flatMap((e) => (e.venda_emissoes_produtos || []).map((p) => ({ ...p, _destino: e.destino })));
       count.textContent = todosProdutos.length + " produto" + (todosProdutos.length !== 1 ? "s" : "");
       wrap.innerHTML = `<div class="card"><table class="table">
         <thead><tr><th>Viagem</th><th>Produto</th><th>Pax</th><th>Valor</th><th>Pagamento</th></tr></thead>
