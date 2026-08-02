@@ -255,6 +255,10 @@ body {
   gap: 6px;
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field--inline {
   flex-direction: column;
 }
@@ -1458,6 +1462,78 @@ textarea.input {
   font-size: 1rem;
   justify-content: center;
   margin-bottom: 16px;
+}
+
+/* ===== Emissões: botões lado a lado (variação do .orc-add-btn, sem width:100%) ===== */
+.emi-add-btn-inline {
+  width: auto;
+  flex: 1 1 auto;
+  padding: 9px 16px;
+  border: 1px dashed var(--gold);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--navy);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.13s;
+  white-space: nowrap;
+}
+
+.emi-add-btn-inline:hover {
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.emi-busca-resultados {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin-top: 6px;
+  background: var(--surface);
+}
+
+.emi-busca-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.emi-busca-item:last-child { border-bottom: none; }
+
+.emi-busca-item:hover {
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.emi-viagem-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.emi-viagem-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--navy);
+  color: #fff;
+}
+
+.emi-viagem-header strong { color: #fff; }
+
+.emi-viagem-body {
+  padding: 14px 16px;
 }
 
 /* ===== Preview do orçamento ===== */

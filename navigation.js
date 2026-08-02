@@ -11,6 +11,7 @@
     checkin:    "Check-in do dia",
     orcamentos: "Orçamentos",
     vendas:     "Vendas",
+    emissoes:    "Emissões",
     clientes:    "Clientes",
     confirmacao: "Confirmação de Emissão",
     roteiro:     "Roteiro",

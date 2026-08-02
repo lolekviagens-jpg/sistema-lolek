@@ -41,6 +41,10 @@
           <span class="nav__icon">📊</span>
           <span class="nav__label">Vendas</span>
         </button>
+        <button class="nav__item" data-tab="emissoes">
+          <span class="nav__icon">🎫</span>
+          <span class="nav__label">Emissões</span>
+        </button>
         <button class="nav__item" data-tab="clientes">
           <span class="nav__icon">👥</span>
           <span class="nav__label">Clientes</span>
@@ -287,7 +291,7 @@
                 <input type="number" id="metas-meta-emp" class="input" placeholder="Ex: 42000" step="100" />
               </label>
               <div class="field__label" style="margin-bottom:10px">
-                Funcionárias <span class="field__optional">(nome exato como aparece na planilha)</span>
+                Funcionárias <span class="field__optional">(nome exato usado no campo "Funcionária responsável" em Emissões)</span>
               </div>
               <div id="metas-funcs"></div>
               <button type="button" class="btn btn--ghost" id="metas-add-func" style="margin-top:10px;width:100%">+ Adicionar funcionária</button>
@@ -298,6 +302,77 @@
             </div>
           </div>
         </div>
+
+      </section>
+
+      <!-- ===== PAINEL EMISSÕES ===== -->
+      <section class="panel" data-panel="emissoes">
+
+        <div id="emi-form-wrap">
+
+          <div class="orc-card">
+            <div class="orc-card__header">Dados da viagem</div>
+            <div class="orc-card__body">
+              <div class="form__grid">
+                <label class="field"><span class="field__label">Destino</span><input type="text" id="emi-destino" class="input" placeholder="Ex: Lisboa" /></label>
+                <label class="field"><span class="field__label">Data de ida</span><input type="date" id="emi-data-ida" class="input" /></label>
+                <label class="field"><span class="field__label">Data de volta</span><input type="date" id="emi-data-volta" class="input" /></label>
+                <label class="field"><span class="field__label">Tipo de viagem</span>
+                  <select id="emi-tipo-viagem" class="input">
+                    <option value="">Não informado</option>
+                    <option value="lazer">Lazer</option>
+                    <option value="corporativa">Corporativa</option>
+                    <option value="lua_de_mel">Lua de mel</option>
+                    <option value="outro">Outro</option>
+                  </select>
+                </label>
+                <label class="field field--full"><span class="field__label">Observações gerais</span><textarea id="emi-obs-gerais" class="input" rows="2"></textarea></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="orc-card">
+            <div class="orc-card__header">
+              <span>Passageiros</span>
+              <span class="orc-header-hint">Selecione clientes já cadastrados ou cole os dados de um novo</span>
+            </div>
+            <div class="orc-card__body">
+              <div id="emi-passageiros-list"></div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+                <button type="button" id="emi-add-passageiro-existente" class="orc-add-btn">+ Selecionar cliente existente</button>
+                <button type="button" id="emi-add-passageiro-novo" class="orc-add-btn">+ Novo passageiro</button>
+              </div>
+              <div id="emi-busca-cliente-wrap" hidden style="margin-top:10px">
+                <input type="text" id="emi-busca-cliente" class="input" placeholder="Digite o nome do cliente..." />
+                <div id="emi-busca-cliente-resultados" class="emi-busca-resultados"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="orc-card">
+            <div class="orc-card__header">
+              <span>Produtos vendidos</span>
+              <span class="orc-header-hint">Um card por reserva — pode cobrir vários passageiros de uma vez</span>
+            </div>
+            <div class="orc-card__body">
+              <div id="emi-produtos-list"></div>
+              <div id="emi-add-produto-btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"></div>
+            </div>
+          </div>
+
+          <div id="emi-status"></div>
+          <button type="button" id="emi-salvar-btn" class="btn btn--gold orc-gerar-btn">💾 Salvar emissão</button>
+        </div><!-- /emi-form-wrap -->
+
+        <div class="ctr-filtros" style="margin-top:30px">
+          <button class="ctr-filtro is-active" data-filtro-emi="viagem" type="button">Por viagem</button>
+          <button class="ctr-filtro" data-filtro-emi="produto" type="button">Por produto</button>
+        </div>
+        <div class="toolbar">
+          <span class="toolbar__info" id="emi-count"></span>
+          <button class="btn btn--ghost btn--icon" id="emi-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
+        </div>
+        <div id="emi-lista-wrap"></div>
 
       </section>
 
@@ -1327,6 +1402,7 @@
   <script src="checkin.js"></script>
   <script src="orcamentos.js"></script>
   <script src="vendas.js"></script>
+  <script src="emissoes.js"></script>
   <script src="clientes.js"></script>
   <script src="confirmacao.js"></script>
   <script src="roteiro.js"></script>

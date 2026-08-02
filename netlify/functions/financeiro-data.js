@@ -29,10 +29,11 @@
 //     vencimento date,
 //     criado_em timestamptz not null default now(),
 //     fonte text not null default 'manual'
-//       check (fonte in ('manual','extrato_texto','extrato_ofx','extrato_csv','extrato_pdf','planilha_venda')),
+//       check (fonte in ('manual','extrato_texto','extrato_ofx','extrato_csv','extrato_pdf','planilha_venda','emissao_app')),
 //     dedupe_key text,
 //     fornecedor_id uuid references fornecedores(id),
-//     sheet_meta jsonb
+//     sheet_meta jsonb,
+//     emissao_produto_id uuid references emissoes_produtos(id) on delete set null -- ver emissoes-data.js
 //   );
 //   create unique index financeiro_lancamentos_dedupe_key_idx
 //     on financeiro_lancamentos (dedupe_key);
@@ -267,13 +268,14 @@ async function executarAcao(action, data, secretKey) {
     }
 
     // ===== Pagamentos a fornecedores =====
-    // Vendas da planilha atribuídas a esse fornecedor — usado no cliente pra calcular o saldo
-    // devedor (custo em milhas das vendas menos os pagamentos já registrados).
+    // Vendas (da planilha OU cadastradas em Emissões) atribuídas a esse fornecedor — usado no
+    // cliente pra calcular o saldo devedor (custo em milhas das vendas menos os pagamentos já
+    // registrados).
     case "listar_lancamentos_fornecedor":
       if (!data.fornecedor_id) throw new Error("fornecedor_id é obrigatório");
       return supabaseRest(
         "/financeiro_lancamentos?select=id,descricao,vencimento,valor,sheet_meta&fornecedor_id=eq." +
-          encodeURIComponent(data.fornecedor_id) + "&fonte=eq.planilha_venda&order=vencimento.desc",
+          encodeURIComponent(data.fornecedor_id) + "&fonte=in.(planilha_venda,emissao_app)&order=vencimento.desc",
         "GET", secretKey
       );
 

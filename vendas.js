@@ -2,19 +2,16 @@
 (function () {
   "use strict";
 
-  const SHEET_ID  = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
-  const CFG_KEY   = "lolek_vendas_cfg2";
+  const CFG_KEY = "lolek_vendas_cfg2";
 
-  const COL_SITUACAO    = 1;  // coluna B — tipo de produto
-  const COL_FUNC        = 2;  // coluna C — nome da funcionária
-  const COL_LEAD        = 3;  // coluna D — origem do lead (Shalom, Orgânico, Corporativo, Convenção...)
-  const COL_SEP         = 4;  // coluna E — separador de mês (ex: "junho")
-  const COL_VALOR_TOTAL = 14; // coluna O — valor total (faturamento)
-  const COL_LUCRO       = 15; // coluna P — lucro
-
-  const MESES_PT    = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
   const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  // Mesmos tipos cadastrados em emissoes.js (PROD_TIPOS) — mantido separado porque
+  // cada aba é uma IIFE independente, sem módulos compartilhados entre arquivos.
+  const TIPO_LABEL = {
+    passagem: "Passagem aérea", hospedagem: "Hospedagem", seguro: "Seguro viagem",
+    carro: "Aluguel de carro", passeio: "Passeio / Ingresso", transfer: "Transfer", mala: "Adicional de mala",
+  };
 
   // ===== Utilitários =====
   function escHtml(s) {
@@ -27,30 +24,6 @@
   }
   function fPct(v) { return v.toFixed(1).replace(".", ",") + "%"; }
   function gel(id) { return document.getElementById(id); }
-
-  function parseNum(s) {
-    const str = String(s || "").replace(/[R$\s]/g, "").replace(/\./g, "").replace(",", ".");
-    const n = parseFloat(str);
-    return isNaN(n) ? 0 : n;
-  }
-
-  function detectaMes(text) {
-    const t = (text || "").trim().toLowerCase();
-    if (!t) return -1;
-    return MESES_PT.findIndex(m => t === m || t.startsWith(m + " ") || t.endsWith(" " + m) || t.includes(" " + m + " "));
-  }
-
-  // Classifica produto pela coluna B
-  function tipoProduto(situacao) {
-    const s = (situacao || "").toLowerCase().trim();
-    if (!s) return null;
-    if (s === "aguardando viagem" || s === "viagem concluida") return "Passagem aérea";
-    if (s.includes("hospedagem"))   return "Hospedagem";
-    if (s.includes("seguro"))       return "Seguro viagem";
-    if (s.includes("mala"))         return "Adicional de mala";
-    // Capitaliza primeira letra do valor original
-    return situacao.trim().charAt(0).toUpperCase() + situacao.trim().slice(1);
-  }
 
   // Comissão: 5% sobre tudo enquanto não bate a meta; 10% sobre tudo ao bater
   function calcComissao(total, meta) {
@@ -77,84 +50,40 @@
     return count;
   }
 
-  // ===== CSV parser =====
-  function parseCsv(text) {
-    const rows = []; let row = [], field = "", inQ = false;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      if (inQ) { if (ch === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; } else field += ch; }
-      else if (ch === '"') inQ = true;
-      else if (ch === ",") { row.push(field); field = ""; }
-      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-      else if (ch !== "\r") field += ch;
-    }
-    if (field !== "" || row.length) { row.push(field); rows.push(row); }
-    return rows;
-  }
-
-  // ===== Processa planilha =====
-  function processaLinhas(rows) {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-
-    const separadores = [];
-    rows.forEach((cols, i) => {
-      const sep = (cols[COL_SEP] || "").trim();
-      const m = detectaMes(sep);
-      if (m >= 0) separadores.push({ rowIdx: i, month: m });
-    });
-
-    if (separadores.length === 0) return { porFunc: {}, month: currentMonth, year: now.getFullYear(), aviso: "sem-separador" };
-
-    let sep = separadores.find(s => s.month === currentMonth);
-    if (!sep) sep = separadores[separadores.length - 1];
-
-    const proxSep = separadores.find(s => s.rowIdx > sep.rowIdx);
-    const fim     = proxSep ? proxSep.rowIdx : rows.length;
-
-    const linhasMes = rows.slice(sep.rowIdx + 1, fim);
-
-    // porFunc[nome] = { total, count, produtos: { tipo: n } }
-    const porFunc      = {};
+  // ===== Processa os produtos vendidos no mês (vindos de Emissões) =====
+  // Mesmo formato de retorno que a versão antiga (baseada na planilha) já produzia, pra
+  // render()/renderStats/renderProdutos/renderLeads/renderFuncs continuarem sem alteração.
+  function processaEmissoes(rows, mes, ano) {
+    const porFunc       = {};
     const produtosTotal = {};
     const leadsPassagem = {};
     let faturamento = 0, lucroTotal = 0;
 
-    linhasMes.forEach(cols => {
-      // Linhas de subtotal/resumo (ex: totalizador antes do separador do próximo mês)
-      // não têm situação preenchida — só o valor numérico na coluna de funcionária.
-      const situacao = (cols[COL_SITUACAO] || "").trim();
-      if (!situacao) return;
-
-      const func  = (cols[COL_FUNC] || "").trim();
-      if (!func) return;
-
-      const lucro = parseNum(cols[COL_LUCRO]);
-      const valor = parseNum(cols[COL_VALOR_TOTAL]);
-      const tipo  = tipoProduto(situacao);
+    rows.forEach((r) => {
+      const tipo     = TIPO_LABEL[r.tipo] || r.tipo;
+      const paxCount = Math.max(1, (r.passageiro_ids || []).length);
 
       // Venda conjunta (ex: "Letícia/Emily") — divide o lucro entre as funcionárias listadas,
-      // mas cada uma leva o crédito cheio de "1 produto vendido" (pra meta/comissão de cada uma
-      // refletir o trabalho, sem inventar 0,5 produto no card de cada uma).
-      const nomesFunc = func.split("/").map(n => n.trim()).filter(Boolean);
-      nomesFunc.forEach(nome => {
+      // mas cada uma leva o crédito cheio dos produtos vendidos (mesma convenção de antes).
+      const nomesFunc = (r.funcionaria || "").split("/").map((n) => n.trim()).filter(Boolean);
+      nomesFunc.forEach((nome) => {
         if (!porFunc[nome]) porFunc[nome] = { total: 0, count: 0, produtos: {} };
-        porFunc[nome].total += lucro / nomesFunc.length;
-        porFunc[nome].count++;
-        if (tipo) porFunc[nome].produtos[tipo] = (porFunc[nome].produtos[tipo] || 0) + 1;
+        porFunc[nome].total += (Number(r.lucro) || 0) / nomesFunc.length;
+        porFunc[nome].count += paxCount;
+        porFunc[nome].produtos[tipo] = (porFunc[nome].produtos[tipo] || 0) + paxCount;
       });
-      if (tipo) produtosTotal[tipo] = (produtosTotal[tipo] || 0) + 1;
 
-      faturamento += valor;
-      lucroTotal  += lucro;
+      produtosTotal[tipo] = (produtosTotal[tipo] || 0) + paxCount;
+      faturamento += Number(r.valor_venda) || 0;
+      lucroTotal  += Number(r.lucro) || 0;
 
-      if (tipo === "Passagem aérea") {
-        const lead = (cols[COL_LEAD] || "").trim() || "Não informado";
-        leadsPassagem[lead] = (leadsPassagem[lead] || 0) + 1;
+      if (r.tipo === "passagem") {
+        const lead = r.origem_lead || "Não informado";
+        leadsPassagem[lead] = (leadsPassagem[lead] || 0) + paxCount;
       }
     });
 
-    return { porFunc, produtosTotal, leadsPassagem, faturamento, lucroTotal, month: sep.month, year: now.getFullYear() };
+    return { porFunc, produtosTotal, leadsPassagem, faturamento, lucroTotal, month: mes, year: ano };
   }
 
   // ===== Configuração (metas) =====
@@ -264,6 +193,9 @@
     "Hospedagem":         "🏨",
     "Seguro viagem":      "🛡️",
     "Adicional de mala":  "🧳",
+    "Aluguel de carro":   "🚗",
+    "Passeio / Ingresso": "🗺️",
+    "Transfer":           "🚌",
   };
 
   function renderProdutos(d) {
@@ -391,29 +323,35 @@
     }).join("");
   }
 
-  // ===== Busca a planilha =====
-  async function fetchSheet() {
+  // ===== Busca as vendas do mês atual (cadastradas em Emissões) =====
+  async function carregarMes() {
     const statusEl = gel("vendas-status");
     const btn      = gel("vendas-refresh-btn");
     if (btn) btn.disabled = true;
-    statusEl.innerHTML = `<div class="notice">Carregando planilha…</div>`;
+    statusEl.innerHTML = `<div class="notice">Carregando vendas do mês…</div>`;
 
     try {
-      const resp = await fetch(SHEET_URL + "&t=" + Date.now());
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const text = await resp.text();
-      const data = processaLinhas(parseCsv(text));
+      const hoje = new Date();
+      const ano = hoje.getFullYear(), mes = hoje.getMonth();
+      const de  = ano + "-" + String(mes + 1).padStart(2, "0") + "-01";
+      const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+      const ate = ano + "-" + String(mes + 1).padStart(2, "0") + "-" + String(ultimoDia).padStart(2, "0");
 
-      if (data.aviso === "sem-separador") {
-        statusEl.innerHTML = `<div class="notice notice--error"><strong>Separadores de mês não encontrados.</strong><p>Adicione uma linha com o nome do mês (ex: "junho") na coluna E da planilha para cada mês.</p></div>`;
-        return;
-      }
+      const resp = await fetch("/.netlify/functions/emissoes-data", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "listar_produtos_periodo", data: { de, ate } }),
+      });
+      const rows = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(rows.error || "Erro HTTP " + resp.status);
+
+      const data = processaEmissoes(rows, mes, ano);
 
       statusEl.innerHTML = "";
       gel("vendas-updated").textContent = "Atualizado às " + new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
       render(data);
     } catch (e) {
-      statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar planilha.</strong><p>${escHtml(e.message)}</p></div>`;
+      statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar vendas do mês.</strong><p>${escHtml(e.message)}</p></div>`;
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -436,7 +374,7 @@
     }
     box.innerHTML = cfg.funcs.map(f => `
       <div class="vendas-cfg-row" data-id="${f.id}">
-        <input type="text" class="input vcfg-nome" value="${escHtml(f.nome)}" placeholder="Nome exato da planilha" style="flex:1">
+        <input type="text" class="input vcfg-nome" value="${escHtml(f.nome)}" placeholder="Nome exato usado em Emissões" style="flex:1">
         <input type="number" class="input vcfg-meta" value="${metas[f.nome] || ""}" placeholder="Meta (R$)" step="100" style="width:160px">
         <button type="button" class="btn btn--ghost btn--icon vcfg-rm" title="Remover">✕</button>
       </div>`).join("");
@@ -485,7 +423,7 @@
   // ===== Init =====
   async function init() {
     gel("vendas-metas-btn").addEventListener("click", abrirMetas);
-    gel("vendas-refresh-btn").addEventListener("click", fetchSheet);
+    gel("vendas-refresh-btn").addEventListener("click", carregarMes);
     gel("metas-modal-close").addEventListener("click", () => { gel("metas-modal").hidden = true; });
     gel("metas-modal-cancel").addEventListener("click", () => { gel("metas-modal").hidden = true; });
     gel("metas-modal-save").addEventListener("click", salvarMetas);
@@ -493,7 +431,7 @@
     gel("metas-modal").addEventListener("click", e => { if (e.target === gel("metas-modal")) gel("metas-modal").hidden = true; });
 
     await carregarCfg();
-    fetchSheet();
+    carregarMes();
   }
 
   init();
