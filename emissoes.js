@@ -879,8 +879,10 @@
           <strong>${escHtml(e.destino || "Sem destino informado")}</strong>
           <span style="opacity:0.8">${fData(e.data_ida)}${e.data_volta ? " – " + fData(e.data_volta) : ""}</span>
           ${e.tipo_viagem ? `<span class="badge badge--andamento">${escHtml(e.tipo_viagem)}</span>` : ""}
-          <button type="button" class="btn btn--ghost btn--sm" style="margin-left:auto" data-comprovante-emissao="${e.id}">📄 Comprovante</button>
-          <button type="button" class="orc-produto-remove" data-excluir-emissao="${e.id}">✕ Excluir</button>
+          <div class="emi-viagem-header-actions">
+            <button type="button" class="emi-btn-comprovante" data-comprovante-emissao="${e.id}">📄 Comprovante</button>
+            <button type="button" class="orc-produto-remove" data-excluir-emissao="${e.id}">✕ Excluir</button>
+          </div>
         </div>
         <div class="emi-viagem-body">
           <div class="table__muted" style="margin-bottom:8px">${pax.map((p) => escHtml(paxNome(p))).join(", ") || "—"}</div>
