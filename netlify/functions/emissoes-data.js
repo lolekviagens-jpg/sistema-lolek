@@ -38,7 +38,7 @@
 //   create table venda_emissoes_produtos (
 //     id uuid primary key default gen_random_uuid(),
 //     emissao_id uuid not null references venda_emissoes(id) on delete cascade,
-//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala')),
+//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas')),
 //     passageiro_ids jsonb not null default '[]',
 //     dados jsonb not null default '{}',
 //     fornecedor_id uuid references fornecedores(id),
@@ -62,11 +62,17 @@
 //   alter table financeiro_lancamentos drop constraint financeiro_lancamentos_fonte_check;
 //   alter table financeiro_lancamentos add constraint financeiro_lancamentos_fonte_check
 //     check (fonte in ('manual','extrato_texto','extrato_ofx','extrato_csv','extrato_pdf','planilha_venda','emissao_app'));
+//
+//   -- Se a tabela venda_emissoes_produtos já existia antes destes 4 tipos novos
+//   -- (assento, consultoria_milhas, visto_americano, venda_milhas), rodar uma vez:
+//   alter table venda_emissoes_produtos drop constraint venda_emissoes_produtos_tipo_check;
+//   alter table venda_emissoes_produtos add constraint venda_emissoes_produtos_tipo_check
+//     check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas'));
 
 const https = require("https");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
-const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone"];
+const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
 
 const TIPO_LABEL = {
   passagem:   "Passagem aérea",
@@ -76,6 +82,10 @@ const TIPO_LABEL = {
   passeio:    "Passeio / Ingresso",
   transfer:   "Transfer",
   mala:       "Adicional de mala",
+  assento:             "Assento",
+  consultoria_milhas:  "Consultoria de milhas",
+  visto_americano:     "Visto americano",
+  venda_milhas:        "Venda de milhas",
 };
 
 exports.handler = async (event) => {

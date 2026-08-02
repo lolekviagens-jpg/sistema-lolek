@@ -60,10 +60,11 @@
   function novoId(prefixo) { return prefixo + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8); }
 
   // ===== Config =====
-  const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone"];
+  const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
   const CLIENTE_LABELS = {
     nome: "Nome completo", nascimento: "Nascimento", rg: "RG", cpf: "CPF",
     passaporte: "Passaporte", venc_passaporte: "Venc. passaporte", email: "E-mail", telefone: "Telefone",
+    endereco: "Endereço",
   };
 
   const PROD_TIPOS = [
@@ -74,6 +75,10 @@
     { tipo: "passeio",    label: "Passeio / Ingresso", icon: "🗺️" },
     { tipo: "transfer",   label: "Transfer",           icon: "🚌" },
     { tipo: "mala",       label: "Adicional de mala",  icon: "🧳" },
+    { tipo: "assento",    label: "Assento",            icon: "💺" },
+    { tipo: "consultoria_milhas", label: "Consultoria de milhas", icon: "🧭" },
+    { tipo: "visto_americano",    label: "Visto americano",       icon: "🛂" },
+    { tipo: "venda_milhas",       label: "Venda de milhas",       icon: "💱" },
   ];
   const PROD_LABEL = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.label]));
   const PROD_ICON  = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.icon]));
@@ -114,6 +119,21 @@
     ],
     mala: [
       { id: "descricao", label: "Descrição", placeholder: "Ex: 1 mala extra 23kg" },
+    ],
+    assento: [
+      { id: "trecho", label: "Trecho / voo relacionado", placeholder: "Ex: FOR → LIS" },
+      { id: "assento", label: "Assento", placeholder: "Ex: 14A - janela" },
+    ],
+    consultoria_milhas: [
+      { id: "descricao", label: "Descrição da consultoria", placeholder: "Ex: Consultoria para emissão com milhas Smiles" },
+    ],
+    visto_americano: [
+      { id: "tipo_visto", label: "Tipo de visto", placeholder: "Ex: B1/B2" },
+      { id: "data_entrevista", label: "Data da entrevista", type: "date" },
+    ],
+    venda_milhas: [
+      { id: "programa", label: "Programa de milhagem", placeholder: "Ex: Latam Pass, Smiles, Azul" },
+      { id: "quantidade", label: "Quantidade de milhas vendidas", type: "number" },
     ],
   };
 
@@ -249,7 +269,7 @@
           max_tokens: 512,
           messages: [{
             role: "user",
-            content: `Extraia os dados do passageiro abaixo e retorne SOMENTE um JSON válido, sem texto adicional:\n\n${texto}\n\n{"nome":"","nascimento":"","rg":"","cpf":"","passaporte":"","venc_passaporte":"","email":"","telefone":""}`,
+            content: `Extraia os dados do passageiro abaixo e retorne SOMENTE um JSON válido, sem texto adicional:\n\n${texto}\n\n{"nome":"","nascimento":"","rg":"","cpf":"","passaporte":"","venc_passaporte":"","email":"","telefone":"","endereco":""}`,
           }],
         }),
       });

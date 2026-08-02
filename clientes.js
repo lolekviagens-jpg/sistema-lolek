@@ -155,6 +155,7 @@
       { l: "Vencimento passaporte", v: c.venc_passaporte },
       { l: "E-mail",                v: c.email },
       { l: "Telefone",              v: c.telefone },
+      { l: "Endereço",              v: c.endereco },
     ];
     camposDetalheAtual = campos;
 
@@ -200,7 +201,7 @@
     const isEdicao = !!c;
     clienteEditando = c || null;
 
-    const campos = ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone"];
+    const campos = ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone","endereco"];
     campos.forEach(f => { const el = gel("cform-" + f); if (el) el.value = c ? (c[f] || "") : ""; });
 
     gel("cli-form-titulo").textContent = isEdicao ? "Editar cliente" : "Novo cliente";
@@ -212,7 +213,7 @@
   function fecharFormCliente() { gel("cli-modal-form").hidden = true; clienteEditando = null; }
 
   async function salvarFormCliente() {
-    const campos = ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone"];
+    const campos = ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone","endereco"];
     const dados  = {};
     campos.forEach(f => { dados[f] = (gel("cform-" + f)?.value || "").trim(); });
 
@@ -263,7 +264,7 @@
           max_tokens: 512,
           messages: [{
             role: "user",
-            content: `Extraia os dados do cliente abaixo e retorne SOMENTE um JSON válido, sem texto adicional:\n\n${texto}\n\n{"nome":"","nascimento":"","rg":"","cpf":"","passaporte":"","venc_passaporte":"","email":"","telefone":""}`,
+            content: `Extraia os dados do cliente abaixo e retorne SOMENTE um JSON válido, sem texto adicional:\n\n${texto}\n\n{"nome":"","nascimento":"","rg":"","cpf":"","passaporte":"","venc_passaporte":"","email":"","telefone":"","endereco":""}`,
           }],
         }),
       });
@@ -275,7 +276,7 @@
       if (!jsonStr) throw new Error("Resposta inesperada");
 
       const ex = JSON.parse(jsonStr);
-      ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone"].forEach(f => {
+      ["nome","nascimento","rg","cpf","passaporte","venc_passaporte","email","telefone","endereco"].forEach(f => {
         const el = gel("cform-" + f);
         if (el && ex[f]) el.value = ex[f];
       });
@@ -289,9 +290,9 @@
 
   // ===== Exportar CSV =====
   function exportarCSV() {
-    const header = "Nome,Nascimento,RG,CPF,Passaporte,Venc. Passaporte,E-mail,Telefone";
+    const header = "Nome,Nascimento,RG,CPF,Passaporte,Venc. Passaporte,E-mail,Telefone,Endereço";
     const csv = [header, ...clientes.map(c =>
-      [c.nome, c.nascimento, c.rg, c.cpf, c.passaporte, c.venc_passaporte, c.email, c.telefone]
+      [c.nome, c.nascimento, c.rg, c.cpf, c.passaporte, c.venc_passaporte, c.email, c.telefone, c.endereco]
         .map(v => '"' + (v || "").replace(/"/g, '""') + '"').join(",")
     )].join("\r\n");
 

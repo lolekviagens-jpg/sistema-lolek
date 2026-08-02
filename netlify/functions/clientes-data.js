@@ -14,14 +14,18 @@
 //     venc_passaporte text,
 //     email text,
 //     telefone text,
+//     endereco text,
 //     criado_em timestamptz not null default now()
 //   );
 //   alter table clientes enable row level security;
+//
+// Se a tabela já existir (de antes do campo Endereço), rodar uma vez:
+//   alter table clientes add column if not exists endereco text;
 
 const https = require("https");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
-const CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone"];
+const CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
 
 exports.handler = async (event) => {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
