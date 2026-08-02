@@ -17,6 +17,59 @@
     );
   }
   function fBRL(v) { return "R$ " + (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+  // ===== Valor por extenso (pra pré-preencher o contrato) =====
+  const EXT_UNIDADES = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove"];
+  const EXT_10A19 = ["dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete", "dezoito", "dezenove"];
+  const EXT_DEZENAS = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+  const EXT_CENTENAS = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
+  const EXT_ESCALAS = [
+    { valor: 1000000000, singular: "bilhão", plural: "bilhões" },
+    { valor: 1000000, singular: "milhão", plural: "milhões" },
+    { valor: 1000, singular: "mil", plural: "mil" },
+  ];
+
+  function extCentena(n) {
+    if (n === 0) return "";
+    if (n === 100) return "cem";
+    const c = Math.floor(n / 100);
+    const resto = n % 100;
+    const partes = [];
+    if (c > 0) partes.push(EXT_CENTENAS[c]);
+    if (resto > 0) {
+      if (resto < 10) partes.push(EXT_UNIDADES[resto]);
+      else if (resto < 20) partes.push(EXT_10A19[resto - 10]);
+      else {
+        const d = Math.floor(resto / 10), u = resto % 10;
+        partes.push(u > 0 ? `${EXT_DEZENAS[d]} e ${EXT_UNIDADES[u]}` : EXT_DEZENAS[d]);
+      }
+    }
+    return partes.join(" e ");
+  }
+
+  function extInteiro(n) {
+    if (n === 0) return "zero";
+    const partes = [];
+    let resto = n;
+    for (const escala of EXT_ESCALAS) {
+      if (resto >= escala.valor) {
+        const qtd = Math.floor(resto / escala.valor);
+        resto = resto % escala.valor;
+        partes.push(escala.valor === 1000 && qtd === 1 ? "mil" : `${extCentena(qtd)} ${qtd === 1 ? escala.singular : escala.plural}`);
+      }
+    }
+    if (resto > 0) partes.push(extCentena(resto));
+    return partes.join(", ");
+  }
+
+  function valorPorExtenso(valor) {
+    const centavosTotal = Math.round((Number(valor) || 0) * 100);
+    const reais = Math.floor(centavosTotal / 100);
+    const centavos = centavosTotal % 100;
+    let texto = `${extInteiro(reais)} ${reais === 1 ? "real" : "reais"}`;
+    if (centavos > 0) texto += ` e ${extInteiro(centavos)} ${centavos === 1 ? "centavo" : "centavos"}`;
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
   function fData(iso) {
     if (!iso) return "—";
     const [y, m, d] = String(iso).split("-");
@@ -680,8 +733,17 @@
         tipo: p.tipo,
         dados: p.dados,
         valor_venda: p.valor_venda,
+        forma_pagamento: p.forma_pagamento,
         nomesPax: p.passageiro_indices.map((i) => nomesPorIndice[i]).filter(Boolean).join(", "),
       }));
+
+      // Dados do 1º passageiro — vira o contratante se ela decidir mandar um contrato
+      // pra assinatura em seguida (montarOptionsFornecedor/mostrarComprovante ficam com
+      // isso guardado em comprovanteAtual pro botão "Enviar contrato").
+      const primeiroPax = payload.passageiros[0];
+      const contratanteInfo = primeiroPax.cliente_id
+        ? (() => { const c = clientesCache.find((x) => x.id === primeiroPax.cliente_id) || {}; return { nome: c.nome || nomesPorIndice[0], cpf: c.cpf || "", telefone: c.telefone || "", email: c.email || "", endereco: c.endereco || "" }; })()
+        : (() => { const d = primeiroPax.dados_novos || {}; return { nome: d.nome || nomesPorIndice[0], cpf: d.cpf || "", telefone: d.telefone || "", email: d.email || "", endereco: d.endereco || "" }; })();
 
       emissaoEmEdicaoId = null;
       gel("emi-editando-aviso").hidden = true;
@@ -690,7 +752,7 @@
       await carregarListaEmissoes();
       renderListaEmissoes();
 
-      mostrarComprovante(payload.emissao, nomesPorIndice, produtosInfo);
+      mostrarComprovante(payload.emissao, nomesPorIndice, produtosInfo, contratanteInfo);
     } catch (err) {
       gel("emi-status").innerHTML = `<div class="ctr-status-msg ctr-status-msg--erro">Erro ao salvar: ${escHtml(err.message)}</div>`;
     } finally {
@@ -946,11 +1008,45 @@
     navigator.clipboard.writeText(txt);
   }
 
-  function mostrarComprovante(emissaoInfo, nomesPax, produtosInfo) {
-    comprovanteAtual = { emissaoInfo, nomesPax, produtosInfo };
+  function mostrarComprovante(emissaoInfo, nomesPax, produtosInfo, contratanteInfo) {
+    comprovanteAtual = { emissaoInfo, nomesPax, produtosInfo, contratanteInfo };
     gel("emi-comprovante-preview").innerHTML = montarComprovanteHtml(emissaoInfo, nomesPax, produtosInfo);
     gel("emi-form-wrap").hidden = true;
     gel("emi-comprovante-wrap").hidden = false;
+    window.scrollTo(0, 0);
+  }
+
+  // Botão "📝 Enviar contrato" — leva os dados da emissão recém-salva pra aba Contratos
+  // já pré-preenchidos (contratante = 1º passageiro), pra revisar e enviar pro ZapSign.
+  // Não faz isso sozinho: ela ainda revisa/ajusta antes de clicar em gerar, porque é um
+  // documento assinado — não dá pra confiar 100% no que foi deduzido automaticamente.
+  function enviarParaContrato() {
+    if (!comprovanteAtual) return;
+    const { emissaoInfo, produtosInfo, contratanteInfo } = comprovanteAtual;
+
+    const total = produtosInfo.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
+    const tiposUnicos = [...new Set(produtosInfo.map((p) => PROD_LABEL[p.tipo] || p.tipo))];
+    const periodo = emissaoInfo.data_ida
+      ? ` (${fData(emissaoInfo.data_ida)}${emissaoInfo.data_volta ? " a " + fData(emissaoInfo.data_volta) : ""})`
+      : "";
+    const descricao = `Pacote de viagem para ${emissaoInfo.destino || "—"}${periodo}: ${tiposUnicos.join(", ")}.`;
+
+    const formaLabel = (v) => (FORMAS_PAGAMENTO.find((f) => f.v === v) || {}).l || v;
+    const formasUnicas = [...new Set(produtosInfo.map((p) => p.forma_pagamento))].filter(Boolean).map(formaLabel);
+
+    gel("ctr-nome_cliente").value = contratanteInfo.nome || "";
+    gel("ctr-cpf_cnpj").value = contratanteInfo.cpf || "";
+    gel("ctr-telefone_cliente").value = contratanteInfo.telefone || "";
+    gel("ctr-email_cliente").value = contratanteInfo.email || "";
+    gel("ctr-endereco_cliente").value = contratanteInfo.endereco || "";
+    gel("ctr-descricao_servico").value = descricao;
+    gel("ctr-valor_total").value = fBRL(total);
+    gel("ctr-valor_extenso").value = valorPorExtenso(total);
+    gel("ctr-forma_pagamento").value = formasUnicas.join(" / ");
+    gel("ctr-prazo_entrega").value = "Imediato";
+    gel("ctr-status").innerHTML = '<div class="ctr-status-msg ctr-status-msg--warn">Confira os dados abaixo — foram pré-preenchidos a partir da emissão. Ajuste o que precisar antes de gerar e enviar.</div>';
+
+    document.querySelector('[data-tab="contratos"]')?.click();
     window.scrollTo(0, 0);
   }
 
@@ -1242,6 +1338,7 @@
       b.textContent = "✓ Copiado!";
       setTimeout(() => { b.textContent = "Copiar texto"; }, 2000);
     });
+    gel("emi-comprovante-contrato-btn").addEventListener("click", enviarParaContrato);
 
     document.querySelectorAll("[data-filtro-emi]").forEach((btn) => {
       btn.addEventListener("click", () => {
