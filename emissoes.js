@@ -22,6 +22,12 @@
     const [y, m, d] = String(iso).split("-");
     return d && m && y ? `${d}/${m}/${y}` : iso;
   }
+  function mesLabel(chaveAnoMes) {
+    if (!chaveAnoMes || chaveAnoMes === "sem-data") return "Sem data";
+    const [y, m] = chaveAnoMes.split("-");
+    const label = new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  }
   function norm(s) { return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""); }
 
   function extractJson(text) {
@@ -122,7 +128,7 @@
   let produtos = [];                 // [{ id, tipo }]
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
   let emissoesSalvas = null;
-  let filtroListaEmi = "viagem";
+  let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
 
   // ===== Rede =====
   async function chamarEmissoes(action, data) {
@@ -655,15 +661,84 @@
       </div>`;
   }
 
-  function renderProdutoRow(p) {
+  function renderProdutoRow(p, mapaPax) {
+    const nomes = (p.passageiro_ids || []).map((id) => (mapaPax.get(id) || {}).nome || "—").join(", ") || "—";
     return `
       <tr>
+        <td class="table__muted">${fData(p.data_venda)}</td>
+        <td>${escHtml(nomes)}</td>
         <td>${escHtml(p._destino || "—")}</td>
         <td>${PROD_ICON[p.tipo] || "📦"} ${escHtml(PROD_LABEL[p.tipo] || p.tipo)}</td>
-        <td class="table__muted">${(p.passageiro_ids || []).length || 1}</td>
         <td>${fBRL(p.valor_venda)}</td>
         <td class="table__muted">${escHtml(FORMAS_PAGAMENTO.find((f) => f.v === p.forma_pagamento)?.l || p.forma_pagamento || "—")}</td>
       </tr>`;
+  }
+
+  function tabelaProdutos(produtos, mapaPax) {
+    return `<div class="card"><table class="table">
+      <thead><tr><th>Data</th><th>Cliente(s)</th><th>Viagem</th><th>Produto</th><th>Valor</th><th>Pagamento</th></tr></thead>
+      <tbody>${produtos.map((p) => renderProdutoRow(p, mapaPax)).join("")}</tbody>
+    </table></div>`;
+  }
+
+  function somaValor(produtos) { return produtos.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0); }
+
+  // id do passageiro (venda_emissoes_passageiros.id) -> { nome, clienteId }
+  function construirMapaPax() {
+    const mapa = new Map();
+    (emissoesSalvas || []).forEach((e) => {
+      (e.venda_emissoes_passageiros || []).forEach((pax) => {
+        mapa.set(pax.id, { nome: paxNome(pax), clienteId: pax.cliente_id });
+      });
+    });
+    return mapa;
+  }
+
+  function todosProdutosOrdenados() {
+    return (emissoesSalvas || [])
+      .flatMap((e) => (e.venda_emissoes_produtos || []).map((p) => ({ ...p, _destino: e.destino })))
+      .sort((a, b) => (b.data_venda || "").localeCompare(a.data_venda || ""));
+  }
+
+  function renderPorData(produtos, mapaPax) {
+    const grupos = new Map();
+    produtos.forEach((p) => {
+      const chave = (p.data_venda || "").slice(0, 7) || "sem-data";
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave).push(p);
+    });
+    const chavesOrdenadas = [...grupos.keys()].sort((a, b) => b.localeCompare(a));
+    return chavesOrdenadas.map((chave) => {
+      const itens = grupos.get(chave);
+      return `<div class="emi-grupo-wrap">
+        <div class="emi-grupo-header">
+          <strong>${escHtml(mesLabel(chave))}</strong>
+          <span class="emi-grupo-total">${itens.length} produto${itens.length !== 1 ? "s" : ""} · ${fBRL(somaValor(itens))}</span>
+        </div>
+        ${tabelaProdutos(itens, mapaPax)}
+      </div>`;
+    }).join("");
+  }
+
+  function renderPorCliente(produtos, mapaPax) {
+    const porCliente = new Map(); // clienteId -> { nome, produtos: [] }
+    produtos.forEach((p) => {
+      (p.passageiro_ids || []).forEach((id) => {
+        const info = mapaPax.get(id);
+        if (!info) return;
+        const chave = info.clienteId || info.nome;
+        if (!porCliente.has(chave)) porCliente.set(chave, { nome: info.nome, produtos: [] });
+        porCliente.get(chave).produtos.push(p);
+      });
+    });
+    const entradas = [...porCliente.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    return entradas.map((c) => `<div class="emi-grupo-wrap">
+      <div class="emi-grupo-header">
+        <strong>${escHtml(c.nome)}</strong>
+        <span class="emi-grupo-total">${c.produtos.length} produto${c.produtos.length !== 1 ? "s" : ""} · ${fBRL(somaValor(c.produtos))}</span>
+      </div>
+      ${tabelaProdutos(c.produtos, mapaPax)}
+    </div>`).join("");
   }
 
   function renderListaEmissoes() {
@@ -687,13 +762,20 @@
       wrap.innerHTML = emissoesSalvas.map(renderViagemCard).join("");
       wrap.querySelectorAll("[data-excluir-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => excluirEmissao(btn.dataset.excluirEmissao)));
+      return;
+    }
+
+    const mapaPax = construirMapaPax();
+    const todosProdutos = todosProdutosOrdenados();
+
+    if (filtroListaEmi === "cliente") {
+      const clientesUnicos = new Set(todosProdutos.flatMap((p) => (p.passageiro_ids || []).map((id) => (mapaPax.get(id) || {}).clienteId).filter(Boolean)));
+      count.textContent = clientesUnicos.size + " cliente" + (clientesUnicos.size !== 1 ? "s" : "");
+      wrap.innerHTML = renderPorCliente(todosProdutos, mapaPax);
     } else {
-      const todosProdutos = emissoesSalvas.flatMap((e) => (e.venda_emissoes_produtos || []).map((p) => ({ ...p, _destino: e.destino })));
+      // Lista mensal (mais recente primeiro), como na planilha antiga.
       count.textContent = todosProdutos.length + " produto" + (todosProdutos.length !== 1 ? "s" : "");
-      wrap.innerHTML = `<div class="card"><table class="table">
-        <thead><tr><th>Viagem</th><th>Produto</th><th>Pax</th><th>Valor</th><th>Pagamento</th></tr></thead>
-        <tbody>${todosProdutos.map(renderProdutoRow).join("")}</tbody>
-      </table></div>`;
+      wrap.innerHTML = renderPorData(todosProdutos, mapaPax);
     }
   }
 

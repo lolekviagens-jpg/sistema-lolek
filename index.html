@@ -41,6 +41,10 @@
           <span class="nav__icon">📊</span>
           <span class="nav__label">Vendas</span>
         </button>
+        <button class="nav__item" data-tab="nova-emissao">
+          <span class="nav__icon">➕</span>
+          <span class="nav__label">Novas Emissões</span>
+        </button>
         <button class="nav__item" data-tab="emissoes">
           <span class="nav__icon">🎫</span>
           <span class="nav__label">Emissões</span>
@@ -305,8 +309,8 @@
 
       </section>
 
-      <!-- ===== PAINEL EMISSÕES ===== -->
-      <section class="panel" data-panel="emissoes">
+      <!-- ===== PAINEL NOVAS EMISSÕES ===== -->
+      <section class="panel" data-panel="nova-emissao">
 
         <div id="emi-form-wrap">
 
@@ -364,9 +368,15 @@
           <button type="button" id="emi-salvar-btn" class="btn btn--gold orc-gerar-btn">💾 Salvar emissão</button>
         </div><!-- /emi-form-wrap -->
 
-        <div class="ctr-filtros" style="margin-top:30px">
-          <button class="ctr-filtro is-active" data-filtro-emi="viagem" type="button">Por viagem</button>
-          <button class="ctr-filtro" data-filtro-emi="produto" type="button">Por produto</button>
+      </section>
+
+      <!-- ===== PAINEL EMISSÕES (listagem) ===== -->
+      <section class="panel" data-panel="emissoes">
+
+        <div class="ctr-filtros">
+          <button class="ctr-filtro is-active" data-filtro-emi="data" type="button">Por data</button>
+          <button class="ctr-filtro" data-filtro-emi="cliente" type="button">Por cliente</button>
+          <button class="ctr-filtro" data-filtro-emi="viagem" type="button">Por viagem</button>
         </div>
         <div class="toolbar">
           <span class="toolbar__info" id="emi-count"></span>

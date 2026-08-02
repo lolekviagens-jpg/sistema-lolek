@@ -1536,6 +1536,35 @@ textarea.input {
   padding: 14px 16px;
 }
 
+.emi-grupo-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.emi-grupo-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--navy);
+  color: #fff;
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.emi-grupo-header strong { color: #fff; }
+
+.emi-grupo-total {
+  font-size: 0.82rem;
+  color: var(--gold);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ===== Preview do orçamento ===== */
 .orc-prev-wrap {
   background: var(--surface);
