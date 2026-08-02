@@ -125,9 +125,11 @@
   // ===== Estado =====
   let clientesCache = [];
   let fornecedoresCache = [];
+  let vendedoresCache = []; // [{ id, nome }] — mesma lista das Metas em Vendas, pro nome bater certinho
   let passageiros = [];              // [{ id, cliente_id: string|null, nome }]
   let produtos = [];                 // [{ id, tipo }]
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
+  const funcSelecionadas = {};       // produtoId -> Set(nomeVendedora) — sobrevive a re-render das checkboxes
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
   let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
@@ -154,6 +156,14 @@
   async function carregarFornecedores() {
     try { fornecedoresCache = await chamarEmissoes("listar_fornecedores"); }
     catch { fornecedoresCache = []; }
+  }
+
+  async function carregarVendedores() {
+    try {
+      const resp = await fetch("/.netlify/functions/vendas-config");
+      const cfg = resp.ok ? await resp.json() : null;
+      vendedoresCache = (cfg && Array.isArray(cfg.funcs)) ? cfg.funcs : [];
+    } catch { vendedoresCache = []; }
   }
 
   // ===== Passageiros =====
@@ -291,12 +301,14 @@
     const id = novoId("prod");
     produtos.push({ id, tipo });
     paxSelecionados[id] = new Set(passageiros.map((p) => p.id));
+    funcSelecionadas[id] = new Set();
     renderProdutos();
   }
 
   function removeProduto(id) {
     produtos = produtos.filter((p) => p.id !== id);
     delete paxSelecionados[id];
+    delete funcSelecionadas[id];
     renderProdutos();
   }
 
@@ -336,6 +348,31 @@
         const paxId = cb.id.replace(`emi-prod-${prodId}-pax-`, "");
         if (!paxSelecionados[prodId]) paxSelecionados[prodId] = new Set();
         if (cb.checked) paxSelecionados[prodId].add(paxId); else paxSelecionados[prodId].delete(paxId);
+      });
+    });
+  }
+
+  // Lista das mesmas vendedoras cadastradas em Vendas → Metas — evita nome digitado
+  // diferente do nome usado no cálculo de comissão/meta (ex: "Thaynara" vs "Thay").
+  function renderProdutoFuncChecks(prodId) {
+    const box = gel(`emi-prod-${prodId}-func-checks`);
+    if (!box) return;
+    const selecionadas = funcSelecionadas[prodId] || new Set();
+    if (vendedoresCache.length === 0) {
+      box.innerHTML = '<span class="table__muted">Nenhuma vendedora cadastrada ainda — cadastre em Vendas → Metas</span>';
+      return;
+    }
+    box.innerHTML = vendedoresCache.map((f, i) => `
+      <label style="display:inline-flex;align-items:center;gap:5px;margin:0 14px 6px 0;font-size:0.85rem">
+        <input type="checkbox" id="emi-prod-${prodId}-func-${i}" ${selecionadas.has(f.nome) ? "checked" : ""} />
+        ${escHtml(f.nome)}
+      </label>`).join("");
+    vendedoresCache.forEach((f, i) => {
+      const cb = gel(`emi-prod-${prodId}-func-${i}`);
+      if (!cb) return;
+      cb.addEventListener("change", () => {
+        if (!funcSelecionadas[prodId]) funcSelecionadas[prodId] = new Set();
+        if (cb.checked) funcSelecionadas[prodId].add(f.nome); else funcSelecionadas[prodId].delete(f.nome);
       });
     });
   }
@@ -411,9 +448,6 @@
               <label class="field" id="emi-prod-${prod.id}-wrap-faturamento" hidden><span class="field__label">Cobrar em (data)</span>
                 <input type="date" class="input" id="emi-prod-${prod.id}-data_faturamento" />
               </label>
-              <label class="field"><span class="field__label">Funcionária responsável</span>
-                <input type="text" class="input" id="emi-prod-${prod.id}-funcionaria" placeholder="Ex: Letícia ou Letícia/Emily" />
-              </label>
               ${isPassagem ? `<label class="field"><span class="field__label">Origem do lead</span>
                 <select class="input" id="emi-prod-${prod.id}-origem_lead">
                   <option value="">—</option>
@@ -421,6 +455,9 @@
                 </select>
               </label>` : ""}
             </div>
+
+            <div class="orc-extras-label" style="margin-top:10px">Funcionária responsável</div>
+            <div id="emi-prod-${prod.id}-func-checks"></div>
           </div>
         </div>
       </div>`;
@@ -428,6 +465,7 @@
 
     produtos.forEach((prod) => {
       renderProdutoPaxChecks(prod.id);
+      renderProdutoFuncChecks(prod.id);
 
       const removeBtn = document.querySelector(`[data-remove-prod="${prod.id}"]`);
       if (removeBtn) removeBtn.addEventListener("click", () => removeProduto(prod.id));
@@ -578,7 +616,7 @@
         valor_venda: parseFloat(gel(`emi-prod-${prod.id}-valor_venda`).value) || 0,
         forma_pagamento: formaPagamento,
         data_faturamento: formaPagamento === "faturado" ? (gel(`emi-prod-${prod.id}-data_faturamento`).value || null) : null,
-        funcionaria: gel(`emi-prod-${prod.id}-funcionaria`).value.trim(),
+        funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
         origem_lead: prod.tipo === "passagem" ? gel(`emi-prod-${prod.id}-origem_lead`).value : null,
       };
     });
@@ -589,6 +627,7 @@
   function limparFormulario() {
     passageiros = []; produtos = [];
     Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
+    Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
     ["emi-destino", "emi-data-ida", "emi-data-volta", "emi-tipo-viagem", "emi-obs-gerais"].forEach((id) => { const el = gel(id); if (el) el.value = ""; });
     renderPassageiros(); renderProdutos();
   }
@@ -661,6 +700,7 @@
     paxOriginais.forEach((pax, i) => mapaOriginalParaNovo.set(pax.id, passageiros[i].id));
 
     Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
+    Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
     const prodsOriginais = e.venda_emissoes_produtos || [];
     produtos = prodsOriginais.map((p) => ({ id: novoId("prod"), tipo: p.tipo }));
 
@@ -700,7 +740,8 @@
       if (formaPagEl) { formaPagEl.value = p.forma_pagamento; formaPagEl.dispatchEvent(new Event("change")); }
       const dataFatEl = gel(`emi-prod-${novoProdId}-data_faturamento`); if (dataFatEl && p.data_faturamento) dataFatEl.value = p.data_faturamento;
 
-      const funcEl = gel(`emi-prod-${novoProdId}-funcionaria`); if (funcEl) funcEl.value = p.funcionaria || "";
+      funcSelecionadas[novoProdId] = new Set((p.funcionaria || "").split("/").map((n) => n.trim()).filter(Boolean));
+      renderProdutoFuncChecks(novoProdId);
       const origemEl = gel(`emi-prod-${novoProdId}-origem_lead`); if (origemEl && p.origem_lead) origemEl.value = p.origem_lead;
     });
 
@@ -725,7 +766,56 @@
   // orc-prev-* / conf-*), que foi aposentado: a Nova Emissão já cobre esse papel agora.
   let comprovanteAtual = null; // { emissaoInfo, nomesPax, produtosInfo } — pro botão de PDF/copiar do preview pós-salvar
 
+  // O campo "Trecho" é digitado como um texto só (ex: "GRU → REC") — separa em
+  // origem/destino pra montar as duas caixas de aeroporto do card de voo.
+  function parseTrecho(trecho) {
+    const raw = String(trecho || "");
+    let partes = raw.split("→").map((s) => s.trim()).filter(Boolean);
+    if (partes.length < 2) partes = raw.split(/->|-/).map((s) => s.trim()).filter(Boolean);
+    if (partes.length >= 2) return { origem: partes[0], destino: partes[partes.length - 1] };
+    return { origem: raw || "—", destino: "" };
+  }
+
+  // Card de voo no estilo antigo (confirmacao.js): caixas de aeroporto com linha
+  // tracejada + avião no meio, e o localizador em destaque numa caixa própria — porque é
+  // a informação mais importante do comprovante.
+  function cardPassagemComprovante(dados, valorVenda, nomesPax) {
+    const d = dados || {};
+    const { origem, destino } = parseTrecho(d.trecho);
+    return `
+      <div class="orc-prev-flight-card">
+        <div class="orc-prev-flight-card-header">
+          <span class="orc-prev-flight-label">✈️ PASSAGEM AÉREA</span>
+          <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
+        </div>
+        <div class="orc-prev-flight-card-body">
+          <div class="orc-prev-airport">
+            <div class="orc-prev-iata">${escHtml(origem || "—")}</div>
+            ${d.horario_partida ? `<div class="orc-prev-time">${escHtml(d.horario_partida)}</div>` : ""}
+          </div>
+          <div class="orc-prev-flight-middle">
+            <div class="orc-prev-dash-line">
+              <span class="orc-prev-dash-seg"></span>
+              <span class="orc-prev-plane-icon">✈</span>
+              <span class="orc-prev-dash-seg"></span>
+            </div>
+            <div class="orc-prev-direto">${escHtml(d.conexoes || "Voo direto")}</div>
+          </div>
+          <div class="orc-prev-airport orc-prev-airport--right">
+            <div class="orc-prev-iata">${escHtml(destino || "—")}</div>
+            ${d.horario_chegada ? `<div class="orc-prev-time">${escHtml(d.horario_chegada)}</div>` : ""}
+          </div>
+        </div>
+        ${d.localizador ? `<div class="conf-localizador" style="margin:0 20px 18px"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(d.localizador)}</span></div>` : ""}
+        <div style="padding:0 20px 18px;font-size:0.82rem;color:var(--navy-light)">
+          ${d.companhia || d.voo ? `<div style="margin-bottom:4px">${escHtml([d.companhia, d.voo].filter(Boolean).join(" · "))}</div>` : ""}
+          ${nomesPax ? `<div><strong>Passageiro(s):</strong> ${escHtml(nomesPax)}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
   function linhaProdutoComprovante(tipo, dados, valorVenda, nomesPax) {
+    if (tipo === "passagem") return cardPassagemComprovante(dados, valorVenda, nomesPax);
     const detalhes = (DADOS_CFG[tipo] || [])
       .filter((f) => dados && dados[f.id])
       .map((f) => `<div class="conf-obs-item"><span class="conf-obs-icon">•</span><span>${escHtml(f.label)}: <strong>${escHtml(dados[f.id])}</strong></span></div>`)
@@ -1147,7 +1237,7 @@
     renderPassageiros();
     renderProdutos();
 
-    await Promise.all([carregarClientes(), carregarFornecedores(), carregarListaEmissoes()]);
+    await Promise.all([carregarClientes(), carregarFornecedores(), carregarVendedores(), carregarListaEmissoes()]);
     renderListaEmissoes();
   }
 
