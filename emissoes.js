@@ -779,7 +779,7 @@
   // Card de voo no estilo antigo (confirmacao.js): caixas de aeroporto com linha
   // tracejada + avião no meio, e o localizador em destaque numa caixa própria — porque é
   // a informação mais importante do comprovante.
-  function cardPassagemComprovante(dados, valorVenda, nomesPax) {
+  function cardPassagemComprovante(dados, valorVenda) {
     const d = dados || {};
     const { origem, destino } = parseTrecho(d.trecho);
     return `
@@ -788,6 +788,7 @@
           <span class="orc-prev-flight-label">✈️ PASSAGEM AÉREA</span>
           <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
         </div>
+        ${d.localizador ? `<div class="conf-localizador" style="margin:16px 20px 0"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(d.localizador)}</span></div>` : ""}
         <div class="orc-prev-flight-card-body">
           <div class="orc-prev-airport">
             <div class="orc-prev-iata">${escHtml(origem || "—")}</div>
@@ -806,16 +807,12 @@
             ${d.horario_chegada ? `<div class="orc-prev-time">${escHtml(d.horario_chegada)}</div>` : ""}
           </div>
         </div>
-        ${d.localizador ? `<div class="conf-localizador" style="margin:0 20px 18px"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(d.localizador)}</span></div>` : ""}
-        <div style="padding:0 20px 18px;font-size:0.82rem;color:var(--navy-light)">
-          ${d.companhia || d.voo ? `<div style="margin-bottom:4px">${escHtml([d.companhia, d.voo].filter(Boolean).join(" · "))}</div>` : ""}
-          ${nomesPax ? `<div><strong>Passageiro(s):</strong> ${escHtml(nomesPax)}</div>` : ""}
-        </div>
+        ${d.companhia || d.voo ? `<div style="padding:0 20px 18px;margin-top:-8px;font-size:0.82rem;color:var(--navy-light)">${escHtml([d.companhia, d.voo].filter(Boolean).join(" · "))}</div>` : ""}
       </div>`;
   }
 
   function linhaProdutoComprovante(tipo, dados, valorVenda, nomesPax) {
-    if (tipo === "passagem") return cardPassagemComprovante(dados, valorVenda, nomesPax);
+    if (tipo === "passagem") return cardPassagemComprovante(dados, valorVenda);
     const detalhes = (DADOS_CFG[tipo] || [])
       .filter((f) => dados && dados[f.id])
       .map((f) => `<div class="conf-obs-item"><span class="conf-obs-icon">•</span><span>${escHtml(f.label)}: <strong>${escHtml(dados[f.id])}</strong></span></div>`)
