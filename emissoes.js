@@ -264,6 +264,12 @@
   function renderPassageiros() {
     const wrap = gel("emi-passageiros-list");
     if (!wrap) return;
+
+    // Preserva o que já foi digitado nos cards existentes — sem isso, adicionar/remover
+    // um passageiro reconstrói o HTML inteiro e apaga os dados dos outros já preenchidos.
+    const salvos = {};
+    wrap.querySelectorAll("input,select,textarea").forEach((e) => { if (e.id) salvos[e.id] = e.value; });
+
     if (passageiros.length === 0) {
       wrap.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum passageiro adicionado ainda</p></div>';
       return;
@@ -301,6 +307,8 @@
           </div>
         </div>
       </div>`).join("");
+
+    Object.entries(salvos).forEach(([id, val]) => { const el = gel(id); if (el) el.value = val; });
 
     wrap.querySelectorAll("[data-remove-pax]").forEach((btn) =>
       btn.addEventListener("click", () => removePassageiro(btn.dataset.removePax)));
@@ -453,6 +461,14 @@
   function renderProdutos() {
     const wrap = gel("emi-produtos-list");
     if (!wrap) return;
+
+    // Preserva o que já foi digitado nos cards existentes — sem isso, adicionar/remover
+    // um produto reconstrói o HTML inteiro e apaga os dados dos outros já preenchidos
+    // (foi o que aconteceu com o "trecho da volta": ao adicionar o 2º card de passagem,
+    // o 1º perdia os dados).
+    const salvos = {};
+    wrap.querySelectorAll("input,select,textarea").forEach((e) => { if (e.id) salvos[e.id] = e.value; });
+
     if (produtos.length === 0) {
       wrap.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum produto adicionado ainda</p></div>';
       return;
@@ -536,6 +552,10 @@
       </div>`;
     }).join("");
 
+    // Restaura os valores antes de religar os listeners abaixo, pra os toggles (milhas x
+    // tarifado, forma de pagamento faturada) partirem já do valor certo.
+    Object.entries(salvos).forEach(([id, val]) => { const el = gel(id); if (el) el.value = val; });
+
     produtos.forEach((prod) => {
       renderProdutoPaxChecks(prod.id);
       renderProdutoFuncChecks(prod.id);
@@ -600,6 +620,14 @@
   }
 
   // ===== Leitura de print por IA (passagem / hospedagem) =====
+  function preencherCamposPassagem(prodId, ex) {
+    const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
+    fill("trecho", ex.trecho); fill("localizador", ex.localizador); fill("companhia", ex.companhia); fill("voo", ex.voo);
+    fill("horario_partida", ex.horario_partida); fill("horario_chegada", ex.horario_chegada);
+    fill("conexoes", ex.conexoes); fill("taxa_embarque", ex.taxa_embarque);
+    if (ex.milhas != null) { const el = gel(`emi-prod-${prodId}-qtd_milhas`); if (el) el.value = ex.milhas; }
+  }
+
   async function analisarDocumento(prodId, tipo, imageSrc, zone) {
     const match = imageSrc.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return;
@@ -608,7 +636,7 @@
     if (hintEl) hintEl.textContent = "⏳ Analisando...";
 
     const prompt = tipo === "passagem"
-      ? `${contextoDataAtual()}\n\nAnalise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",\n  "companhia": "nome da companhia aérea",\n  "voo": "número do voo",\n  "horario_partida": "HH:MM",\n  "horario_chegada": "HH:MM ou HH:MM (+1)",\n  "conexoes": "Voo direto OU ex: 1 escala em GRU",\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null\n}`
+      ? `${contextoDataAtual()}\n\nAnalise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",\n  "localizador": "código/localizador da reserva, ou null",\n  "companhia": "nome da companhia aérea",\n  "voo": "número do voo",\n  "horario_partida": "HH:MM",\n  "horario_chegada": "HH:MM ou HH:MM (+1)",\n  "conexoes": "Voo direto OU ex: 1 escala em GRU",\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "volta": {\n    "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO (invertido em relação à ida)",\n    "localizador": "...", "companhia": "...", "voo": "...",\n    "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)",\n    "conexoes": "...", "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null\n  } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho, "volta" deve ser null.\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
     try {
@@ -628,11 +656,16 @@
       const ex = JSON.parse(jsonStr);
 
       if (tipo === "passagem") {
-        const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
-        fill("trecho", ex.trecho); fill("companhia", ex.companhia); fill("voo", ex.voo);
-        fill("horario_partida", ex.horario_partida); fill("horario_chegada", ex.horario_chegada);
-        fill("conexoes", ex.conexoes); fill("taxa_embarque", ex.taxa_embarque);
-        if (ex.milhas != null) { const el = gel(`emi-prod-${prodId}-qtd_milhas`); if (el) el.value = ex.milhas; }
+        preencherCamposPassagem(prodId, ex);
+
+        // Print único mostrando ida e volta juntas (reserva round-trip): garante um
+        // segundo card de passagem pra volta e preenche com os dados extraídos — sem
+        // isso a funcionária precisava colar o mesmo print de novo manualmente.
+        if (ex.volta && typeof ex.volta === "object") {
+          addProduto("passagem");
+          const voltaId = produtos[produtos.length - 1].id;
+          preencherCamposPassagem(voltaId, ex.volta);
+        }
       } else {
         const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
         fill("hotel", ex.hotel);
@@ -640,7 +673,10 @@
         fill("checkin", ex.checkin); fill("checkout", ex.checkout);
         if (ex.custo != null) { const el = gel(`emi-prod-${prodId}-custo`); if (el) el.value = ex.custo; }
       }
-      if (hintEl) hintEl.textContent = "✓ Dados extraídos! Cole outro print pra tentar de novo.";
+      // Reconsulta a zona/hint pelo id — se detectou volta, addProduto() re-renderizou a
+      // lista e o "zone"/"hintEl" capturados no início não existem mais no DOM.
+      const hintAtual = gel(`emi-prod-${prodId}-fotozone`)?.querySelector(".orc-foto-hint");
+      if (hintAtual) hintAtual.textContent = "✓ Dados extraídos! Cole outro print pra tentar de novo.";
     } catch (err) {
       if (hintEl) hintEl.textContent = "Erro ao analisar: " + err.message + " — tente colar novamente.";
     }
