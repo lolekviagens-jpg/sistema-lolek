@@ -148,17 +148,27 @@ async function executarAcao(action, data, secretKey) {
       // antiga continua intacta em vez de a usuária perder os dados.
       const resultado = await criarEmissao(data, secretKey);
 
-      const produtosAntigos = await supabaseRest(
-        "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
-        "GET", secretKey
-      ).catch(() => []);
-      const idsAntigos = (produtosAntigos || []).map((p) => p.id);
-      if (idsAntigos.length > 0) {
-        await supabaseRest("/financeiro_lancamentos?emissao_produto_id=in.(" + idsAntigos.join(",") + ")", "DELETE", secretKey).catch(() => {});
+      // Se a limpeza da versão antiga falhar por qualquer motivo, isso NÃO pode ficar em
+      // silêncio — senão a emissão antiga fica esquecida no banco parecendo duplicada
+      // (foi exatamente isso que aconteceu antes desta correção). Reporta um aviso em vez
+      // de engolir o erro.
+      let avisoLimpeza = null;
+      try {
+        const produtosAntigos = await supabaseRest(
+          "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
+          "GET", secretKey
+        );
+        const idsAntigos = (produtosAntigos || []).map((p) => p.id);
+        if (idsAntigos.length > 0) {
+          await supabaseRest("/financeiro_lancamentos?emissao_produto_id=in.(" + idsAntigos.join(",") + ")", "DELETE", secretKey);
+        }
+        await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      } catch (err) {
+        console.error("[emissoes-data] editar_emissao: falha ao remover a versão antiga (id " + data.id + "):", err.message);
+        avisoLimpeza = "A edição foi salva, mas a versão antiga (id " + data.id + ") não pôde ser removida automaticamente — pode ter ficado duplicada. Vá em Emissões → Por viagem e exclua a versão antiga manualmente.";
       }
-      await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey).catch(() => {});
 
-      return resultado;
+      return { ...resultado, aviso: avisoLimpeza };
     }
 
     case "excluir_produto": {

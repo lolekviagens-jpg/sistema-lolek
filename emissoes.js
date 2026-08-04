@@ -755,11 +755,9 @@
     btn.disabled = true; btn.textContent = editando ? "⏳ Salvando edição..." : "⏳ Salvando...";
     gel("emi-status").innerHTML = "";
     try {
-      if (editando) {
-        await chamarEmissoes("editar_emissao", { id: emissaoEmEdicaoId, ...payload });
-      } else {
-        await chamarEmissoes("criar_emissao", payload);
-      }
+      const resultadoSalvar = editando
+        ? await chamarEmissoes("editar_emissao", { id: emissaoEmEdicaoId, ...payload })
+        : await chamarEmissoes("criar_emissao", payload);
 
       // Nomes dos passageiros pro comprovante — montado antes de limpar o formulário,
       // porque passageiros novos só têm o nome no input, não no array de estado.
@@ -787,6 +785,8 @@
       await carregarClientes();
       await carregarListaEmissoes();
       renderListaEmissoes();
+
+      if (resultadoSalvar && resultadoSalvar.aviso) alert("⚠ " + resultadoSalvar.aviso);
 
       mostrarComprovante(payload.emissao, nomesPorIndice, produtosInfo, contratanteInfo);
     } catch (err) {
