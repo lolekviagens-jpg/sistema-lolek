@@ -138,6 +138,7 @@
 
   const DADOS_CFG = {
     passagem: [
+      { id: "perna", label: "Perna da viagem", type: "select", options: ["Ida", "Volta", "Não se aplica"] },
       { id: "trecho", label: "Trecho", placeholder: "Ex: FOR → LIS" },
       { id: "localizador", label: "Localizador / código" },
       { id: "companhia", label: "Companhia aérea" },
@@ -384,6 +385,15 @@
     paxSelecionados[id] = new Set(passageiros.map((p) => p.id));
     funcSelecionadas[id] = new Set();
     renderProdutos();
+
+    // Valor padrão esperto pra "Perna da viagem": 1º card de passagem = Ida, os
+    // seguintes = Volta — ela pode trocar manualmente se não for esse o caso
+    // (ex: 3ª perna de uma viagem multi-destino).
+    if (tipo === "passagem") {
+      const qtdPassagens = produtos.filter((p) => p.tipo === "passagem").length;
+      const pernaEl = gel(`emi-prod-${id}-dados-perna`);
+      if (pernaEl) pernaEl.value = qtdPassagens === 1 ? "Ida" : "Volta";
+    }
   }
 
   function removeProduto(id) {
@@ -931,7 +941,7 @@
     return `
       <div class="orc-prev-flight-card">
         <div class="orc-prev-flight-card-header">
-          <span class="orc-prev-flight-label">✈️ PASSAGEM AÉREA</span>
+          <span class="orc-prev-flight-label">✈️ ${d.perna && d.perna !== "Não se aplica" ? escHtml(d.perna.toUpperCase()) : "PASSAGEM AÉREA"}</span>
           <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
         </div>
         ${d.localizador ? `<div class="conf-localizador" style="margin:16px 20px 0"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(d.localizador)}</span></div>` : ""}
