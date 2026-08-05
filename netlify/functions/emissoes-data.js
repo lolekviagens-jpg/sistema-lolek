@@ -283,9 +283,12 @@ async function criarEmissao(data, secretKey) {
     for (const prod of produtos) {
       if (!TIPO_LABEL[prod.tipo]) throw new Error("Tipo de produto inválido: " + prod.tipo);
 
-      const custoMilhas = (prod.valor_milha != null && prod.qtd_milhas != null)
-        ? (Number(prod.valor_milha) * Number(prod.qtd_milhas) / 1000) : 0;
-      const custoTotal  = prod.custo != null ? Number(prod.custo) : custoMilhas;
+      // O custo é sempre digitado à mão, nunca calculado a partir de qtd_milhas ×
+      // valor_milha — o valor final combinado com o milheiro às vezes tem pequenos
+      // ajustes que a conta simples não capta. valor_milha/qtd_milhas continuam sendo
+      // gravados (servem só pro controle de dívida com fornecedores em
+      // financeiro-fornecedores.js, que lê sheet_meta separadamente).
+      const custoTotal = Number(prod.custo) || 0;
 
       // Uma ou mais formas de pagamento, cada uma com seu próprio valor (ex: parte de
       // entrada no Pix, parte faturada) — o valor total do produto é sempre a soma delas.

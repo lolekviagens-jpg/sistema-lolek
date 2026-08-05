@@ -607,13 +607,13 @@
                     <option value="tarifado">Tarifado / operadora (dinheiro)</option>
                   </select>
                 </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-milhas"><span class="field__label">Qtd. milhas</span>
+                <label class="field" id="emi-prod-${prod.id}-wrap-milhas"><span class="field__label">Qtd. milhas <span class="table__muted">(informativo — controle do fornecedor)</span></span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-qtd_milhas" />
                 </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$)</span>
+                <label class="field" id="emi-prod-${prod.id}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-valor_milha" step="0.01" />
                 </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-custo" hidden><span class="field__label">💸 CUSTO — quanto NÓS pagamos (R$)</span>
+                <label class="field"><span class="field__label">💸 CUSTO TOTAL — quanto NÓS pagamos, já com taxas/ajustes (R$)</span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
                 </label>
               ` : `
@@ -666,7 +666,9 @@
           const milhas = compraTipoEl.value === "milhas";
           gel(`emi-prod-${prod.id}-wrap-milhas`).hidden = !milhas;
           gel(`emi-prod-${prod.id}-wrap-milheiro`).hidden = !milhas;
-          gel(`emi-prod-${prod.id}-wrap-custo`).hidden = milhas;
+          // "Custo" fica sempre visível: mesmo comprando com milhas, o custo total é
+          // digitado à mão (pode ter ajuste com o milheiro, taxa de embarque etc.) — não
+          // é mais calculado automaticamente a partir de qtd. milhas × valor do milheiro.
         };
         compraTipoEl.addEventListener("change", atualizarCompraTipo);
         atualizarCompraTipo();
@@ -885,7 +887,7 @@
         fornecedor_id: (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null,
         valor_milha: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-valor_milha`).value) || null) : null,
         qtd_milhas: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-qtd_milhas`).value) || null) : null,
-        custo: !compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null) : null,
+        custo: parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null,
         valor_venda: valorVenda,
         pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
