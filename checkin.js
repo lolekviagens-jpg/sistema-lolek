@@ -2,12 +2,8 @@
 (function () {
   "use strict";
 
-  const SHEET_ID  = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
-  const SHEET_URL = "https://docs.google.com/spreadsheets/d/" + SHEET_ID + "/gviz/tq?tqx=out:csv";
   const CHECKINS_FN = "/.netlify/functions/checkins";
   const CONFIRMS_POLL_MS = 20000; // reconsulta as confirmações de outros computadores periodicamente
-
-  const COL = { situacao: 1, nome: 4, dataIda: 5, dataVolta: 6, saida: 7, destino: 8, companhia: 9, localizador: 11 };
 
   // ===== Estado =====
   let lastPassengers = [];
@@ -53,35 +49,6 @@
   }
   function todayYmd()    { return ymd(new Date()); }
   function tomorrowYmd() { const t = new Date(); t.setDate(t.getDate() + 1); return ymd(t); }
-
-  function parseDate(raw) {
-    const s = String(raw || "").trim();
-    if (!s) return null;
-    let m = s.match(/Date\((\d+),(\d+),(\d+)/);
-    if (m) return `${m[1]}-${String(+m[2] + 1).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}`;
-    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-    if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
-    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-    // Erro comum de fórmula/digitação na planilha: data sem o ano (ex: "02/07"). Assume o ano corrente.
-    m = s.match(/^(\d{1,2})\/(\d{1,2})$/);
-    if (m) return `${new Date().getFullYear()}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-    return null;
-  }
-
-  function parseCsv(text) {
-    const rows = []; let row = [], field = "", inQ = false;
-    for (let i = 0; i < text.length; i++) {
-      const ch = text[i];
-      if (inQ) { if (ch === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; } else field += ch; }
-      else if (ch === '"') inQ = true;
-      else if (ch === ",") { row.push(field); field = ""; }
-      else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-      else if (ch !== "\r") field += ch;
-    }
-    if (field !== "" || row.length) { row.push(field); rows.push(row); }
-    return rows;
-  }
 
   // ===== Confirmações (Supabase, via Netlify Function — compartilhado entre computadores) =====
   async function fetchConfirms() {
@@ -131,32 +98,61 @@
     return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   }
 
-  // Classifica o produto pela coluna de situação (mesma regra usada em vendas.js)
-  function tipoProduto(situacao) {
-    const s = (situacao || "").toLowerCase().trim();
-    if (!s) return null;
-    if (s === "aguardando viagem" || s === "viagem concluida") return "Passagem aérea";
-    if (s.includes("hospedagem")) return "Hospedagem";
-    if (s.includes("seguro"))     return "Seguro viagem";
-    if (s.includes("mala"))       return "Adicional de mala";
-    return situacao.trim().charAt(0).toUpperCase() + situacao.trim().slice(1);
+  // ===== Processamento — a partir da Nova Emissão (venda_emissoes), não mais da planilha =====
+  async function fetchEmissoesEClientes() {
+    const [respEmi, respCli] = await Promise.all([
+      fetch("/.netlify/functions/emissoes-data"),
+      fetch("/.netlify/functions/clientes-data"),
+    ]);
+    if (!respEmi.ok) throw new Error("HTTP " + respEmi.status);
+    const emissoes = await respEmi.json();
+    const clientes = respCli.ok ? await respCli.json() : [];
+    const nomePorClienteId = new Map(clientes.map((c) => [c.id, c.nome]));
+    return { emissoes, nomePorClienteId };
   }
 
-  // ===== Processamento =====
-  function rowsToPassengers(rows) {
-    return rows
-      .map((cols) => ({
-        nome:       (cols[COL.nome]       || "").trim(),
-        situacao:   (cols[COL.situacao]   || "").trim(),
-        saida:      (cols[COL.saida]      || "").trim(),
-        destino:    (cols[COL.destino]    || "").trim(),
-        companhia:  (cols[COL.companhia]  || "").trim(),
-        localizador:(cols[COL.localizador]|| "").trim(),
-        dataIda:    parseDate(cols[COL.dataIda]),
-        dataVolta:  parseDate(cols[COL.dataVolta]),
-      }))
-      .filter((p) => p.nome && !/cancel/i.test(p.situacao))
-      .map((p) => ({ ...p, tipo: tipoProduto(p.situacao) }));
+  // Um produto "passagem" vira 1 linha por passageiro coberto; a data usada (ida ou
+  // volta) depende do campo "Perna da viagem" preenchido em Nova Emissão. Hospedagem
+  // também vira linha própria, usando check-in/check-out do próprio produto (mais
+  // preciso que a data geral da viagem).
+  function emissoesParaPassageiros(emissoes, nomePorClienteId) {
+    const linhas = [];
+    (emissoes || []).forEach((e) => {
+      const nomePorPaxId = new Map(
+        (e.venda_emissoes_passageiros || []).map((pax) => [pax.id, nomePorClienteId.get(pax.cliente_id) || "Passageiro"])
+      );
+      const todosPaxIds = [...nomePorPaxId.keys()];
+
+      (e.venda_emissoes_produtos || []).forEach((prod) => {
+        const d = prod.dados || {};
+        const idsCobertos = (prod.passageiro_ids && prod.passageiro_ids.length) ? prod.passageiro_ids : todosPaxIds;
+        const nomes = idsCobertos.map((id) => nomePorPaxId.get(id)).filter(Boolean);
+
+        if (prod.tipo === "passagem") {
+          const isVolta = d.perna === "Volta";
+          nomes.forEach((nome) => {
+            linhas.push({
+              nome, tipo: "Passagem aérea",
+              saida: d.horario_partida || "",
+              destino: e.destino || "",
+              companhia: d.companhia || "",
+              localizador: d.localizador || "",
+              dataIda:   isVolta ? null : (e.data_ida || null),
+              dataVolta: isVolta ? (e.data_volta || null) : null,
+            });
+          });
+        } else if (prod.tipo === "hospedagem") {
+          nomes.forEach((nome) => {
+            linhas.push({
+              nome, tipo: "Hospedagem",
+              saida: "", destino: e.destino || "", companhia: d.hotel || "", localizador: "",
+              dataIda: d.checkin || null, dataVolta: d.checkout || null,
+            });
+          });
+        }
+      });
+    });
+    return linhas;
   }
 
   // ===== Calendário =====
@@ -358,24 +354,21 @@
     sectionsEl.innerHTML = "";
     showStatus(`
       <div class="notice notice--error">
-        <strong>Não foi possível carregar a planilha.</strong>
+        <strong>Não foi possível carregar as emissões.</strong>
         <p>${escapeHtml(msg)}</p>
-        <small>Verifique se a planilha está compartilhada como "Qualquer pessoa com o link — Leitor" e tente de novo.</small>
       </div>`);
   }
 
   // ===== Carregamento =====
-  async function fetchSheet() {
+  async function carregarDados() {
     refreshBtn.disabled = true;
-    showStatus(`<div class="notice">Carregando planilha…</div>`);
+    showStatus(`<div class="notice">Carregando…</div>`);
     try {
-      const [resp] = await Promise.all([
-        fetch(SHEET_URL + "&t=" + Date.now()),
+      const [{ emissoes, nomePorClienteId }] = await Promise.all([
+        fetchEmissoesEClientes(),
         fetchConfirms(),
       ]);
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
-      const text = await resp.text();
-      lastPassengers = rowsToPassengers(parseCsv(text));
+      lastPassengers = emissoesParaPassageiros(emissoes, nomePorClienteId);
       clearStatus();
       renderCalendar();
       renderSections();
@@ -397,7 +390,7 @@
   }
 
   // ===== Eventos =====
-  refreshBtn.addEventListener("click", fetchSheet);
+  refreshBtn.addEventListener("click", carregarDados);
 
   calPrev.addEventListener("click", () => {
     calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; }
@@ -419,6 +412,6 @@
   calYear    = now.getFullYear();
   calMonth   = now.getMonth();
   renderCalendar(); // renderiza calendário vazio enquanto carrega
-  fetchSheet();
+  carregarDados();
   setInterval(pollConfirms, CONFIRMS_POLL_MS);
 })();
