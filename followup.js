@@ -3,7 +3,6 @@
   "use strict";
 
   const SHEET_ID   = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
-  const LS_CLI     = "lolek_clientes";
   const LS_EVENTOS = "lolek_eventos_especiais";
   const LS_ENVIADOS    = "lolek_fu_enviados";
   const LS_DESCARTADOS = "lolek_fu_descartados";
@@ -164,6 +163,41 @@
   async function carregarTodasViagens() {
     const resultados = await Promise.all(ABAS.map(carregarAba));
     return resultados.flat();
+  }
+
+  // ===== Clientes (Supabase, via clientes-data — não mais localStorage) =====
+  async function carregarClientes() {
+    try {
+      const r = await fetch("/.netlify/functions/clientes-data");
+      return r.ok ? await r.json() : [];
+    } catch { return []; }
+  }
+
+  // ===== Viagens da Nova Emissão (venda_emissoes) — somadas às abas antigas da
+  // planilha, que ficam como histórico de antes da Nova Emissão existir =====
+  function parseDataISO(s) {
+    const m = String(s || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+  }
+
+  async function carregarViagensEmissoes(clienteNomePorId) {
+    try {
+      const r = await fetch("/.netlify/functions/emissoes-data");
+      if (!r.ok) return [];
+      const emissoes = await r.json();
+      const viagens = [];
+      emissoes.forEach((e) => {
+        const ida = parseDataISO(e.data_ida);
+        const volta = parseDataISO(e.data_volta);
+        if (!ida && !volta) return;
+        (e.venda_emissoes_passageiros || []).forEach((pax) => {
+          const nome = clienteNomePorId.get(pax.cliente_id);
+          if (!nome) return;
+          viagens.push({ nome, ida, volta, destino: e.destino || "", ano: (ida || volta).getFullYear() });
+        });
+      });
+      return viagens;
+    } catch { return []; }
   }
 
   // ===== Mensagens padrão =====
@@ -659,7 +693,7 @@
 
   function mostrarLoading() {
     const wrap = gel("fu-secoes");
-    if (wrap) wrap.innerHTML = `<div class="fu-loading">Carregando dados da planilha…</div>`;
+    if (wrap) wrap.innerHTML = `<div class="fu-loading">Carregando dados…</div>`;
   }
 
   function mostrarErro(msg) {
@@ -671,14 +705,16 @@
   async function carregar() {
     mostrarLoading();
 
-    const clientes = (() => {
-      try { return JSON.parse(localStorage.getItem(LS_CLI) || "[]"); }
-      catch { return []; }
-    })();
+    const clientes = await carregarClientes();
+    const clienteNomePorId = new Map(clientes.map((c) => [c.id, c.nome]));
 
-    const viagens = await carregarTodasViagens();
+    const [viagensPlanilha, viagensEmissoes] = await Promise.all([
+      carregarTodasViagens(),                     // histórico antigo (planilha, até a Nova Emissão existir)
+      carregarViagensEmissoes(clienteNomePorId),  // dados atuais (Nova Emissão)
+    ]);
+    const viagens = [...viagensPlanilha, ...viagensEmissoes];
     if (!viagens.length) {
-      mostrarErro("Não foi possível carregar a planilha de passagens. Verifique a conexão.");
+      mostrarErro("Não foi possível carregar as viagens. Verifique a conexão.");
       return;
     }
 
