@@ -137,15 +137,9 @@
   const PROD_ICON  = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.icon]));
 
   const DADOS_CFG = {
-    passagem: [
-      { id: "trecho", label: "Trecho", placeholder: "Ex: FOR → LIS" },
-      { id: "localizador", label: "Localizador / código" },
-      { id: "companhia", label: "Companhia aérea" },
-      { id: "voo", label: "Nº do voo" },
-      { id: "horario_partida", label: "Horário de partida" },
-      { id: "horario_chegada", label: "Horário de chegada" },
-      { id: "conexoes", label: "Paradas / escalas" },
-    ],
+    // passagem não usa DADOS_CFG — cada perna (ida/volta) tem sua própria lista de
+    // trechos/segmentos (ver segmentosPorProduto), pra suportar conexões com todos os
+    // detalhes (aeroporto, horários) em vez de resumir numa frase.
     hospedagem: [
       { id: "hotel", label: "Hotel / Pousada" },
       { id: "regime", label: "Regime", type: "select", options: ["Sem café", "Café incluso", "Meia pensão", "Pensão completa", "All inclusive"] },
@@ -204,6 +198,7 @@
   const funcSelecionadas = {};       // produtoId -> Set(nomeVendedora) — sobrevive a re-render das checkboxes
   const pagamentosPorProduto = {};   // produtoId -> [{ id, forma, valor, dataFaturamento }] — permite dividir o pagamento em mais de uma forma
   const idaVoltaPorProduto = {};     // produtoId -> bool — sobrevive a re-render, igual paxSelecionados/funcSelecionadas
+  const segmentosPorProduto = {};    // produtoId -> { ida: [{id,trecho,companhia,voo,horario_partida,horario_chegada}], volta: [...] }
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
   let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
@@ -386,6 +381,7 @@
     funcSelecionadas[id] = new Set();
     pagamentosPorProduto[id] = [novoPagamento("pix")];
     idaVoltaPorProduto[id] = false;
+    segmentosPorProduto[id] = { ida: [novoSegmento()], volta: [] };
     renderProdutos();
   }
 
@@ -395,6 +391,7 @@
     delete funcSelecionadas[id];
     delete pagamentosPorProduto[id];
     delete idaVoltaPorProduto[id];
+    delete segmentosPorProduto[id];
     renderProdutos();
   }
 
@@ -418,20 +415,79 @@
 
   // Passagem tem seu próprio layout: um card só, com um bloco de campos pra "Ida" e,
   // se marcado, outro pra "Volta" — mas só UM valor/custo total pro card inteiro (ida e
-  // volta juntos são uma compra só, não duas).
+  // volta juntos são uma compra só, não duas). Dentro de cada perna, uma LISTA de
+  // trechos/segmentos (não só um campo de texto) — pra mostrar cada conexão com aeroporto
+  // e horário próprios, igual a companhia aérea mostra, em vez de resumir numa frase.
+  function novoSegmento() {
+    return { id: novoId("seg"), trecho: "", companhia: "", voo: "", horario_partida: "", horario_chegada: "" };
+  }
+
+  function renderSegmentos(prodId, perna) {
+    const wrap = gel(`emi-prod-${prodId}-${perna}-segmentos`);
+    if (!wrap) return;
+    if (!segmentosPorProduto[prodId]) segmentosPorProduto[prodId] = {};
+    const lista = segmentosPorProduto[prodId][perna] || (segmentosPorProduto[prodId][perna] = [novoSegmento()]);
+
+    wrap.innerHTML = lista.map((seg, i) => `
+      <div class="orc-produto-item" style="margin-bottom:8px">
+        <div class="orc-produto-header" style="padding:7px 12px">
+          <span style="font-size:0.8rem;font-weight:600">Trecho ${i + 1}</span>
+          ${lista.length > 1 ? `<button type="button" class="orc-produto-remove emi-seg-remover" data-seg="${seg.id}" style="margin-left:auto">✕</button>` : ""}
+        </div>
+        <div class="orc-produto-body" style="padding:10px 12px">
+          <div class="form__grid">
+            <label class="field field--full"><span class="field__label">Trecho</span>
+              <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="trecho" placeholder="Ex: FOR → GRU" value="${escHtml(seg.trecho)}" />
+            </label>
+            <label class="field"><span class="field__label">Companhia aérea</span>
+              <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="companhia" value="${escHtml(seg.companhia)}" />
+            </label>
+            <label class="field"><span class="field__label">Nº do voo</span>
+              <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="voo" value="${escHtml(seg.voo)}" />
+            </label>
+            <label class="field"><span class="field__label">Horário de partida</span>
+              <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="horario_partida" value="${escHtml(seg.horario_partida)}" />
+            </label>
+            <label class="field"><span class="field__label">Horário de chegada</span>
+              <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="horario_chegada" value="${escHtml(seg.horario_chegada)}" />
+            </label>
+          </div>
+        </div>
+      </div>`).join("");
+
+    wrap.querySelectorAll(".emi-seg-campo").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const seg = lista.find((s) => s.id === inp.dataset.seg);
+        if (seg) seg[inp.dataset.campo] = inp.value;
+      });
+    });
+    wrap.querySelectorAll(".emi-seg-remover").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        segmentosPorProduto[prodId][perna] = lista.filter((s) => s.id !== btn.dataset.seg);
+        renderSegmentos(prodId, perna);
+      });
+    });
+  }
+
+  function pernaFormHtml(prodId, perna, titulo) {
+    return `
+      <div class="orc-cost-divider" style="margin:${perna === "ida" ? "0" : "14px"} 0 8px"><span>${titulo}</span></div>
+      <label class="field field--full"><span class="field__label">Localizador / código</span>
+        <input type="text" class="input" id="emi-prod-${prodId}-loc-${perna}" />
+      </label>
+      <div id="emi-prod-${prodId}-${perna}-segmentos"></div>
+      <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${perna}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar trecho (conexão)</button>`;
+  }
+
   function passagemCamposHtml(prodId) {
-    const camposIda = DADOS_CFG.passagem.map((f) => campoDados(prodId, f, "ida")).join("");
-    const camposVolta = DADOS_CFG.passagem.map((f) => campoDados(prodId, f, "volta")).join("");
     return `
       <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:0.85rem">
         <input type="checkbox" id="emi-prod-${prodId}-ida_volta" />
         Ida e volta <span class="table__muted">(desmarcado = somente ida)</span>
       </label>
-      <div class="orc-cost-divider" style="margin:0 0 8px"><span>Ida</span></div>
-      <div class="form__grid">${camposIda}</div>
+      ${pernaFormHtml(prodId, "ida", "Ida")}
       <div id="emi-prod-${prodId}-volta-wrap" hidden>
-        <div class="orc-cost-divider" style="margin:14px 0 8px"><span>Volta</span></div>
-        <div class="form__grid">${camposVolta}</div>
+        ${pernaFormHtml(prodId, "volta", "Volta")}
       </div>
       <div class="form__grid" style="margin-top:10px">
         <label class="field"><span class="field__label">Taxa de embarque total (R$, informativo)</span>
@@ -685,6 +741,21 @@
         });
       }
 
+      if (isPassagem) {
+        ["ida", "volta"].forEach((perna) => {
+          renderSegmentos(prod.id, perna);
+          const addSegBtn = gel(`emi-prod-${prod.id}-${perna}-add-seg`);
+          if (addSegBtn) {
+            addSegBtn.addEventListener("click", () => {
+              if (!segmentosPorProduto[prod.id]) segmentosPorProduto[prod.id] = {};
+              if (!segmentosPorProduto[prod.id][perna]) segmentosPorProduto[prod.id][perna] = [];
+              segmentosPorProduto[prod.id][perna].push(novoSegmento());
+              renderSegmentos(prod.id, perna);
+            });
+          }
+        });
+      }
+
       renderProdutoPagamentos(prod.id);
       const addPagamentoBtn = gel(`emi-prod-${prod.id}-add-pagamento`);
       if (addPagamentoBtn) {
@@ -750,11 +821,23 @@
 
   // ===== Leitura de print por IA (passagem / hospedagem) =====
   // prefixo: "ida" ou "volta" — os dois trechos ficam no mesmo card de passagem.
-  function preencherCamposPassagem(prodId, ex, prefixo) {
-    const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${prefixo}-${campo}`); if (el && val != null && val !== "") el.value = val; };
-    fill("trecho", ex.trecho); fill("localizador", ex.localizador); fill("companhia", ex.companhia); fill("voo", ex.voo);
-    fill("horario_partida", ex.horario_partida); fill("horario_chegada", ex.horario_chegada);
-    fill("conexoes", ex.conexoes);
+  // Aplica os dados extraídos pela IA numa perna (ida ou volta): localizador + a lista de
+  // trechos/segmentos inteira (substitui o que já tinha, já que veio de uma leitura nova).
+  function aplicarPernaExtraida(prodId, perna, ex) {
+    const locEl = gel(`emi-prod-${prodId}-loc-${perna}`);
+    if (locEl && ex.localizador) locEl.value = ex.localizador;
+
+    const segs = (Array.isArray(ex.segmentos) && ex.segmentos.length > 0)
+      ? ex.segmentos.map((s) => ({
+          id: novoId("seg"),
+          trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+          horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
+        }))
+      : [novoSegmento()];
+
+    if (!segmentosPorProduto[prodId]) segmentosPorProduto[prodId] = {};
+    segmentosPorProduto[prodId][perna] = segs;
+    renderSegmentos(prodId, perna);
   }
 
   async function analisarDocumento(prodId, tipo, imageSrc, zone) {
@@ -765,7 +848,7 @@
     if (hintEl) hintEl.textContent = "⏳ Analisando...";
 
     const prompt = tipo === "passagem"
-      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa deduzir pela sequência de origem/destino de cada linha. Duas situações bem diferentes:\n\n- CONEXÃO/ESCALA (é UMA viagem só, mesmo sentido): a ORIGEM da linha 2 é igual (ou muito próxima) ao DESTINO da linha 1 — o voo continua na mesma direção até um destino final diferente do ponto de partida. Exemplo real: linha 1 "Roma → São Paulo", linha 2 "São Paulo → Fortaleza" — isso é UMA viagem com escala em São Paulo, NÃO é ida e volta. "volta" deve ser null, e a escala entra em "conexoes" (ex: "1 escala em São Paulo/GRU").\n- IDA E VOLTA (são DUAS viagens, sentidos opostos): o DESTINO da última linha é igual (ou muito próximo) à ORIGEM da linha 1 — a reserva volta pro ponto de partida. Exemplo real: linha 1 "Fortaleza → Lisboa", linha 2 "Lisboa → Fortaleza" — isso SIM é ida e volta, preencha "volta" com os dados da linha 2.\n\nNa dúvida, trate como conexão ("volta": null) — é pior assumir volta erroneamente do que deixar de detectar uma volta de verdade.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO — origem da 1ª linha até o destino FINAL da viagem de ida (se houver escala, use o destino da ÚLTIMA linha antes de uma eventual volta, não o destino da escala)",\n  "localizador": "código/localizador da reserva, ou null",\n  "companhia": "nome da companhia aérea",\n  "voo": "número do voo — se houver escala, os números das duas pernas separados por /",\n  "horario_partida": "HH:MM de partida do 1º voo (início da viagem de ida)",\n  "horario_chegada": "HH:MM ou HH:MM (+1) de chegada no destino final da ida",\n  "conexoes": "Voo direto OU ex: 1 escala em GRU",\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "volta": {\n    "trecho": "...", "localizador": "...", "companhia": "...", "voo": "...",\n    "horario_partida": "...", "horario_chegada": "...", "conexoes": "...",\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima (destino final volta pra origem do início). Nunca preencha "volta" pra uma conexão/escala.\n}`
+      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
     const content = mime === "application/pdf"
@@ -789,18 +872,18 @@
       const ex = JSON.parse(jsonStr);
 
       if (tipo === "passagem") {
-        preencherCamposPassagem(prodId, ex, "ida");
+        aplicarPernaExtraida(prodId, "ida", ex);
 
         // Print único mostrando ida e volta juntas (reserva round-trip): marca "Ida e
-        // volta" e preenche o segundo bloco de campos, no MESMO card — ida e volta são
-        // uma compra só, com um valor/custo só.
+        // volta" e preenche o segundo bloco, no MESMO card — ida e volta são uma compra
+        // só, com um valor/custo só.
         if (ex.volta && typeof ex.volta === "object") {
           const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
           const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
           if (idaVoltaEl) idaVoltaEl.checked = true;
           if (voltaWrap) voltaWrap.hidden = false;
           idaVoltaPorProduto[prodId] = true;
-          preencherCamposPassagem(prodId, ex.volta, "volta");
+          aplicarPernaExtraida(prodId, "volta", ex.volta);
         }
 
         const milhasTotal = (Number(ex.milhas) || 0) + (ex.volta ? (Number(ex.volta.milhas) || 0) : 0);
@@ -849,11 +932,12 @@
       if (prod.tipo === "passagem") {
         const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
         const isIdaVolta = idaVoltaEl ? idaVoltaEl.checked : false;
-        const lerPerna = (prefixo) => {
-          const obj = {};
-          DADOS_CFG.passagem.forEach((f) => { obj[f.id] = (gel(`emi-prod-${prod.id}-dados-${prefixo}-${f.id}`) || {}).value || ""; });
-          return obj;
-        };
+        const lerPerna = (perna) => ({
+          localizador: (gel(`emi-prod-${prod.id}-loc-${perna}`) || {}).value || "",
+          segmentos: ((segmentosPorProduto[prod.id] || {})[perna] || [])
+            .filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada)
+            .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
+        });
         dados = {
           ida_volta: isIdaVolta,
           ida: lerPerna("ida"),
@@ -904,6 +988,7 @@
     Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
     Object.keys(pagamentosPorProduto).forEach((k) => delete pagamentosPorProduto[k]);
     Object.keys(idaVoltaPorProduto).forEach((k) => delete idaVoltaPorProduto[k]);
+    Object.keys(segmentosPorProduto).forEach((k) => delete segmentosPorProduto[k]);
     ["emi-destino", "emi-data-ida", "emi-data-volta", "emi-tipo-viagem", "emi-obs-gerais"].forEach((id) => { const el = gel(id); if (el) el.value = ""; });
     renderPassageiros(); renderProdutos();
   }
@@ -1011,15 +1096,22 @@
           const voltaWrap = gel(`emi-prod-${novoProdId}-volta-wrap`);
           if (voltaWrap) voltaWrap.hidden = !d.ida_volta;
         }
-        const preencherPerna = (prefixo, obj) => {
+        const restaurarPerna = (perna, obj) => {
           if (!obj) return;
-          DADOS_CFG.passagem.forEach((f) => {
-            const el = gel(`emi-prod-${novoProdId}-dados-${prefixo}-${f.id}`);
-            if (el && obj[f.id] != null) el.value = obj[f.id];
-          });
+          const locEl = gel(`emi-prod-${novoProdId}-loc-${perna}`);
+          if (locEl) locEl.value = obj.localizador || "";
+          if (!segmentosPorProduto[novoProdId]) segmentosPorProduto[novoProdId] = {};
+          segmentosPorProduto[novoProdId][perna] = (Array.isArray(obj.segmentos) && obj.segmentos.length > 0)
+            ? obj.segmentos.map((s) => ({
+                id: novoId("seg"),
+                trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+                horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
+              }))
+            : [novoSegmento()];
+          renderSegmentos(novoProdId, perna);
         };
-        preencherPerna("ida", d.ida);
-        preencherPerna("volta", d.volta);
+        restaurarPerna("ida", d.ida);
+        restaurarPerna("volta", d.volta);
         const taxaEl = gel(`emi-prod-${novoProdId}-dados-taxa_embarque`);
         if (taxaEl && d.taxa_embarque != null) taxaEl.value = d.taxa_embarque;
       } else {
@@ -1088,31 +1180,48 @@
   // tracejada + avião no meio, e o localizador em destaque numa caixa própria — porque é
   // a informação mais importante do comprovante.
   // Uma perna (ida OU volta) dentro do card de passagem.
+  // Um trecho/segmento isolado (uma linha da tabela de itinerário).
+  function segmentoComprovanteHtml(seg) {
+    const { origem, destino } = parseTrecho(seg.trecho);
+    return `
+      <div class="orc-prev-flight-card-body" style="padding:0">
+        <div class="orc-prev-airport">
+          <div class="orc-prev-iata">${escHtml(origem || "—")}</div>
+          ${seg.horario_partida ? `<div class="orc-prev-time">${escHtml(seg.horario_partida)}</div>` : ""}
+        </div>
+        <div class="orc-prev-flight-middle">
+          <div class="orc-prev-dash-line">
+            <span class="orc-prev-dash-seg"></span>
+            <span class="orc-prev-plane-icon">✈</span>
+            <span class="orc-prev-dash-seg"></span>
+          </div>
+          ${seg.companhia || seg.voo ? `<div class="orc-prev-direto">${escHtml([seg.companhia, seg.voo].filter(Boolean).join(" · "))}</div>` : ""}
+        </div>
+        <div class="orc-prev-airport orc-prev-airport--right">
+          <div class="orc-prev-iata">${escHtml(destino || "—")}</div>
+          ${seg.horario_chegada ? `<div class="orc-prev-time">${escHtml(seg.horario_chegada)}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  // Uma perna (ida ou volta) inteira — pode ter vários trechos (conexão), cada um com
+  // seus próprios aeroporto e horário, igual a companhia mostra pro cliente.
   function pernaComprovanteHtml(label, info) {
-    const { origem, destino } = parseTrecho(info.trecho);
+    const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
+    const segmentosHtml = segmentos.map((seg, i) => {
+      let html = segmentoComprovanteHtml(seg);
+      if (i < segmentos.length - 1) {
+        const { destino } = parseTrecho(seg.trecho);
+        html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escHtml(destino || "—")}</div>`;
+      }
+      return html;
+    }).join("");
+
     return `
       <div style="margin-bottom:14px">
         <div style="font-size:0.68rem;letter-spacing:1.5px;color:var(--gold);font-weight:700;margin-bottom:8px">${escHtml(label)}</div>
         ${info.localizador ? `<div class="conf-localizador" style="margin:0 0 12px"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(info.localizador)}</span></div>` : ""}
-        <div class="orc-prev-flight-card-body" style="padding:0">
-          <div class="orc-prev-airport">
-            <div class="orc-prev-iata">${escHtml(origem || "—")}</div>
-            ${info.horario_partida ? `<div class="orc-prev-time">${escHtml(info.horario_partida)}</div>` : ""}
-          </div>
-          <div class="orc-prev-flight-middle">
-            <div class="orc-prev-dash-line">
-              <span class="orc-prev-dash-seg"></span>
-              <span class="orc-prev-plane-icon">✈</span>
-              <span class="orc-prev-dash-seg"></span>
-            </div>
-            <div class="orc-prev-direto">${escHtml(info.conexoes || "Voo direto")}</div>
-          </div>
-          <div class="orc-prev-airport orc-prev-airport--right">
-            <div class="orc-prev-iata">${escHtml(destino || "—")}</div>
-            ${info.horario_chegada ? `<div class="orc-prev-time">${escHtml(info.horario_chegada)}</div>` : ""}
-          </div>
-        </div>
-        ${info.companhia || info.voo ? `<div style="margin-top:8px;font-size:0.82rem;color:var(--navy-light)">${escHtml([info.companhia, info.voo].filter(Boolean).join(" · "))}</div>` : ""}
+        ${segmentosHtml}
       </div>`;
   }
 
@@ -1244,7 +1353,11 @@
         const d = p.dados || {};
         const escrevePerna = (label, info) => {
           if (!info) return;
-          txt += `  ${label}: ${info.trecho || "—"}${info.horario_partida ? " · saída " + info.horario_partida : ""}${info.companhia ? " · " + info.companhia : ""}${info.localizador ? " · loc. " + info.localizador : ""}\n`;
+          if (info.localizador) txt += `  ${label} — localizador: ${info.localizador}\n`;
+          const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
+          segmentos.forEach((seg) => {
+            txt += `  ${label}: ${seg.trecho || "—"}${seg.horario_partida ? " · saída " + seg.horario_partida : ""}${seg.companhia ? " · " + seg.companhia : ""}\n`;
+          });
         };
         if (d.ida_volta && d.volta) { escrevePerna("Ida", d.ida); escrevePerna("Volta", d.volta); }
         else escrevePerna("Voo", d.ida || d);

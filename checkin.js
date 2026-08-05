@@ -135,12 +135,16 @@
           if (d.ida_volta && d.volta) pernas.push({ leg: "volta", info: d.volta });
 
           pernas.forEach(({ leg, info }) => {
+            // Check-in é sempre do 1º trecho da perna (é o voo que ela precisa embarcar
+            // primeiro) — os demais trechos (conexão) não têm check-in próprio.
+            const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
+            const primeiro = segmentos[0] || {};
             nomes.forEach((nome) => {
               linhas.push({
                 nome, tipo: "Passagem aérea",
-                saida: info.horario_partida || "",
+                saida: primeiro.horario_partida || "",
                 destino: e.destino || "",
-                companhia: info.companhia || "",
+                companhia: primeiro.companhia || "",
                 localizador: info.localizador || "",
                 dataIda:   leg === "ida"   ? (e.data_ida || null)   : null,
                 dataVolta: leg === "volta" ? (e.data_volta || null) : null,
