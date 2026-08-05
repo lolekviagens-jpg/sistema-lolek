@@ -493,10 +493,18 @@
           <div class="form__grid">${camposDados}</div>
 
           ${isPassagem ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
-            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) um print da passagem/reserva pra IA ler os dados</div>
+            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da passagem/reserva pra IA ler os dados</div>
+            <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
+          </div>
+          <div style="display:flex;justify-content:center;margin:6px 0 10px">
+            <button type="button" id="emi-prod-${prod.id}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
           </div>` : ""}
           ${prod.tipo === "hospedagem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
-            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) um print da reserva do hotel pra IA ler os dados</div>
+            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da reserva do hotel pra IA ler os dados</div>
+            <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
+          </div>
+          <div style="display:flex;justify-content:center;margin:6px 0 10px">
+            <button type="button" id="emi-prod-${prod.id}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
           </div>` : ""}
 
           <div class="orc-milhas-box">
@@ -604,16 +612,32 @@
 
       if (prod.tipo === "passagem" || prod.tipo === "hospedagem") {
         const zone = gel(`emi-prod-${prod.id}-fotozone`);
+        const arquivoInput = gel(`emi-prod-${prod.id}-arquivo-input`);
+        const btnArquivo = gel(`emi-prod-${prod.id}-btn-arquivo`);
         if (zone) {
+          const carregarArquivo = (file) => {
+            if (!file) return;
+            const r = new FileReader();
+            r.onload = (ev) => analisarDocumento(prod.id, prod.tipo, ev.target.result, zone);
+            r.readAsDataURL(file);
+          };
+
           zone.addEventListener("paste", (e) => {
             for (const item of (e.clipboardData?.items || [])) {
-              if (item.type.startsWith("image/")) {
-                const r = new FileReader();
-                r.onload = (ev) => analisarDocumento(prod.id, prod.tipo, ev.target.result, zone);
-                r.readAsDataURL(item.getAsFile());
-              }
+              if (item.type.startsWith("image/")) { carregarArquivo(item.getAsFile()); break; }
             }
           });
+          zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+          zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+          zone.addEventListener("drop", (e) => {
+            e.preventDefault(); zone.classList.remove("dragover");
+            carregarArquivo(e.dataTransfer?.files?.[0]);
+          });
+
+          if (btnArquivo && arquivoInput) {
+            btnArquivo.addEventListener("click", () => arquivoInput.click());
+            arquivoInput.addEventListener("change", () => carregarArquivo(arquivoInput.files?.[0]));
+          }
         }
       }
     });
@@ -639,6 +663,10 @@
       ? `${contextoDataAtual()}\n\nAnalise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",\n  "localizador": "código/localizador da reserva, ou null",\n  "companhia": "nome da companhia aérea",\n  "voo": "número do voo",\n  "horario_partida": "HH:MM",\n  "horario_chegada": "HH:MM ou HH:MM (+1)",\n  "conexoes": "Voo direto OU ex: 1 escala em GRU",\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "volta": {\n    "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO (invertido em relação à ida)",\n    "localizador": "...", "companhia": "...", "voo": "...",\n    "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)",\n    "conexoes": "...", "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null\n  } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho, "volta" deve ser null.\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
+    const content = mime === "application/pdf"
+      ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }, { type: "text", text: prompt }]
+      : [{ type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } }, { type: "text", text: prompt }];
+
     try {
       const resp = await fetch("/.netlify/functions/anthropic", {
         method: "POST",
@@ -646,7 +674,7 @@
         body: JSON.stringify({
           model: getModel(),
           max_tokens: 1024,
-          messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } }, { type: "text", text: prompt }] }],
+          messages: [{ role: "user", content }],
         }),
       });
       if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
