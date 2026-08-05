@@ -613,18 +613,18 @@
                 <label class="field" id="emi-prod-${prod.id}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$)</span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-valor_milha" step="0.01" />
                 </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-custo" hidden><span class="field__label">Custo (R$)</span>
+                <label class="field" id="emi-prod-${prod.id}-wrap-custo" hidden><span class="field__label">💸 CUSTO — quanto NÓS pagamos (R$)</span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
                 </label>
               ` : `
-                <label class="field"><span class="field__label">Custo (R$)</span>
+                <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos (R$)</span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
                 </label>
               `}
               <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
                 <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
               </label>
-              <label class="field field--full orc-field--highlight"><span class="field__label">Valor TOTAL da linha — soma das formas de pagamento abaixo (R$) ★</span>
+              <label class="field field--full orc-field--highlight"><span class="field__label">💰 VALOR COBRADO DO CLIENTE — total (soma das formas de pagamento abaixo) (R$) ★</span>
                 <div class="emi-valor-total-display" id="emi-prod-${prod.id}-valor-total-display">R$ 0,00</div>
               </label>
               <div class="field field--full">
