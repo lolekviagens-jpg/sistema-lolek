@@ -544,8 +544,8 @@
               <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
                 <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
               </label>
-              <label class="field orc-field--highlight"><span class="field__label">Valor total cobrado do cliente (R$) ★</span>
-                <input type="number" class="input" id="emi-prod-${prod.id}-valor_venda" step="0.01" />
+              <label class="field orc-field--highlight"><span class="field__label">Valor TOTAL da linha — some todos os passageiros marcados acima (R$) ★</span>
+                <input type="number" class="input" id="emi-prod-${prod.id}-valor_venda" step="0.01" placeholder="Ex: 3000,00 — não é por pessoa" />
               </label>
               <label class="field"><span class="field__label">Forma de pagamento</span>
                 <select class="input" id="emi-prod-${prod.id}-forma_pagamento">
