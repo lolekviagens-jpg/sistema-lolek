@@ -571,8 +571,10 @@
     }).join("");
 
     // Restaura os valores antes de religar os listeners abaixo, pra os toggles (milhas x
-    // tarifado, forma de pagamento faturada) partirem já do valor certo.
-    Object.entries(salvos).forEach(([id, val]) => { const el = gel(id); if (el) el.value = val; });
+    // tarifado, forma de pagamento faturada) partirem já do valor certo. "__novo__" é só o
+    // valor-gatilho do "+ Novo fornecedor..." — nunca pode ficar selecionado depois de um
+    // re-render, senão vira o texto literal "__novo__" no lugar de um uuid ao salvar.
+    Object.entries(salvos).forEach(([id, val]) => { if (val === "__novo__") return; const el = gel(id); if (el) el.value = val; });
 
     produtos.forEach((prod) => {
       renderProdutoPaxChecks(prod.id);
@@ -751,12 +753,14 @@
       const compraTipoEl = gel(`emi-prod-${prod.id}-compra_tipo`);
       const compraMilhas = compraTipoEl ? compraTipoEl.value === "milhas" : false;
       const formaPagamento = gel(`emi-prod-${prod.id}-forma_pagamento`).value;
+      const fornecedorValor = gel(`emi-prod-${prod.id}-fornecedor`).value;
 
       return {
         tipo: prod.tipo,
         passageiro_indices: indices,
         dados,
-        fornecedor_id: gel(`emi-prod-${prod.id}-fornecedor`).value || null,
+        // "__novo__" é só o gatilho do "+ Novo fornecedor..." — nunca é um id válido.
+        fornecedor_id: (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null,
         valor_milha: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-valor_milha`).value) || null) : null,
         qtd_milhas: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-qtd_milhas`).value) || null) : null,
         custo: !compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null) : null,
