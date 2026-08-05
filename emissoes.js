@@ -1180,7 +1180,7 @@
   // Um produto que cobre N passageiros (ex: 1 passagem comprada pra 3 pessoas de uma vez)
   // vira N linhas na listagem — valor/custo/lucro rateados entre elas — porque foram
   // 3 vendas do ponto de vista de quem confere a lista, mesmo sendo 1 reserva só.
-  function expandirProdutoEmLinhas(p, destino, mapaPax) {
+  function expandirProdutoEmLinhas(p, e, mapaPax) {
     const ids = (p.passageiro_ids && p.passageiro_ids.length) ? p.passageiro_ids : [null];
     const n = ids.length;
     const custoTotal = custoProdutoTotal(p);
@@ -1189,8 +1189,11 @@
       return {
         produtoId: p.id,
         data_venda: p.data_venda,
-        destino,
+        destino: e.destino,
         tipo: p.tipo,
+        dados: p.dados,
+        dataIdaViagem: e.data_ida,
+        dataVoltaViagem: e.data_volta,
         nome: info ? info.nome : "—",
         clienteId: info ? info.clienteId : null,
         valor_venda: (Number(p.valor_venda) || 0) / n,
@@ -1204,9 +1207,27 @@
     });
   }
 
+  // Data do PRODUTO/serviço em si (viagem, check-in/out, entrevista de visto...) —
+  // diferente da data_venda (quando a venda foi registrada no sistema).
+  function dataServicoLinha(l) {
+    const d = l.dados || {};
+    if (l.tipo === "passagem") {
+      const isVolta = d.perna === "Volta";
+      const data = isVolta ? l.dataVoltaViagem : l.dataIdaViagem;
+      return data ? fData(data) : "—";
+    }
+    if (l.tipo === "hospedagem") {
+      if (!d.checkin && !d.checkout) return "—";
+      return `${fData(d.checkin)} – ${fData(d.checkout)}`;
+    }
+    if (l.tipo === "passeio" && d.data_passeio) return fData(d.data_passeio);
+    if (l.tipo === "visto_americano" && d.data_entrevista) return fData(d.data_entrevista);
+    return "—";
+  }
+
   function todasLinhasOrdenadas(mapaPax) {
     return (emissoesSalvas || [])
-      .flatMap((e) => (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e.destino, mapaPax)))
+      .flatMap((e) => (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e, mapaPax)))
       .sort((a, b) => (b.data_venda || "").localeCompare(a.data_venda || ""));
   }
 
@@ -1217,6 +1238,7 @@
         <td>${escHtml(l.nome)}</td>
         <td>${escHtml(l.destino || "—")}</td>
         <td>${PROD_ICON[l.tipo] || "📦"} ${escHtml(PROD_LABEL[l.tipo] || l.tipo)}</td>
+        <td class="table__muted">${dataServicoLinha(l)}</td>
         <td class="table__muted">${escHtml(fornecedorNome(l.fornecedor_id))}</td>
         <td class="table__muted">${fBRL(l.custo)}</td>
         <td>${fBRL(l.valor_venda)}</td>
@@ -1230,7 +1252,7 @@
   function tabelaLinhas(linhas) {
     if (linhas.length === 0) return '<div class="empty-state empty-state--compact"><p>Nada por aqui</p></div>';
     return `<div class="card"><table class="table">
-      <thead><tr><th>Data</th><th>Cliente</th><th>Viagem</th><th>Produto</th><th>Fornecedor</th><th>Custo</th><th>Valor</th><th>Lucro</th><th>Pagamento</th><th>Funcionária</th><th></th></tr></thead>
+      <thead><tr><th>Data da venda</th><th>Cliente</th><th>Viagem</th><th>Produto</th><th>Data do produto</th><th>Fornecedor</th><th>Custo</th><th>Valor</th><th>Lucro</th><th>Pagamento</th><th>Funcionária</th><th></th></tr></thead>
       <tbody>${linhas.map(renderLinhaRow).join("")}</tbody>
     </table></div>`;
   }
@@ -1258,7 +1280,7 @@
 
   function renderViagemCard(e, mapaPax) {
     const pax = e.venda_emissoes_passageiros || [];
-    const linhas = (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e.destino, mapaPax));
+    const linhas = (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e, mapaPax));
     const totalVenda = somaValor(linhas);
     return `
       <div class="emi-viagem-card">
