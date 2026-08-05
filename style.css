@@ -1598,6 +1598,37 @@ textarea.input {
   white-space: nowrap;
 }
 
+.emi-valor-total-display {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--navy);
+  background: var(--surface);
+}
+
+.emi-pagamento-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.emi-pagamento-row .emi-pag-forma {
+  flex: 1 1 160px;
+}
+
+.emi-pagamento-row .emi-pag-valor {
+  flex: 1 1 140px;
+}
+
+.emi-pagamento-row .emi-pag-data {
+  flex: 1 1 150px;
+}
+
 /* ===== Preview do orçamento ===== */
 .orc-prev-wrap {
   background: var(--surface);

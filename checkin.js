@@ -129,16 +129,22 @@
         const nomes = idsCobertos.map((id) => nomePorPaxId.get(id)).filter(Boolean);
 
         if (prod.tipo === "passagem") {
-          const isVolta = d.perna === "Volta";
-          nomes.forEach((nome) => {
-            linhas.push({
-              nome, tipo: "Passagem aérea",
-              saida: d.horario_partida || "",
-              destino: e.destino || "",
-              companhia: d.companhia || "",
-              localizador: d.localizador || "",
-              dataIda:   isVolta ? null : (e.data_ida || null),
-              dataVolta: isVolta ? (e.data_volta || null) : null,
+          // Ida e volta ficam no mesmo produto agora — vira 1 linha de check-in pra cada
+          // perna que existir (dados.ida sempre, dados.volta só se for ida e volta).
+          const pernas = [{ leg: "ida", info: d.ida || {} }];
+          if (d.ida_volta && d.volta) pernas.push({ leg: "volta", info: d.volta });
+
+          pernas.forEach(({ leg, info }) => {
+            nomes.forEach((nome) => {
+              linhas.push({
+                nome, tipo: "Passagem aérea",
+                saida: info.horario_partida || "",
+                destino: e.destino || "",
+                companhia: info.companhia || "",
+                localizador: info.localizador || "",
+                dataIda:   leg === "ida"   ? (e.data_ida || null)   : null,
+                dataVolta: leg === "volta" ? (e.data_volta || null) : null,
+              });
             });
           });
         } else if (prod.tipo === "hospedagem") {

@@ -138,7 +138,6 @@
 
   const DADOS_CFG = {
     passagem: [
-      { id: "perna", label: "Perna da viagem", type: "select", options: ["Ida", "Volta", "Não se aplica"] },
       { id: "trecho", label: "Trecho", placeholder: "Ex: FOR → LIS" },
       { id: "localizador", label: "Localizador / código" },
       { id: "companhia", label: "Companhia aérea" },
@@ -146,7 +145,6 @@
       { id: "horario_partida", label: "Horário de partida" },
       { id: "horario_chegada", label: "Horário de chegada" },
       { id: "conexoes", label: "Paradas / escalas" },
-      { id: "taxa_embarque", label: "Taxa de embarque / pax (R$, informativo)", type: "number", step: "0.01" },
     ],
     hospedagem: [
       { id: "hotel", label: "Hotel / Pousada" },
@@ -204,6 +202,8 @@
   let produtos = [];                 // [{ id, tipo }]
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
   const funcSelecionadas = {};       // produtoId -> Set(nomeVendedora) — sobrevive a re-render das checkboxes
+  const pagamentosPorProduto = {};   // produtoId -> [{ id, forma, valor, dataFaturamento }] — permite dividir o pagamento em mais de uma forma
+  const idaVoltaPorProduto = {};     // produtoId -> bool — sobrevive a re-render, igual paxSelecionados/funcSelecionadas
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
   let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
@@ -384,22 +384,17 @@
     produtos.push({ id, tipo });
     paxSelecionados[id] = new Set(passageiros.map((p) => p.id));
     funcSelecionadas[id] = new Set();
+    pagamentosPorProduto[id] = [novoPagamento("pix")];
+    idaVoltaPorProduto[id] = false;
     renderProdutos();
-
-    // Valor padrão esperto pra "Perna da viagem": 1º card de passagem = Ida, os
-    // seguintes = Volta — ela pode trocar manualmente se não for esse o caso
-    // (ex: 3ª perna de uma viagem multi-destino).
-    if (tipo === "passagem") {
-      const qtdPassagens = produtos.filter((p) => p.tipo === "passagem").length;
-      const pernaEl = gel(`emi-prod-${id}-dados-perna`);
-      if (pernaEl) pernaEl.value = qtdPassagens === 1 ? "Ida" : "Volta";
-    }
   }
 
   function removeProduto(id) {
     produtos = produtos.filter((p) => p.id !== id);
     delete paxSelecionados[id];
     delete funcSelecionadas[id];
+    delete pagamentosPorProduto[id];
+    delete idaVoltaPorProduto[id];
     renderProdutos();
   }
 
@@ -409,8 +404,8 @@
       '<option value="__novo__">+ Novo fornecedor...</option>';
   }
 
-  function campoDados(prodId, f) {
-    const idAttr = `emi-prod-${prodId}-dados-${f.id}`;
+  function campoDados(prodId, f, prefixo) {
+    const idAttr = `emi-prod-${prodId}-dados-${prefixo ? prefixo + "-" : ""}${f.id}`;
     if (f.type === "select") {
       return `<label class="field"><span class="field__label">${f.label}</span>
         <select class="input" id="${idAttr}"><option value="">—</option>${f.options.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}</select>
@@ -419,6 +414,30 @@
     return `<label class="field"><span class="field__label">${f.label}</span>
       <input type="${f.type || "text"}" class="input" id="${idAttr}" ${f.step ? `step="${f.step}"` : ""} placeholder="${f.placeholder || ""}" />
     </label>`;
+  }
+
+  // Passagem tem seu próprio layout: um card só, com um bloco de campos pra "Ida" e,
+  // se marcado, outro pra "Volta" — mas só UM valor/custo total pro card inteiro (ida e
+  // volta juntos são uma compra só, não duas).
+  function passagemCamposHtml(prodId) {
+    const camposIda = DADOS_CFG.passagem.map((f) => campoDados(prodId, f, "ida")).join("");
+    const camposVolta = DADOS_CFG.passagem.map((f) => campoDados(prodId, f, "volta")).join("");
+    return `
+      <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:0.85rem">
+        <input type="checkbox" id="emi-prod-${prodId}-ida_volta" />
+        Ida e volta <span class="table__muted">(desmarcado = somente ida)</span>
+      </label>
+      <div class="orc-cost-divider" style="margin:0 0 8px"><span>Ida</span></div>
+      <div class="form__grid">${camposIda}</div>
+      <div id="emi-prod-${prodId}-volta-wrap" hidden>
+        <div class="orc-cost-divider" style="margin:14px 0 8px"><span>Volta</span></div>
+        <div class="form__grid">${camposVolta}</div>
+      </div>
+      <div class="form__grid" style="margin-top:10px">
+        <label class="field"><span class="field__label">Taxa de embarque total (R$, informativo)</span>
+          <input type="number" class="input" id="emi-prod-${prodId}-dados-taxa_embarque" step="0.01" />
+        </label>
+      </div>`;
   }
 
   function renderProdutoPaxChecks(prodId) {
@@ -468,6 +487,65 @@
     });
   }
 
+  // ===== Formas de pagamento (divide o valor total em quantas formas precisar) =====
+  function novoPagamento(forma) {
+    return { id: novoId("pag"), forma: forma || "pix", valor: null, dataFaturamento: null };
+  }
+
+  function somaPagamentos(prodId) {
+    return (pagamentosPorProduto[prodId] || []).reduce((s, p) => s + (Number(p.valor) || 0), 0);
+  }
+
+  function atualizarValorTotalDisplay(prodId) {
+    const el = gel(`emi-prod-${prodId}-valor-total-display`);
+    if (el) el.textContent = fBRL(somaPagamentos(prodId));
+  }
+
+  function renderProdutoPagamentos(prodId) {
+    const wrap = gel(`emi-prod-${prodId}-pagamentos-list`);
+    if (!wrap) return;
+    const lista = pagamentosPorProduto[prodId] || (pagamentosPorProduto[prodId] = [novoPagamento("pix")]);
+
+    wrap.innerHTML = lista.map((pag) => `
+      <div class="emi-pagamento-row">
+        <select class="input emi-pag-forma" data-pag="${pag.id}">
+          ${FORMAS_PAGAMENTO.map((f) => `<option value="${f.v}" ${f.v === pag.forma ? "selected" : ""}>${f.l}</option>`).join("")}
+        </select>
+        <input type="number" class="input emi-pag-valor" data-pag="${pag.id}" step="0.01" placeholder="Valor (R$)" value="${pag.valor != null ? pag.valor : ""}" />
+        <input type="date" class="input emi-pag-data" data-pag="${pag.id}" ${pag.forma === "faturado" ? "" : "hidden"} value="${pag.dataFaturamento || ""}" />
+        ${lista.length > 1 ? `<button type="button" class="orc-produto-remove emi-pag-remover" data-pag="${pag.id}" title="Remover">✕</button>` : ""}
+      </div>`).join("");
+
+    wrap.querySelectorAll(".emi-pag-forma").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const pag = lista.find((p) => p.id === sel.dataset.pag);
+        if (pag) pag.forma = sel.value;
+        renderProdutoPagamentos(prodId); // re-render pra mostrar/esconder a data de faturamento
+      });
+    });
+    wrap.querySelectorAll(".emi-pag-valor").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const pag = lista.find((p) => p.id === inp.dataset.pag);
+        if (pag) pag.valor = parseFloat(inp.value) || null;
+        atualizarValorTotalDisplay(prodId);
+      });
+    });
+    wrap.querySelectorAll(".emi-pag-data").forEach((inp) => {
+      inp.addEventListener("change", () => {
+        const pag = lista.find((p) => p.id === inp.dataset.pag);
+        if (pag) pag.dataFaturamento = inp.value || null;
+      });
+    });
+    wrap.querySelectorAll(".emi-pag-remover").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        pagamentosPorProduto[prodId] = lista.filter((p) => p.id !== btn.dataset.pag);
+        renderProdutoPagamentos(prodId);
+      });
+    });
+
+    atualizarValorTotalDisplay(prodId);
+  }
+
   function renderProdutos() {
     const wrap = gel("emi-produtos-list");
     if (!wrap) return;
@@ -486,7 +564,9 @@
 
     wrap.innerHTML = produtos.map((prod) => {
       const isPassagem = prod.tipo === "passagem";
-      const camposDados = (DADOS_CFG[prod.tipo] || []).map((f) => campoDados(prod.id, f)).join("");
+      const dadosSecaoHtml = isPassagem
+        ? passagemCamposHtml(prod.id)
+        : `<div class="form__grid">${(DADOS_CFG[prod.tipo] || []).map((f) => campoDados(prod.id, f)).join("")}</div>`;
 
       return `
       <div class="orc-produto-item">
@@ -500,7 +580,7 @@
           <div class="orc-extras-label">Passageiros cobertos por esta linha</div>
           <div id="emi-prod-${prod.id}-pax-checks" style="margin-bottom:12px"></div>
 
-          <div class="form__grid">${camposDados}</div>
+          ${dadosSecaoHtml}
 
           ${isPassagem ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
             <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da passagem/reserva pra IA ler os dados</div>
@@ -544,17 +624,14 @@
               <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
                 <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
               </label>
-              <label class="field orc-field--highlight"><span class="field__label">Valor TOTAL da linha — some todos os passageiros marcados acima (R$) ★</span>
-                <input type="number" class="input" id="emi-prod-${prod.id}-valor_venda" step="0.01" placeholder="Ex: 3000,00 — não é por pessoa" />
+              <label class="field field--full orc-field--highlight"><span class="field__label">Valor TOTAL da linha — soma das formas de pagamento abaixo (R$) ★</span>
+                <div class="emi-valor-total-display" id="emi-prod-${prod.id}-valor-total-display">R$ 0,00</div>
               </label>
-              <label class="field"><span class="field__label">Forma de pagamento</span>
-                <select class="input" id="emi-prod-${prod.id}-forma_pagamento">
-                  ${FORMAS_PAGAMENTO.map((f) => `<option value="${f.v}">${f.l}</option>`).join("")}
-                </select>
-              </label>
-              <label class="field" id="emi-prod-${prod.id}-wrap-faturamento" hidden><span class="field__label">Cobrar em (data)</span>
-                <input type="date" class="input" id="emi-prod-${prod.id}-data_faturamento" />
-              </label>
+              <div class="field field--full">
+                <span class="field__label">Formas de pagamento ★</span>
+                <div id="emi-prod-${prod.id}-pagamentos-list"></div>
+                <button type="button" class="btn btn--ghost" id="emi-prod-${prod.id}-add-pagamento" style="margin-top:6px;font-size:0.78rem">+ Adicionar forma de pagamento</button>
+              </div>
               ${isPassagem ? `<label class="field"><span class="field__label">Origem do lead</span>
                 <select class="input" id="emi-prod-${prod.id}-origem_lead">
                   <option value="">—</option>
@@ -595,10 +672,24 @@
         atualizarCompraTipo();
       }
 
-      const formaPagEl = gel(`emi-prod-${prod.id}-forma_pagamento`);
-      if (formaPagEl) {
-        formaPagEl.addEventListener("change", () => {
-          gel(`emi-prod-${prod.id}-wrap-faturamento`).hidden = formaPagEl.value !== "faturado";
+      const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
+      if (idaVoltaEl) {
+        idaVoltaEl.checked = !!idaVoltaPorProduto[prod.id];
+        const voltaWrapEl = gel(`emi-prod-${prod.id}-volta-wrap`);
+        if (voltaWrapEl) voltaWrapEl.hidden = !idaVoltaEl.checked;
+        idaVoltaEl.addEventListener("change", () => {
+          idaVoltaPorProduto[prod.id] = idaVoltaEl.checked;
+          if (voltaWrapEl) voltaWrapEl.hidden = !idaVoltaEl.checked;
+        });
+      }
+
+      renderProdutoPagamentos(prod.id);
+      const addPagamentoBtn = gel(`emi-prod-${prod.id}-add-pagamento`);
+      if (addPagamentoBtn) {
+        addPagamentoBtn.addEventListener("click", () => {
+          if (!pagamentosPorProduto[prod.id]) pagamentosPorProduto[prod.id] = [];
+          pagamentosPorProduto[prod.id].push(novoPagamento("pix"));
+          renderProdutoPagamentos(prod.id);
         });
       }
 
@@ -656,12 +747,12 @@
   }
 
   // ===== Leitura de print por IA (passagem / hospedagem) =====
-  function preencherCamposPassagem(prodId, ex) {
-    const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
+  // prefixo: "ida" ou "volta" — os dois trechos ficam no mesmo card de passagem.
+  function preencherCamposPassagem(prodId, ex, prefixo) {
+    const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${prefixo}-${campo}`); if (el && val != null && val !== "") el.value = val; };
     fill("trecho", ex.trecho); fill("localizador", ex.localizador); fill("companhia", ex.companhia); fill("voo", ex.voo);
     fill("horario_partida", ex.horario_partida); fill("horario_chegada", ex.horario_chegada);
-    fill("conexoes", ex.conexoes); fill("taxa_embarque", ex.taxa_embarque);
-    if (ex.milhas != null) { const el = gel(`emi-prod-${prodId}-qtd_milhas`); if (el) el.value = ex.milhas; }
+    fill("conexoes", ex.conexoes);
   }
 
   async function analisarDocumento(prodId, tipo, imageSrc, zone) {
@@ -696,16 +787,24 @@
       const ex = JSON.parse(jsonStr);
 
       if (tipo === "passagem") {
-        preencherCamposPassagem(prodId, ex);
+        preencherCamposPassagem(prodId, ex, "ida");
 
-        // Print único mostrando ida e volta juntas (reserva round-trip): garante um
-        // segundo card de passagem pra volta e preenche com os dados extraídos — sem
-        // isso a funcionária precisava colar o mesmo print de novo manualmente.
+        // Print único mostrando ida e volta juntas (reserva round-trip): marca "Ida e
+        // volta" e preenche o segundo bloco de campos, no MESMO card — ida e volta são
+        // uma compra só, com um valor/custo só.
         if (ex.volta && typeof ex.volta === "object") {
-          addProduto("passagem");
-          const voltaId = produtos[produtos.length - 1].id;
-          preencherCamposPassagem(voltaId, ex.volta);
+          const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
+          const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
+          if (idaVoltaEl) idaVoltaEl.checked = true;
+          if (voltaWrap) voltaWrap.hidden = false;
+          idaVoltaPorProduto[prodId] = true;
+          preencherCamposPassagem(prodId, ex.volta, "volta");
         }
+
+        const milhasTotal = (Number(ex.milhas) || 0) + (ex.volta ? (Number(ex.volta.milhas) || 0) : 0);
+        if (milhasTotal > 0) { const el = gel(`emi-prod-${prodId}-qtd_milhas`); if (el) el.value = milhasTotal; }
+        const taxaEl = gel(`emi-prod-${prodId}-dados-taxa_embarque`);
+        if (taxaEl && ex.taxa_embarque != null) taxaEl.value = ex.taxa_embarque;
       } else {
         const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
         fill("hotel", ex.hotel);
@@ -744,16 +843,39 @@
     });
 
     const produtosPayload = produtos.map((prod) => {
-      const dados = {};
-      (DADOS_CFG[prod.tipo] || []).forEach((f) => { dados[f.id] = (gel(`emi-prod-${prod.id}-dados-${f.id}`) || {}).value || ""; });
+      let dados;
+      if (prod.tipo === "passagem") {
+        const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
+        const isIdaVolta = idaVoltaEl ? idaVoltaEl.checked : false;
+        const lerPerna = (prefixo) => {
+          const obj = {};
+          DADOS_CFG.passagem.forEach((f) => { obj[f.id] = (gel(`emi-prod-${prod.id}-dados-${prefixo}-${f.id}`) || {}).value || ""; });
+          return obj;
+        };
+        dados = {
+          ida_volta: isIdaVolta,
+          ida: lerPerna("ida"),
+          taxa_embarque: (gel(`emi-prod-${prod.id}-dados-taxa_embarque`) || {}).value || "",
+        };
+        if (isIdaVolta) dados.volta = lerPerna("volta");
+      } else {
+        dados = {};
+        (DADOS_CFG[prod.tipo] || []).forEach((f) => { dados[f.id] = (gel(`emi-prod-${prod.id}-dados-${f.id}`) || {}).value || ""; });
+      }
 
       let indices = passageiros.filter((p) => (paxSelecionados[prod.id] || new Set()).has(p.id)).map((p) => idxPorPaxId.get(p.id));
       if (indices.length === 0) indices = passageiros.map((_, i) => i); // ninguém marcado -> aplica a todos
 
       const compraTipoEl = gel(`emi-prod-${prod.id}-compra_tipo`);
       const compraMilhas = compraTipoEl ? compraTipoEl.value === "milhas" : false;
-      const formaPagamento = gel(`emi-prod-${prod.id}-forma_pagamento`).value;
       const fornecedorValor = gel(`emi-prod-${prod.id}-fornecedor`).value;
+
+      // Formas de pagamento: 1 ou mais, cada uma com seu próprio valor — o valor total
+      // da linha é sempre a soma delas, nunca digitado à parte.
+      const pagamentos = (pagamentosPorProduto[prod.id] || [])
+        .filter((pg) => (Number(pg.valor) || 0) > 0)
+        .map((pg) => ({ forma: pg.forma, valor: Number(pg.valor) || 0, data_faturamento: pg.forma === "faturado" ? (pg.dataFaturamento || null) : null }));
+      const valorVenda = pagamentos.reduce((s, pg) => s + pg.valor, 0);
 
       return {
         tipo: prod.tipo,
@@ -764,9 +886,8 @@
         valor_milha: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-valor_milha`).value) || null) : null,
         qtd_milhas: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-qtd_milhas`).value) || null) : null,
         custo: !compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null) : null,
-        valor_venda: parseFloat(gel(`emi-prod-${prod.id}-valor_venda`).value) || 0,
-        forma_pagamento: formaPagamento,
-        data_faturamento: formaPagamento === "faturado" ? (gel(`emi-prod-${prod.id}-data_faturamento`).value || null) : null,
+        valor_venda: valorVenda,
+        pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
         origem_lead: prod.tipo === "passagem" ? gel(`emi-prod-${prod.id}-origem_lead`).value : null,
       };
@@ -779,6 +900,8 @@
     passageiros = []; produtos = [];
     Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
     Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
+    Object.keys(pagamentosPorProduto).forEach((k) => delete pagamentosPorProduto[k]);
+    Object.keys(idaVoltaPorProduto).forEach((k) => delete idaVoltaPorProduto[k]);
     ["emi-destino", "emi-data-ida", "emi-data-volta", "emi-tipo-viagem", "emi-obs-gerais"].forEach((id) => { const el = gel(id); if (el) el.value = ""; });
     renderPassageiros(); renderProdutos();
   }
@@ -788,7 +911,7 @@
     if (payload.passageiros.length === 0) { alert("Adicione ao menos um passageiro."); return; }
     if (payload.produtos.length === 0) { alert("Adicione ao menos um produto."); return; }
     for (const p of payload.produtos) {
-      if (!p.valor_venda) { alert("Informe o valor cobrado do cliente em todos os produtos."); return; }
+      if (!p.valor_venda) { alert("Informe o valor de pelo menos uma forma de pagamento em todos os produtos."); return; }
       if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
     }
 
@@ -809,7 +932,7 @@
         tipo: p.tipo,
         dados: p.dados,
         valor_venda: p.valor_venda,
-        forma_pagamento: p.forma_pagamento,
+        pagamentos: p.pagamentos,
         nomesPax: p.passageiro_indices.map((i) => nomesPorIndice[i]).filter(Boolean).join(", "),
       }));
 
@@ -877,10 +1000,32 @@
       paxSelecionados[novoProdId] = new Set((p.passageiro_ids || []).map((pid) => mapaOriginalParaNovo.get(pid)).filter(Boolean));
       renderProdutoPaxChecks(novoProdId);
 
-      (DADOS_CFG[p.tipo] || []).forEach((f) => {
-        const el = gel(`emi-prod-${novoProdId}-dados-${f.id}`);
-        if (el && p.dados && p.dados[f.id] != null) el.value = p.dados[f.id];
-      });
+      if (p.tipo === "passagem") {
+        const d = p.dados || {};
+        idaVoltaPorProduto[novoProdId] = !!d.ida_volta;
+        const idaVoltaEl = gel(`emi-prod-${novoProdId}-ida_volta`);
+        if (idaVoltaEl) {
+          idaVoltaEl.checked = !!d.ida_volta;
+          const voltaWrap = gel(`emi-prod-${novoProdId}-volta-wrap`);
+          if (voltaWrap) voltaWrap.hidden = !d.ida_volta;
+        }
+        const preencherPerna = (prefixo, obj) => {
+          if (!obj) return;
+          DADOS_CFG.passagem.forEach((f) => {
+            const el = gel(`emi-prod-${novoProdId}-dados-${prefixo}-${f.id}`);
+            if (el && obj[f.id] != null) el.value = obj[f.id];
+          });
+        };
+        preencherPerna("ida", d.ida);
+        preencherPerna("volta", d.volta);
+        const taxaEl = gel(`emi-prod-${novoProdId}-dados-taxa_embarque`);
+        if (taxaEl && d.taxa_embarque != null) taxaEl.value = d.taxa_embarque;
+      } else {
+        (DADOS_CFG[p.tipo] || []).forEach((f) => {
+          const el = gel(`emi-prod-${novoProdId}-dados-${f.id}`);
+          if (el && p.dados && p.dados[f.id] != null) el.value = p.dados[f.id];
+        });
+      }
 
       const fornecedorEl = gel(`emi-prod-${novoProdId}-fornecedor`);
       if (fornecedorEl) fornecedorEl.value = p.fornecedor_id || "";
@@ -894,11 +1039,12 @@
       const qtdMilhasEl = gel(`emi-prod-${novoProdId}-qtd_milhas`); if (qtdMilhasEl && p.qtd_milhas != null) qtdMilhasEl.value = p.qtd_milhas;
       const custoEl = gel(`emi-prod-${novoProdId}-custo`); if (custoEl && p.custo != null) custoEl.value = p.custo;
 
-      const valorVendaEl = gel(`emi-prod-${novoProdId}-valor_venda`); if (valorVendaEl) valorVendaEl.value = p.valor_venda;
-
-      const formaPagEl = gel(`emi-prod-${novoProdId}-forma_pagamento`);
-      if (formaPagEl) { formaPagEl.value = p.forma_pagamento; formaPagEl.dispatchEvent(new Event("change")); }
-      const dataFatEl = gel(`emi-prod-${novoProdId}-data_faturamento`); if (dataFatEl && p.data_faturamento) dataFatEl.value = p.data_faturamento;
+      // Formas de pagamento salvas (jsonb) — se o registro é de antes desse campo existir,
+      // reconstrói uma única linha a partir dos campos antigos (forma_pagamento/valor_venda).
+      pagamentosPorProduto[novoProdId] = (Array.isArray(p.pagamentos) && p.pagamentos.length > 0)
+        ? p.pagamentos.map((pg) => ({ id: novoId("pag"), forma: pg.forma, valor: pg.valor, dataFaturamento: pg.data_faturamento || null }))
+        : [{ id: novoId("pag"), forma: p.forma_pagamento || "pix", valor: p.valor_venda, dataFaturamento: p.data_faturamento || null }];
+      renderProdutoPagamentos(novoProdId);
 
       funcSelecionadas[novoProdId] = new Set((p.funcionaria || "").split("/").map((n) => n.trim()).filter(Boolean));
       renderProdutoFuncChecks(novoProdId);
@@ -939,20 +1085,17 @@
   // Card de voo no estilo antigo (confirmacao.js): caixas de aeroporto com linha
   // tracejada + avião no meio, e o localizador em destaque numa caixa própria — porque é
   // a informação mais importante do comprovante.
-  function cardPassagemComprovante(dados, valorVenda) {
-    const d = dados || {};
-    const { origem, destino } = parseTrecho(d.trecho);
+  // Uma perna (ida OU volta) dentro do card de passagem.
+  function pernaComprovanteHtml(label, info) {
+    const { origem, destino } = parseTrecho(info.trecho);
     return `
-      <div class="orc-prev-flight-card">
-        <div class="orc-prev-flight-card-header">
-          <span class="orc-prev-flight-label">✈️ ${d.perna && d.perna !== "Não se aplica" ? escHtml(d.perna.toUpperCase()) : "PASSAGEM AÉREA"}</span>
-          <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
-        </div>
-        ${d.localizador ? `<div class="conf-localizador" style="margin:16px 20px 0"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(d.localizador)}</span></div>` : ""}
-        <div class="orc-prev-flight-card-body">
+      <div style="margin-bottom:14px">
+        <div style="font-size:0.68rem;letter-spacing:1.5px;color:var(--gold);font-weight:700;margin-bottom:8px">${escHtml(label)}</div>
+        ${info.localizador ? `<div class="conf-localizador" style="margin:0 0 12px"><span class="conf-loc-label">Localizador / código</span><span class="conf-loc-valor">${escHtml(info.localizador)}</span></div>` : ""}
+        <div class="orc-prev-flight-card-body" style="padding:0">
           <div class="orc-prev-airport">
             <div class="orc-prev-iata">${escHtml(origem || "—")}</div>
-            ${d.horario_partida ? `<div class="orc-prev-time">${escHtml(d.horario_partida)}</div>` : ""}
+            ${info.horario_partida ? `<div class="orc-prev-time">${escHtml(info.horario_partida)}</div>` : ""}
           </div>
           <div class="orc-prev-flight-middle">
             <div class="orc-prev-dash-line">
@@ -960,14 +1103,30 @@
               <span class="orc-prev-plane-icon">✈</span>
               <span class="orc-prev-dash-seg"></span>
             </div>
-            <div class="orc-prev-direto">${escHtml(d.conexoes || "Voo direto")}</div>
+            <div class="orc-prev-direto">${escHtml(info.conexoes || "Voo direto")}</div>
           </div>
           <div class="orc-prev-airport orc-prev-airport--right">
             <div class="orc-prev-iata">${escHtml(destino || "—")}</div>
-            ${d.horario_chegada ? `<div class="orc-prev-time">${escHtml(d.horario_chegada)}</div>` : ""}
+            ${info.horario_chegada ? `<div class="orc-prev-time">${escHtml(info.horario_chegada)}</div>` : ""}
           </div>
         </div>
-        ${d.companhia || d.voo ? `<div style="padding:0 20px 18px;margin-top:-8px;font-size:0.82rem;color:var(--navy-light)">${escHtml([d.companhia, d.voo].filter(Boolean).join(" · "))}</div>` : ""}
+        ${info.companhia || info.voo ? `<div style="margin-top:8px;font-size:0.82rem;color:var(--navy-light)">${escHtml([info.companhia, info.voo].filter(Boolean).join(" · "))}</div>` : ""}
+      </div>`;
+  }
+
+  function cardPassagemComprovante(dados, valorVenda) {
+    const d = dados || {};
+    const isIdaVolta = !!d.ida_volta && d.volta;
+    const pernasHtml = isIdaVolta
+      ? pernaComprovanteHtml("IDA", d.ida || {}) + pernaComprovanteHtml("VOLTA", d.volta)
+      : pernaComprovanteHtml("PASSAGEM", d.ida || d);
+    return `
+      <div class="orc-prev-flight-card">
+        <div class="orc-prev-flight-card-header">
+          <span class="orc-prev-flight-label">✈️ ${isIdaVolta ? "IDA E VOLTA" : "PASSAGEM AÉREA"}</span>
+          <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
+        </div>
+        <div style="padding:20px 24px 6px">${pernasHtml}</div>
       </div>`;
   }
 
@@ -1079,7 +1238,17 @@
     if (nomesPax.length) txt += `Passageiro(s): ${nomesPax.join(", ")}\n\n`;
     produtosInfo.forEach((p) => {
       txt += `[${(PROD_LABEL[p.tipo] || p.tipo).toUpperCase()}] ${fBRL(p.valor_venda)}${p.nomesPax ? " — " + p.nomesPax : ""}\n`;
-      (DADOS_CFG[p.tipo] || []).forEach((f) => { if (p.dados && p.dados[f.id]) txt += `  ${f.label}: ${p.dados[f.id]}\n`; });
+      if (p.tipo === "passagem") {
+        const d = p.dados || {};
+        const escrevePerna = (label, info) => {
+          if (!info) return;
+          txt += `  ${label}: ${info.trecho || "—"}${info.horario_partida ? " · saída " + info.horario_partida : ""}${info.companhia ? " · " + info.companhia : ""}${info.localizador ? " · loc. " + info.localizador : ""}\n`;
+        };
+        if (d.ida_volta && d.volta) { escrevePerna("Ida", d.ida); escrevePerna("Volta", d.volta); }
+        else escrevePerna("Voo", d.ida || d);
+      } else {
+        (DADOS_CFG[p.tipo] || []).forEach((f) => { if (p.dados && p.dados[f.id]) txt += `  ${f.label}: ${p.dados[f.id]}\n`; });
+      }
     });
     const total = produtosInfo.reduce((s, p) => s + (Number(p.valor_venda) || 0), 0);
     txt += `\nValor total: ${fBRL(total)}\n`;
@@ -1110,7 +1279,7 @@
     const descricao = `Pacote de viagem para ${emissaoInfo.destino || "—"}${periodo}: ${tiposUnicos.join(", ")}.`;
 
     const formaLabel = (v) => (FORMAS_PAGAMENTO.find((f) => f.v === v) || {}).l || v;
-    const formasUnicas = [...new Set(produtosInfo.map((p) => p.forma_pagamento))].filter(Boolean).map(formaLabel);
+    const formasUnicas = [...new Set(produtosInfo.flatMap((p) => (p.pagamentos || []).map((pg) => pg.forma)))].filter(Boolean).map(formaLabel);
 
     gel("ctr-nome_cliente").value = contratanteInfo.nome || "";
     gel("ctr-cpf_cnpj").value = contratanteInfo.cpf || "";
@@ -1206,6 +1375,7 @@
         qtd_milhas: p.qtd_milhas != null ? Number(p.qtd_milhas) / n : 0,
         fornecedor_id: p.fornecedor_id,
         forma_pagamento: p.forma_pagamento,
+        pagamentos: p.pagamentos,
         funcionaria: p.funcionaria,
       };
     });
@@ -1216,9 +1386,8 @@
   function dataServicoLinha(l) {
     const d = l.dados || {};
     if (l.tipo === "passagem") {
-      const isVolta = d.perna === "Volta";
-      const data = isVolta ? l.dataVoltaViagem : l.dataIdaViagem;
-      return data ? fData(data) : "—";
+      if (d.ida_volta && d.volta) return `${fData(l.dataIdaViagem)} – ${fData(l.dataVoltaViagem)}`;
+      return l.dataIdaViagem ? fData(l.dataIdaViagem) : "—";
     }
     if (l.tipo === "hospedagem") {
       if (!d.checkin && !d.checkout) return "—";
@@ -1235,6 +1404,16 @@
       .sort((a, b) => (b.data_venda || "").localeCompare(a.data_venda || ""));
   }
 
+  function pagamentosLinhaTexto(l) {
+    if (Array.isArray(l.pagamentos) && l.pagamentos.length > 0) {
+      return l.pagamentos.map((pg) => {
+        const label = FORMAS_PAGAMENTO.find((f) => f.v === pg.forma)?.l || pg.forma;
+        return l.pagamentos.length > 1 ? `${label} (${fBRL(pg.valor)})` : label;
+      }).join(" + ");
+    }
+    return FORMAS_PAGAMENTO.find((f) => f.v === l.forma_pagamento)?.l || l.forma_pagamento || "—";
+  }
+
   function renderLinhaRow(l) {
     return `
       <tr>
@@ -1247,7 +1426,7 @@
         <td class="table__muted">${fBRL(l.custo)}</td>
         <td>${fBRL(l.valor_venda)}</td>
         <td class="table__muted">${fBRL(l.lucro)}</td>
-        <td class="table__muted">${escHtml(FORMAS_PAGAMENTO.find((f) => f.v === l.forma_pagamento)?.l || l.forma_pagamento || "—")}</td>
+        <td class="table__muted">${escHtml(pagamentosLinhaTexto(l))}</td>
         <td class="table__muted">${escHtml(l.funcionaria || "—")}</td>
         <td><button type="button" class="orc-produto-remove" data-excluir-produto="${l.produtoId}" title="Exclui este produto (todos os passageiros cobertos por ele)">✕</button></td>
       </tr>`;

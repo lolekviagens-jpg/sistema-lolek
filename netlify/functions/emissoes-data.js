@@ -49,6 +49,9 @@
 //     lucro numeric(12,2) not null,
 //     forma_pagamento text not null check (forma_pagamento in ('pix','sumup','valepay','faturado')),
 //     data_faturamento date,
+//     pagamentos jsonb not null default '[]', -- [{forma, valor, data_faturamento}] — detalhe completo
+//                                              -- quando o produto é pago em mais de uma forma;
+//                                              -- forma_pagamento/data_faturamento acima guardam só a 1ª
 //     funcionaria text,
 //     origem_lead text,
 //     data_venda date not null default current_date,
@@ -68,6 +71,10 @@
 //   alter table venda_emissoes_produtos drop constraint venda_emissoes_produtos_tipo_check;
 //   alter table venda_emissoes_produtos add constraint venda_emissoes_produtos_tipo_check
 //     check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas'));
+//
+//   -- Se a tabela já existia antes do campo "pagamentos" (múltiplas formas de pagamento
+//   -- por produto), rodar uma vez:
+//   alter table venda_emissoes_produtos add column if not exists pagamentos jsonb not null default '[]';
 
 const https = require("https");
 
@@ -87,6 +94,8 @@ const TIPO_LABEL = {
   visto_americano:     "Visto americano",
   venda_milhas:        "Venda de milhas",
 };
+
+const FORMA_PAG_LABEL = { pix: "Pix", sumup: "Sumup", valepay: "Valepay", faturado: "Faturado" };
 
 exports.handler = async (event) => {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -277,9 +286,17 @@ async function criarEmissao(data, secretKey) {
       const custoMilhas = (prod.valor_milha != null && prod.qtd_milhas != null)
         ? (Number(prod.valor_milha) * Number(prod.qtd_milhas) / 1000) : 0;
       const custoTotal  = prod.custo != null ? Number(prod.custo) : custoMilhas;
-      const valorVenda  = Number(prod.valor_venda) || 0;
-      const lucro       = valorVenda - custoTotal;
-      const faturado    = prod.forma_pagamento === "faturado";
+
+      // Uma ou mais formas de pagamento, cada uma com seu próprio valor (ex: parte de
+      // entrada no Pix, parte faturada) — o valor total do produto é sempre a soma delas.
+      // Registro antigo sem "pagamentos" (de antes desse campo existir) vira uma linha só.
+      const pagamentos = (Array.isArray(prod.pagamentos) && prod.pagamentos.length > 0)
+        ? prod.pagamentos
+        : [{ forma: prod.forma_pagamento || "pix", valor: prod.valor_venda, data_faturamento: prod.data_faturamento || null }];
+      const valorVenda = pagamentos.reduce((s, pg) => s + (Number(pg.valor) || 0), 0);
+      const lucro = valorVenda - custoTotal;
+      const primeiroPagamento = pagamentos[0] || {};
+      const faturadoPrimeiro = primeiroPagamento.forma === "faturado";
 
       const idxList = Array.isArray(prod.passageiro_indices) ? prod.passageiro_indices : [];
       const passageiroIds = idxList.map((i) => passageirosCriados[i] && passageirosCriados[i].id).filter(Boolean);
@@ -296,28 +313,43 @@ async function criarEmissao(data, secretKey) {
         custo: prod.custo || null,
         valor_venda: valorVenda,
         lucro,
-        forma_pagamento: prod.forma_pagamento,
-        data_faturamento: faturado ? (prod.data_faturamento || null) : null,
+        // forma_pagamento/data_faturamento guardam só a 1ª forma, por compatibilidade com
+        // telas antigas — o detalhe completo (todas as formas) fica em "pagamentos".
+        forma_pagamento: primeiroPagamento.forma || "pix",
+        data_faturamento: faturadoPrimeiro ? (primeiroPagamento.data_faturamento || null) : null,
+        pagamentos: pagamentos.map((pg) => ({
+          forma: pg.forma,
+          valor: Number(pg.valor) || 0,
+          data_faturamento: pg.forma === "faturado" ? (pg.data_faturamento || null) : null,
+        })),
         funcionaria: prod.funcionaria || null,
         origem_lead: prod.tipo === "passagem" ? (prod.origem_lead || null) : null,
         data_venda: dataVenda,
       });
       produtosCriados.push(produtoCriado);
 
+      // Um lançamento financeiro POR forma de pagamento — assim uma entrada de Pix e um
+      // saldo faturado do mesmo produto aparecem como eventos de caixa distintos.
       const paxCount = passageiroIds.length || 1;
-      await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
-        tipo: "entrada",
-        status: faturado ? "pendente" : "pago",
-        fonte: "emissao_app",
-        descricao: TIPO_LABEL[prod.tipo] + (emissao.destino ? " — " + emissao.destino : "") + (paxCount > 1 ? " (" + paxCount + " pax)" : ""),
-        categoria: TIPO_LABEL[prod.tipo],
-        valor: valorVenda,
-        vencimento: faturado ? (prod.data_faturamento || null) : dataVenda,
-        fornecedor_id: prod.fornecedor_id || null,
-        sheet_meta: (prod.valor_milha != null && prod.qtd_milhas != null)
-          ? { valor_milha: prod.valor_milha, qtd_milhas: prod.qtd_milhas } : null,
-        emissao_produto_id: produtoCriado.id,
-      });
+      for (const pg of pagamentos) {
+        const valorPg = Number(pg.valor) || 0;
+        if (valorPg <= 0) continue;
+        const faturadoPg = pg.forma === "faturado";
+        const sufixoForma = pagamentos.length > 1 ? " [" + (FORMA_PAG_LABEL[pg.forma] || pg.forma) + "]" : "";
+        await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
+          tipo: "entrada",
+          status: faturadoPg ? "pendente" : "pago",
+          fonte: "emissao_app",
+          descricao: TIPO_LABEL[prod.tipo] + (emissao.destino ? " — " + emissao.destino : "") + (paxCount > 1 ? " (" + paxCount + " pax)" : "") + sufixoForma,
+          categoria: TIPO_LABEL[prod.tipo],
+          valor: valorPg,
+          vencimento: faturadoPg ? (pg.data_faturamento || null) : dataVenda,
+          fornecedor_id: prod.fornecedor_id || null,
+          sheet_meta: (prod.valor_milha != null && prod.qtd_milhas != null)
+            ? { valor_milha: prod.valor_milha, qtd_milhas: prod.qtd_milhas } : null,
+          emissao_produto_id: produtoCriado.id,
+        });
+      }
     }
 
     return { emissao: emissaoCriada, passageiros: passageirosCriados, produtos: produtosCriados };
