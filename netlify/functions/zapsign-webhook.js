@@ -67,6 +67,7 @@ exports.handler = async (event) => {
                   await supabaseStorageUpload(arquivoPath, secretKey, pdfBuffer);
                 } catch (e) {
                   console.error("[zapsign-webhook] falha ao arquivar PDF (reconciliação):", e.message);
+                  arquivoPath = null; // sem arquivo salvo, mas o status ainda é atualizado
                 }
               }
               await supabaseRest(
