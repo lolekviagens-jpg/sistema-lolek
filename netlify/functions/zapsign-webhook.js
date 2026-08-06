@@ -98,7 +98,7 @@ exports.handler = async (event) => {
           return { statusCode: 404, body: JSON.stringify({ error: "PDF assinado não encontrado para este contrato" }) };
         }
         const signed = await supabaseStorageSign(arquivoPath, secretKey, 300);
-        return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: SUPABASE_URL + signed.signedURL }) };
+        return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: SUPABASE_URL + "/storage/v1" + signed.signedURL }) };
       }
 
       const rows = await supabaseRest("/contratos?select=*&order=criado_em.desc", "GET", secretKey);
