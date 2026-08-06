@@ -75,6 +75,13 @@
 //   -- Se a tabela já existia antes do campo "pagamentos" (múltiplas formas de pagamento
 //   -- por produto), rodar uma vez:
 //   alter table venda_emissoes_produtos add column if not exists pagamentos jsonb not null default '[]';
+//
+//   -- Necessário pra importar o histórico da planilha antiga (importar-planilha-antiga.js):
+//   -- essas formas de pagamento só existem em vendas antigas, não aparecem como opção
+//   -- nova no formulário de Nova Emissão daqui pra frente.
+//   alter table venda_emissoes_produtos drop constraint venda_emissoes_produtos_forma_pagamento_check;
+//   alter table venda_emissoes_produtos add constraint venda_emissoes_produtos_forma_pagamento_check
+//     check (forma_pagamento in ('pix','sumup','valepay','faturado','pix_valepay','pix_sumup','wise','boleto','mittu','maquina_c6','stone','mercado_pago','dinheiro','infinity','inter_pj','btg','outro_pagamento'));
 
 const https = require("https");
 
