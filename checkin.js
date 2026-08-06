@@ -150,10 +150,15 @@
             // primeiro) — os demais trechos (conexão) não têm check-in próprio.
             const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
             const primeiro = segmentos[0] || {};
+            // "saida" é sempre o aeroporto de origem de casa (não o de destino da
+            // viagem): na ida é o 1º aeroporto do trecho, na volta é o último (a coluna
+            // "Trecho" mostra saida→destino na ida e destino→saida na volta).
+            const trechoPartes = (primeiro.trecho || "").split("→").map((s) => s.trim()).filter(Boolean);
+            const aeroportoCasa = leg === "ida" ? (trechoPartes[0] || "") : (trechoPartes[trechoPartes.length - 1] || "");
             nomes.forEach((nome) => {
               linhas.push({
                 nome, tipo: "Passagem aérea",
-                saida: primeiro.horario_partida || "",
+                saida: aeroportoCasa,
                 destino: e.destino || "",
                 companhia: primeiro.companhia || "",
                 localizador: info.localizador || "",

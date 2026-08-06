@@ -35,7 +35,7 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
-      const rows = await supabaseRest("/clientes?select=*&order=nome.asc", "GET", secretKey);
+      const rows = await supabaseRestPaginado("/clientes?select=*&order=nome.asc", secretKey);
       return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows || []) };
     }
 
@@ -90,6 +90,22 @@ exports.handler = async (event) => {
 };
 
 // ===== Chamada generica para a REST API do Supabase (PostgREST) =====
+// Busca todas as páginas de um GET, usando o header Range do PostgREST — necessário
+// porque o Supabase corta em 1000 linhas por página por padrão.
+async function supabaseRestPaginado(path, secretKey) {
+  const PAGE = 1000;
+  let offset = 0;
+  let todas = [];
+  while (true) {
+    const pagina = await supabaseRest(path, "GET", secretKey, null, { Range: `${offset}-${offset + PAGE - 1}` });
+    if (!pagina || pagina.length === 0) break;
+    todas = todas.concat(pagina);
+    if (pagina.length < PAGE) break;
+    offset += PAGE;
+  }
+  return todas;
+}
+
 function supabaseRest(path, method, secretKey, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
