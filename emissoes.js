@@ -732,6 +732,7 @@
     Object.entries(salvos).forEach(([id, val]) => { if (val === "__novo__") return; const el = gel(id); if (el) el.value = val; });
 
     produtos.forEach((prod) => {
+      const isPassagem = prod.tipo === "passagem";
       renderProdutoPaxChecks(prod.id);
       renderProdutoFuncChecks(prod.id);
 
