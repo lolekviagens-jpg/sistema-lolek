@@ -391,8 +391,15 @@
           <button class="ctr-filtro" data-filtro-emi="cliente" type="button">Por cliente</button>
           <button class="ctr-filtro" data-filtro-emi="viagem" type="button">Por viagem</button>
         </div>
-        <div class="toolbar">
-          <span class="toolbar__info" id="emi-count"></span>
+        <div class="toolbar" style="flex-wrap:wrap;row-gap:10px">
+          <select class="input" id="emi-filtro-mes" style="max-width:200px"></select>
+          <select class="input" id="emi-filtro-funcionaria" style="max-width:190px">
+            <option value="">Todas as funcionárias</option>
+          </select>
+          <select class="input" id="emi-filtro-tipo" style="max-width:190px">
+            <option value="">Todos os produtos</option>
+          </select>
+          <span class="toolbar__info" id="emi-count" style="margin-left:auto"></span>
           <button class="btn btn--ghost btn--icon" id="emi-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
         </div>
         <div id="emi-lista-wrap"></div>

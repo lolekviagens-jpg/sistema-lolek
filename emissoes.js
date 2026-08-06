@@ -83,6 +83,21 @@
   }
   function norm(s) { return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""); }
 
+  // Lista de meses pro filtro da aba Emissões — sempre a partir de janeiro/2026 (início do
+  // sistema) até o mês atual, mais recente primeiro, mesmo que o mês não tenha nada ainda.
+  function gerarOpcoesMeses() {
+    const inicio = new Date(2026, 0, 1);
+    const agora = new Date();
+    const opcoes = [];
+    const cursor = new Date(agora.getFullYear(), agora.getMonth(), 1);
+    while (cursor >= inicio) {
+      const chave = cursor.getFullYear() + "-" + String(cursor.getMonth() + 1).padStart(2, "0");
+      opcoes.push({ chave, label: mesLabel(chave) });
+      cursor.setMonth(cursor.getMonth() - 1);
+    }
+    return opcoes;
+  }
+
   function extractJson(text) {
     const start = String(text || "").indexOf("{");
     if (start === -1) return null;
@@ -201,6 +216,9 @@
   const segmentosPorProduto = {};    // produtoId -> { ida: [{id,trecho,companhia,voo,horario_partida,horario_chegada}], volta: [...] }
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
+  let filtroMesEmi = "";          // "" = todos os meses, ou "YYYY-MM"
+  let filtroFuncionariaEmi = "";  // "" = todas
+  let filtroTipoProdutoEmi = "";  // "" = todos os tipos
   let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
 
   // ===== Rede =====
@@ -1476,6 +1494,7 @@
       const info = id ? mapaPax.get(id) : null;
       return {
         produtoId: p.id,
+        emissaoId: e.id,
         data_venda: p.data_venda,
         destino: e.destino,
         tipo: p.tipo,
@@ -1517,6 +1536,20 @@
     return (emissoesSalvas || [])
       .flatMap((e) => (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e, mapaPax)))
       .sort((a, b) => (b.data_venda || "").localeCompare(a.data_venda || ""));
+  }
+
+  // Filtros da aba Emissões: mês (data da venda), funcionária e tipo de produto — aplicados
+  // antes de agrupar por data/cliente/viagem, então valem nas 3 visões igual.
+  function aplicarFiltrosEmi(linhas) {
+    return linhas.filter((l) => {
+      if (filtroMesEmi && (l.data_venda || "").slice(0, 7) !== filtroMesEmi) return false;
+      if (filtroFuncionariaEmi) {
+        const nomes = (l.funcionaria || "").split("/").map((n) => n.trim());
+        if (!nomes.includes(filtroFuncionariaEmi)) return false;
+      }
+      if (filtroTipoProdutoEmi && l.tipo !== filtroTipoProdutoEmi) return false;
+      return true;
+    });
   }
 
   function pagamentosLinhaTexto(l) {
@@ -1576,9 +1609,8 @@
     </div>`;
   }
 
-  function renderViagemCard(e, mapaPax) {
+  function renderViagemCard(e, linhas) {
     const pax = e.venda_emissoes_passageiros || [];
-    const linhas = (e.venda_emissoes_produtos || []).flatMap((p) => expandirProdutoEmLinhas(p, e, mapaPax));
     const totalVenda = somaValor(linhas);
     return `
       <div class="emi-viagem-card">
@@ -1655,27 +1687,36 @@
     }
 
     const mapaPax = construirMapaPax();
+    const linhas = aplicarFiltrosEmi(todasLinhasOrdenadas(mapaPax));
 
-    if (filtroListaEmi === "viagem") {
-      count.textContent = emissoesSalvas.length + " viagem" + (emissoesSalvas.length !== 1 ? "ns" : "");
-      wrap.innerHTML = emissoesSalvas.map((e) => renderViagemCard(e, mapaPax)).join("");
+    if (linhas.length === 0) {
+      wrap.innerHTML = '<div class="empty-state"><p>Nada encontrado com esses filtros</p></div>';
+      count.textContent = "0";
+    } else if (filtroListaEmi === "viagem") {
+      // Agrupa as linhas (já filtradas) por viagem, mas preserva a ordem original
+      // (mais recente primeiro) percorrendo emissoesSalvas — só inclui quem sobrou.
+      const linhasPorEmissao = new Map();
+      linhas.forEach((l) => {
+        if (!linhasPorEmissao.has(l.emissaoId)) linhasPorEmissao.set(l.emissaoId, []);
+        linhasPorEmissao.get(l.emissaoId).push(l);
+      });
+      const emissoesFiltradas = emissoesSalvas.filter((e) => linhasPorEmissao.has(e.id));
+      count.textContent = emissoesFiltradas.length + " viagem" + (emissoesFiltradas.length !== 1 ? "ns" : "");
+      wrap.innerHTML = emissoesFiltradas.map((e) => renderViagemCard(e, linhasPorEmissao.get(e.id))).join("");
       wrap.querySelectorAll("[data-excluir-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => excluirEmissao(btn.dataset.excluirEmissao)));
       wrap.querySelectorAll("[data-comprovante-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => baixarComprovanteSalvo(btn.dataset.comprovanteEmissao, mapaPax)));
       wrap.querySelectorAll("[data-editar-emissao]").forEach((btn) =>
         btn.addEventListener("click", () => editarEmissao(btn.dataset.editarEmissao)));
+    } else if (filtroListaEmi === "cliente") {
+      const clientesUnicos = new Set(linhas.map((l) => l.clienteId).filter(Boolean));
+      count.textContent = clientesUnicos.size + " cliente" + (clientesUnicos.size !== 1 ? "s" : "");
+      wrap.innerHTML = renderPorCliente(linhas);
     } else {
-      const linhas = todasLinhasOrdenadas(mapaPax);
-      if (filtroListaEmi === "cliente") {
-        const clientesUnicos = new Set(linhas.map((l) => l.clienteId).filter(Boolean));
-        count.textContent = clientesUnicos.size + " cliente" + (clientesUnicos.size !== 1 ? "s" : "");
-        wrap.innerHTML = renderPorCliente(linhas);
-      } else {
-        // Lista mensal (mais recente primeiro), como na planilha antiga.
-        count.textContent = linhas.length + " produto" + (linhas.length !== 1 ? "s" : "");
-        wrap.innerHTML = renderPorData(linhas);
-      }
+      // Lista mensal (mais recente primeiro), como na planilha antiga.
+      count.textContent = linhas.length + " produto" + (linhas.length !== 1 ? "s" : "");
+      wrap.innerHTML = renderPorData(linhas);
     }
 
     wrap.querySelectorAll("[data-excluir-produto]").forEach((btn) =>
@@ -1742,10 +1783,31 @@
       });
     });
 
+    const filtroMesEl = gel("emi-filtro-mes");
+    if (filtroMesEl) {
+      filtroMesEl.innerHTML = '<option value="">Todos os meses</option>' +
+        gerarOpcoesMeses().map((o) => `<option value="${o.chave}">${escHtml(o.label)}</option>`).join("");
+      filtroMesEl.addEventListener("change", () => { filtroMesEmi = filtroMesEl.value; renderListaEmissoes(); });
+    }
+    const filtroTipoEl = gel("emi-filtro-tipo");
+    if (filtroTipoEl) {
+      filtroTipoEl.innerHTML = '<option value="">Todos os produtos</option>' +
+        PROD_TIPOS.map((p) => `<option value="${p.tipo}">${p.icon} ${escHtml(p.label)}</option>`).join("");
+      filtroTipoEl.addEventListener("change", () => { filtroTipoProdutoEmi = filtroTipoEl.value; renderListaEmissoes(); });
+    }
+    const filtroFuncEl = gel("emi-filtro-funcionaria");
+    if (filtroFuncEl) {
+      filtroFuncEl.addEventListener("change", () => { filtroFuncionariaEmi = filtroFuncEl.value; renderListaEmissoes(); });
+    }
+
     renderPassageiros();
     renderProdutos();
 
     await Promise.all([carregarClientes(), carregarFornecedores(), carregarVendedores(), carregarListaEmissoes()]);
+    if (filtroFuncEl && vendedoresCache.length > 0) {
+      filtroFuncEl.innerHTML = '<option value="">Todas as funcionárias</option>' +
+        vendedoresCache.map((f) => `<option value="${escHtml(f.nome)}">${escHtml(f.nome)}</option>`).join("");
+    }
     renderListaEmissoes();
   }
 
