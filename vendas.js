@@ -13,6 +13,7 @@
     carro: "Aluguel de carro", passeio: "Passeio / Ingresso", transfer: "Transfer", mala: "Adicional de mala",
     assento: "Assento", consultoria_milhas: "Consultoria de milhas",
     visto_americano: "Visto americano", venda_milhas: "Venda de milhas",
+    outro: "Outro / Diversos",
   };
 
   // ===== Utilitários =====

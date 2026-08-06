@@ -147,6 +147,7 @@
     { tipo: "consultoria_milhas", label: "Consultoria de milhas", icon: "🧭" },
     { tipo: "visto_americano",    label: "Visto americano",       icon: "🛂" },
     { tipo: "venda_milhas",       label: "Venda de milhas",       icon: "💱" },
+    { tipo: "outro",              label: "Outro / Diversos",      icon: "📌" },
   ];
   const PROD_LABEL = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.label]));
   const PROD_ICON  = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.icon]));
@@ -195,6 +196,9 @@
     venda_milhas: [
       { id: "programa", label: "Programa de milhagem", placeholder: "Ex: Latam Pass, Smiles, Azul" },
       { id: "quantidade", label: "Quantidade de milhas vendidas", type: "number" },
+    ],
+    outro: [
+      { id: "descricao", label: "Descrição", placeholder: "Ex: Roteiro de viagem, consultoria, trem..." },
     ],
   };
 

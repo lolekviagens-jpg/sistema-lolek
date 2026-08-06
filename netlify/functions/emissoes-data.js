@@ -38,7 +38,7 @@
 //   create table venda_emissoes_produtos (
 //     id uuid primary key default gen_random_uuid(),
 //     emissao_id uuid not null references venda_emissoes(id) on delete cascade,
-//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas')),
+//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro')),
 //     passageiro_ids jsonb not null default '[]',
 //     dados jsonb not null default '{}',
 //     fornecedor_id uuid references fornecedores(id),
@@ -70,7 +70,7 @@
 //   -- (assento, consultoria_milhas, visto_americano, venda_milhas), rodar uma vez:
 //   alter table venda_emissoes_produtos drop constraint venda_emissoes_produtos_tipo_check;
 //   alter table venda_emissoes_produtos add constraint venda_emissoes_produtos_tipo_check
-//     check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas'));
+//     check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro'));
 //
 //   -- Se a tabela já existia antes do campo "pagamentos" (múltiplas formas de pagamento
 //   -- por produto), rodar uma vez:
@@ -93,6 +93,7 @@ const TIPO_LABEL = {
   consultoria_milhas:  "Consultoria de milhas",
   visto_americano:     "Visto americano",
   venda_milhas:        "Venda de milhas",
+  outro:               "Outro / Diversos",
 };
 
 const FORMA_PAG_LABEL = { pix: "Pix", sumup: "Sumup", valepay: "Valepay", faturado: "Faturado" };
