@@ -33,10 +33,15 @@ const LAYOUT_PADRAO = { data: 0, situacao: 1, venda: 2, lead: 3, nome: 4, ida: 5
 const LAYOUT_2024    = { data: 0, situacao: 1, venda: 2, lead: null, nome: 3, ida: 4, volta: 5, saida: 6, destino: 7, companhia: 8, milheiro: 9, reserva: 10, forma: 11, valorTotal: 12, lucro: 13, valorMilha: null, taxas: null, qtdMilhas: null };
 function layoutDaAba(ano) { return ano === 2024 ? LAYOUT_2024 : LAYOUT_PADRAO; }
 
-const SITUACOES_CANCELADAS = new Set([
-  "CANCELADA", "CANCELADO", "VOLTA CANCELADA", "VIAGEM FOI CANCELADA",
-  "NO SHOW", "NO SHOW - SAÚDE", "(NO SHOW - SAÚDE)",
+// "REEMBOLSO" não é cancelamento, mas também não é venda (é dinheiro saindo) — trata
+// junto, exclui do import igual.
+const SITUACOES_EXCLUIDAS_EXATO = new Set([
+  "NO SHOW", "NO SHOW - SAÚDE", "(NO SHOW - SAÚDE)", "REEMBOLSO",
 ]);
+function ehExcluida(situacaoUpper) {
+  if (SITUACOES_EXCLUIDAS_EXATO.has(situacaoUpper)) return true;
+  return situacaoUpper.includes("CANCELAD"); // pega "CANCELADA", "CANCELADO", "MALA ADICIONAL (CANCELADA)", "VOLTA CANCELADA" etc.
+}
 
 const TIPO_POR_SITUACAO = {
   "VIAGEM CONCLUIDA": "passagem", "AGUARDANDO VIAGEM": "passagem", "PASSAGEM EM ABERTO": "passagem",
@@ -44,16 +49,17 @@ const TIPO_POR_SITUACAO = {
   "RESERVA ABERTA P/ REMARCAR": "passagem", "PASSAGEM DE ONIBUS": "passagem",
   "HOSPEDAGEM": "hospedagem",
   "SEGURO VIAGEM": "seguro",
-  "TRANSFER": "transfer",
+  "TRANSFER": "transfer", "TRANSLADO": "transfer",
   "MALA ADICIONAL": "mala",
   "ALUGUEL DE CARRO": "carro",
-  "ASSENTO": "assento",
+  "ASSENTO": "assento", "ADICIONAL ASSENTO": "assento", "MARCAÇÃO ASSENTO": "assento",
   "ASSESSORIA VISTO AMERICANO": "visto_americano",
   "COMPRA/VENDA DE MILHAS": "venda_milhas",
   "CONSULTORIA DE MILHAS": "consultoria_milhas",
-  "PASSEIOS ROMA": "passeio", "PASSEIOS VENEZA": "passeio",
+  "PASSEIOS ROMA": "passeio", "PASSEIOS VENEZA": "passeio", "PASSEIOS PARIS": "passeio",
+  "INGRESSO DISNEY": "passeio", "INGRESSO BETO CARRERO": "passeio", "PASSEIO JERI": "passeio",
 };
-// Qualquer situação não cancelada e fora do mapa acima vira "outro".
+// Qualquer situação não excluída e fora do mapa acima vira "outro".
 
 exports.handler = async (event) => {
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -101,7 +107,7 @@ exports.handler = async (event) => {
 async function montarGrupos() {
   const situacoesEncontradas = {};   // situacao -> { count, tipo }
   const formasEncontradas = {};      // forma_raw -> { count, normalizada }
-  const contadores = { linhas_lidas: 0, canceladas: 0, sem_data_ou_nome: 0, por_ano: {} };
+  const contadores = { linhas_lidas: 0, excluidas: 0, sem_data_ou_nome: 0, por_ano: {} };
 
   const todasLinhas = [];
 
@@ -121,7 +127,7 @@ async function montarGrupos() {
       const situacao = situacaoRaw.toUpperCase();
 
       if (!nome || !dataVendaIso) { contadores.sem_data_ou_nome++; return; }
-      if (SITUACOES_CANCELADAS.has(situacao)) { contadores.canceladas++; return; }
+      if (ehExcluida(situacao)) { contadores.excluidas++; return; }
 
       const tipo = TIPO_POR_SITUACAO[situacao] || "outro";
       situacoesEncontradas[situacaoRaw] = situacoesEncontradas[situacaoRaw] || { count: 0, tipo };
@@ -180,7 +186,7 @@ async function montarGrupos() {
 
   const relatorio = {
     linhas_lidas_total: contadores.linhas_lidas,
-    linhas_canceladas_ignoradas: contadores.canceladas,
+    linhas_canceladas_ou_reembolso_ignoradas: contadores.excluidas,
     linhas_sem_data_ou_nome_ignoradas: contadores.sem_data_ou_nome,
     por_ano: contadores.por_ano,
     situacoes_encontradas: situacoesEncontradas,
@@ -335,7 +341,7 @@ async function encontrarOuCriarFornecedor(nome, secretKey) {
 // ===== Normalização de forma de pagamento (histórico só — não vira opção nova) =====
 function normalizarForma(raw) {
   const s = (raw || "").toUpperCase().trim();
-  if (!s) return "pix";
+  if (!s) return "outro_pagamento";
   const tem = (kw) => s.includes(kw);
   if (tem("VALEPAY") && tem("PIX")) return "pix_valepay";
   if (tem("SUMUP") && tem("PIX")) return "pix_sumup";
