@@ -123,6 +123,8 @@
       );
       const todosPaxIds = [...nomePorPaxId.keys()];
 
+      const qtdPassagens = (e.venda_emissoes_produtos || []).filter((p) => p.tipo === "passagem").length;
+
       (e.venda_emissoes_produtos || []).forEach((prod) => {
         const d = prod.dados || {};
         const idsCobertos = (prod.passageiro_ids && prod.passageiro_ids.length) ? prod.passageiro_ids : todosPaxIds;
@@ -131,8 +133,17 @@
         if (prod.tipo === "passagem") {
           // Ida e volta ficam no mesmo produto agora — vira 1 linha de check-in pra cada
           // perna que existir (dados.ida sempre, dados.volta só se for ida e volta).
-          const pernas = [{ leg: "ida", info: d.ida || {} }];
-          if (d.ida_volta && d.volta) pernas.push({ leg: "volta", info: d.volta });
+          // Registros salvos antes dessa junção guardavam os dados do voo direto em
+          // "dados" (sem aninhar em "ida") — cai pra "d" nesse caso, pra não perder o
+          // check-in desses.
+          const pernas = [{ leg: "ida", info: d.ida || d }];
+          if (d.volta) {
+            pernas.push({ leg: "volta", info: d.volta });
+          } else if (e.data_volta && qtdPassagens === 1 && !d.ida) {
+            // Registro antigo, viagem de ida e volta mas só um voo foi cadastrado —
+            // mostra ao menos a data de volta (sem detalhes de voo).
+            pernas.push({ leg: "volta", info: {} });
+          }
 
           pernas.forEach(({ leg, info }) => {
             // Check-in é sempre do 1º trecho da perna (é o voo que ela precisa embarcar
