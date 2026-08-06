@@ -223,6 +223,7 @@
   let filtroMesEmi = "";          // "" = todos os meses, ou "YYYY-MM"
   let filtroFuncionariaEmi = "";  // "" = todas
   let filtroTipoProdutoEmi = "";  // "" = todos os tipos
+  let filtroNomeEmi = "";         // "" = todos, ou busca por nome do passageiro (sem acento/maiúscula)
   let emissaoEmEdicaoId = null; // id da emissão sendo editada, ou null se for um cadastro novo
 
   // ===== Rede =====
@@ -1553,6 +1554,7 @@
         if (!nomes.includes(filtroFuncionariaEmi)) return false;
       }
       if (filtroTipoProdutoEmi && l.tipo !== filtroTipoProdutoEmi) return false;
+      if (filtroNomeEmi && !norm(l.nome).includes(filtroNomeEmi)) return false;
       return true;
     });
   }
@@ -1803,6 +1805,10 @@
     const filtroFuncEl = gel("emi-filtro-funcionaria");
     if (filtroFuncEl) {
       filtroFuncEl.addEventListener("change", () => { filtroFuncionariaEmi = filtroFuncEl.value; renderListaEmissoes(); });
+    }
+    const filtroNomeEl = gel("emi-filtro-nome");
+    if (filtroNomeEl) {
+      filtroNomeEl.addEventListener("input", () => { filtroNomeEmi = norm(filtroNomeEl.value.trim()); renderListaEmissoes(); });
     }
 
     renderPassageiros();
