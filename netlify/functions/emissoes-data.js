@@ -113,9 +113,12 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
-      const rows = await supabaseRest(
+      // O Supabase corta em 1000 linhas por padrão — sem paginar aqui, viagens antigas
+      // (criado_em mais distante) somem da lista assim que a tabela passa de 1000 linhas
+      // (ex: depois da importação do histórico da planilha antiga).
+      const rows = await supabaseRestPaginado(
         "/venda_emissoes?select=*,venda_emissoes_passageiros(*),venda_emissoes_produtos(*)&order=criado_em.desc",
-        "GET", secretKey
+        secretKey
       );
       return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows || []) };
     }
@@ -385,6 +388,22 @@ async function reverterEmissaoParcial(emissaoCriada, produtosCriados, clientesCr
 }
 
 // ===== Chamada genérica para a REST API do Supabase (PostgREST) =====
+// Busca todas as páginas de um GET, usando o header Range do PostgREST — necessário
+// porque o Supabase corta em 1000 linhas por página por padrão.
+async function supabaseRestPaginado(path, secretKey) {
+  const PAGE = 1000;
+  let offset = 0;
+  let todas = [];
+  while (true) {
+    const pagina = await supabaseRest(path, "GET", secretKey, null, { Range: `${offset}-${offset + PAGE - 1}` });
+    if (!pagina || pagina.length === 0) break;
+    todas = todas.concat(pagina);
+    if (pagina.length < PAGE) break;
+    offset += PAGE;
+  }
+  return todas;
+}
+
 function supabaseRest(path, method, secretKey, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
