@@ -33,6 +33,59 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
+      // ?reconciliar=1 — consulta a API da ZapSign pra cada contrato "enviado" e corrige
+      // o status se já foi assinado. Existe porque o webhook depende de estar configurado
+      // certinho na ZapSign e de chegar (se falhar/não disparar, o status fica desatualizado
+      // pra sempre) — isso serve de conferência manual, sob demanda.
+      if (event.queryStringParameters?.reconciliar) {
+        const zapsignToken = process.env.ZAPSIGN_API_TOKEN;
+        if (!zapsignToken) {
+          return { statusCode: 500, body: JSON.stringify({ error: "ZAPSIGN_API_TOKEN não configurado no Netlify" }) };
+        }
+        const pendentes = await supabaseRest(
+          "/contratos?status=eq.enviado&select=id,doc_token,nome_cliente",
+          "GET", secretKey
+        );
+        const resultados = [];
+        for (const c of (pendentes || [])) {
+          try {
+            const resp = await zapsignGet("/api/v1/docs/" + encodeURIComponent(c.doc_token) + "/", zapsignToken);
+            if (resp.status < 200 || resp.status >= 300) {
+              resultados.push({ id: c.id, nome: c.nome_cliente, erro: "ZapSign " + resp.status + ": " + resp.body });
+              continue;
+            }
+            const doc = JSON.parse(resp.body);
+            const signers = doc.signers || [];
+            const assinado = doc.status === "signed" || (signers.length > 0 && signers.every((s) => s.status === "signed"));
+
+            if (assinado) {
+              let arquivoPath = null;
+              if (doc.signed_file || doc.original_file) {
+                try {
+                  const pdfBuffer = await httpsGetBuffer(doc.signed_file || doc.original_file);
+                  arquivoPath = c.doc_token + ".pdf";
+                  await supabaseStorageUpload(arquivoPath, secretKey, pdfBuffer);
+                } catch (e) {
+                  console.error("[zapsign-webhook] falha ao arquivar PDF (reconciliação):", e.message);
+                }
+              }
+              await supabaseRest(
+                "/contratos?id=eq." + encodeURIComponent(c.id),
+                "PATCH", secretKey,
+                { status: "assinado", assinado_em: new Date().toISOString(), ...(arquivoPath ? { arquivo_path: arquivoPath } : {}) },
+                { "Prefer": "return=minimal" }
+              );
+              resultados.push({ id: c.id, nome: c.nome_cliente, atualizado: true, status_zapsign: doc.status });
+            } else {
+              resultados.push({ id: c.id, nome: c.nome_cliente, atualizado: false, status_zapsign: doc.status });
+            }
+          } catch (e) {
+            resultados.push({ id: c.id, nome: c.nome_cliente, erro: e.message });
+          }
+        }
+        return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ verificados: (pendentes || []).length, resultados }) };
+      }
+
       const docToken = event.queryStringParameters?.arquivo;
       if (docToken) {
         const rows = await supabaseRest(
@@ -91,6 +144,25 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };
+
+// ===== Consulta um documento na API da ZapSign =====
+function zapsignGet(path, zapsignToken) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: "api.zapsign.com.br",
+      path,
+      method: "GET",
+      headers: { "Authorization": "Bearer " + zapsignToken },
+    };
+    const req = https.request(options, (res) => {
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => resolve({ status: res.statusCode, body: chunks }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
 
 // ===== Baixa um arquivo binário (segue redirecionamentos) =====
 function httpsGetBuffer(targetUrl, redirects) {
