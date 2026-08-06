@@ -123,7 +123,7 @@ async function montarGrupos() {
 
       const situacaoRaw = (cols[layout.situacao] || "").trim();
       const nome = (cols[layout.nome] || "").trim();
-      const dataVendaIso = paraDataISO(cols[layout.data]);
+      const dataVendaIso = paraDataISO(cols[layout.data], aba.ano);
       const situacao = situacaoRaw.toUpperCase();
 
       if (!nome || !dataVendaIso) { contadores.sem_data_ou_nome++; return; }
@@ -150,8 +150,8 @@ async function montarGrupos() {
         funcionaria: (cols[layout.venda] || "").trim(),
         origemLead: layout.lead != null ? (cols[layout.lead] || "").trim() : "",
         nome,
-        dataIda: paraDataISO(cols[layout.ida]),
-        dataVolta: paraDataISO(cols[layout.volta]),
+        dataIda: paraDataISO(cols[layout.ida], aba.ano),
+        dataVolta: paraDataISO(cols[layout.volta], aba.ano),
         saida: (cols[layout.saida] || "").trim(),
         destino: (cols[layout.destino] || "").trim(),
         companhia: (cols[layout.companhia] || "").trim(),
@@ -367,13 +367,13 @@ function normNome(s) {
 }
 
 // ===== Parsers =====
-function paraDataISO(raw) {
+function paraDataISO(raw, anoFallback) {
   const s = String(raw || "").trim();
   if (!s || s === "-") return null;
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
   if (m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; }
-  m = s.match(/^(\d{1,2})\/(\d{1,2})$/); // sem ano — assume o ano corrente da aba (fallback)
-  if (m) { const y = new Date().getFullYear(); return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; }
+  m = s.match(/^(\d{1,2})\/(\d{1,2})$/); // sem ano — usa o ano da aba de origem (não o ano atual)
+  if (m) { const y = anoFallback || new Date().getFullYear(); return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; }
   return null;
 }
 
