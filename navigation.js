@@ -19,6 +19,7 @@
     financeiro:  "Financeiro",
     contratos:   "Contratos",
     empresas:    "Empresas",
+    usuarios:    "Usuários",
   };
 
   function activateTab(tab) {

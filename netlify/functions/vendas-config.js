@@ -12,6 +12,7 @@
 //   alter table vendas_config enable row level security;
 
 const https = require("https");
+const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
 const CHAVE = "cfg";
@@ -40,6 +41,8 @@ exports.handler = async (event) => {
       await supabaseRest("/vendas_config?on_conflict=chave", "POST", secretKey,
         { chave: CHAVE, valor, atualizado_em: new Date().toISOString() },
         { "Prefer": "resolution=merge-duplicates,return=minimal" });
+      const sessao = await validarSessao(tokenDoEvento(event), secretKey);
+      await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "editar", area: "vendas_config", descricao: "Metas/config de vendas atualizadas" });
       return { statusCode: 200, body: JSON.stringify({ ok: true }) };
     }
 

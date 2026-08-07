@@ -101,7 +101,7 @@
   async function salvarCfgRemoto(valorCfg) {
     const resp = await fetch("/.netlify/functions/vendas-config", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
       body: JSON.stringify({ valor: valorCfg }),
     });
     if (!resp.ok) throw new Error("Erro ao salvar configuração");

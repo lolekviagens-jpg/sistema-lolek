@@ -25,7 +25,25 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app">
+
+  <!-- ===== Tela de login ===== -->
+  <div class="login-screen" id="login-screen">
+    <form class="login-screen__box" id="login-form">
+      <div class="login-screen__logo">LV</div>
+      <div class="login-screen__title">Lolek Viagens</div>
+      <div class="login-screen__hint">Entre com seu usuário e senha</div>
+      <div class="field field--full">
+        <input type="text" class="input" id="login-usuario" placeholder="Usuário" autocomplete="username" autocapitalize="off" />
+      </div>
+      <div class="field field--full">
+        <input type="password" class="input" id="login-senha" placeholder="Senha" autocomplete="current-password" />
+      </div>
+      <div class="login-screen__error" id="login-erro" hidden></div>
+      <button type="submit" class="btn btn--gold" id="login-btn" style="width:100%;justify-content:center">Entrar</button>
+    </form>
+  </div>
+
+  <div class="app" id="app-root" hidden>
 
     <!-- ===== Barra lateral ===== -->
     <aside class="sidebar">
@@ -82,11 +100,15 @@
           <span class="nav__icon">🏢</span>
           <span class="nav__label">Empresas</span>
         </button>
+        <button class="nav__item" data-tab="usuarios" id="nav-usuarios" hidden>
+          <span class="nav__icon">🔑</span>
+          <span class="nav__label">Usuários</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
-        <span>Sistema Interno</span>
-        <span class="sidebar__version">v0.2</span>
+        <span id="sidebar-usuario">Sistema Interno</span>
+        <button type="button" id="sidebar-logout" class="sidebar__logout" title="Sair">⏻</button>
       </div>
     </aside>
 
@@ -1330,10 +1352,79 @@
         </div>
 
       </section>
+
+      <!-- ===== PAINEL USUÁRIOS (login das funcionárias + log de atividade) ===== -->
+      <section class="panel" data-panel="usuarios">
+
+        <div class="toolbar">
+          <span class="toolbar__info">Contas de acesso e histórico de quem criou/editou/apagou o quê</span>
+          <button class="btn btn--gold" id="usr-novo-btn" type="button">+ Novo usuário</button>
+        </div>
+
+        <div id="usr-status"></div>
+
+        <div class="card" style="margin-bottom:20px">
+          <table class="table">
+            <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Status</th><th></th></tr></thead>
+            <tbody id="usr-lista-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="toolbar" style="margin-top:28px">
+          <span class="toolbar__info" style="font-weight:600;color:var(--navy)">📋 Log de atividade</span>
+          <select class="input" id="usr-log-filtro-area" style="max-width:200px">
+            <option value="">Todas as áreas</option>
+          </select>
+        </div>
+        <div class="card">
+          <table class="table">
+            <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Área</th><th>Descrição</th></tr></thead>
+            <tbody id="usr-log-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Modal: novo/editar usuário -->
+        <div class="modal" id="usr-modal" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:420px">
+            <div class="modal__header">
+              <span class="modal__title" id="usr-modal-titulo">Novo usuário</span>
+              <button class="modal__close" id="usr-modal-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <input type="hidden" id="usr-id" />
+              <label class="field field--full">
+                <span class="field__label">Nome *</span>
+                <input type="text" id="usr-nome" class="input" placeholder="Ex: Emily" />
+              </label>
+              <label class="field field--full">
+                <span class="field__label">Usuário (login) *</span>
+                <input type="text" id="usr-usuario" class="input" placeholder="Ex: emily" autocapitalize="off" />
+              </label>
+              <label class="field field--full">
+                <span class="field__label">Senha <span id="usr-senha-hint" class="table__muted">*</span></span>
+                <input type="password" id="usr-senha" class="input" placeholder="Deixe em branco pra manter a atual" autocomplete="new-password" />
+              </label>
+              <label class="field field--full" style="flex-direction:row;align-items:center;gap:8px">
+                <input type="checkbox" id="usr-admin" />
+                <span class="field__label" style="margin:0">Administradora (acessa Usuários e o log de atividade)</span>
+              </label>
+              <div class="usr-modal-erro" id="usr-modal-erro" hidden style="color:#c0392b;font-size:0.82rem;margin-top:6px"></div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost" id="usr-cancelar">Cancelar</button>
+              <button class="btn btn--gold" id="usr-salvar">Salvar</button>
+            </div>
+          </div>
+        </div>
+
+      </section>
     </main>
   </div>
 
+  <script src="auth.js"></script>
   <script src="navigation.js"></script>
+  <script src="usuarios.js"></script>
   <script src="checkin.js"></script>
   <script src="orcamentos.js"></script>
   <script src="vendas.js"></script>

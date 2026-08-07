@@ -32,7 +32,7 @@
   async function chamar(action, data) {
     const resp = await fetch("/.netlify/functions/financeiro-data", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
       body: JSON.stringify({ senha: senhaAtual, action, data: data || {} }),
     });
     const json = await resp.json().catch(() => ({}));

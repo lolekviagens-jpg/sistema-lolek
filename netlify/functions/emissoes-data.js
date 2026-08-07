@@ -84,9 +84,14 @@
 //     check (forma_pagamento in ('pix','sumup','valepay','faturado','pix_valepay','pix_sumup','wise','boleto','mittu','maquina_c6','stone','mercado_pago','dinheiro','infinity','inter_pj','btg','outro_pagamento'));
 
 const https = require("https");
+const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
 const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
+
+const AÇÕES_QUE_PRECISAM_LOGIN = new Set([
+  "criar_emissao", "editar_emissao", "excluir_emissao", "excluir_produto", "criar_fornecedor",
+]);
 
 const TIPO_LABEL = {
   passagem:   "Passagem aérea",
@@ -128,7 +133,12 @@ exports.handler = async (event) => {
       try { payload = JSON.parse(event.body || "{}"); }
       catch { return { statusCode: 400, body: JSON.stringify({ error: "JSON inválido" }) }; }
 
-      const resultado = await executarAcao(payload.action, payload.data || {}, secretKey);
+      const sessao = await validarSessao(tokenDoEvento(event), secretKey);
+      if (AÇÕES_QUE_PRECISAM_LOGIN.has(payload.action) && !sessao.valido) {
+        return { statusCode: 401, body: JSON.stringify({ error: "Sessão expirada — faça login novamente." }) };
+      }
+
+      const resultado = await executarAcao(payload.action, payload.data || {}, secretKey, sessao);
       return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(resultado) };
     }
 
@@ -139,10 +149,18 @@ exports.handler = async (event) => {
   }
 };
 
-async function executarAcao(action, data, secretKey) {
+async function executarAcao(action, data, secretKey, sessao) {
+  const usuarioNome = sessao && sessao.nome;
   switch (action) {
-    case "criar_emissao":
-      return criarEmissao(data, secretKey);
+    case "criar_emissao": {
+      const resultado = await criarEmissao(data, secretKey);
+      await registrarAtividade(secretKey, {
+        usuarioNome, acao: "criar", area: "emissao",
+        descricao: "Emissão" + ((data.emissao || {}).destino ? " — " + data.emissao.destino : ""),
+        registroId: resultado.emissao && resultado.emissao.id,
+      });
+      return resultado;
+    }
 
     case "excluir_emissao": {
       if (!data.id) throw new Error("id é obrigatório");
@@ -158,6 +176,7 @@ async function executarAcao(action, data, secretKey) {
         );
       }
       await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "emissao", descricao: "Emissão excluída", registroId: data.id });
       return { ok: true };
     }
 
@@ -167,6 +186,11 @@ async function executarAcao(action, data, secretKey) {
       // criação falhar no meio do caminho (criarEmissao já reverte o que criou), a emissão
       // antiga continua intacta em vez de a usuária perder os dados.
       const resultado = await criarEmissao(data, secretKey);
+      await registrarAtividade(secretKey, {
+        usuarioNome, acao: "editar", area: "emissao",
+        descricao: "Emissão editada" + ((data.emissao || {}).destino ? " — " + data.emissao.destino : ""),
+        registroId: data.id,
+      });
 
       // Se a limpeza da versão antiga falhar por qualquer motivo, isso NÃO pode ficar em
       // silêncio — senão a emissão antiga fica esquecida no banco parecendo duplicada
@@ -211,6 +235,7 @@ async function executarAcao(action, data, secretKey) {
       if (!restantes || restantes.length === 0) {
         await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(produto.emissao_id), "DELETE", secretKey);
       }
+      await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "emissao", descricao: "Produto excluído da emissão", registroId: data.id });
       return { ok: true };
     }
 
@@ -232,7 +257,9 @@ async function executarAcao(action, data, secretKey) {
 
     case "criar_fornecedor": {
       if (!data.nome) throw new Error("Nome do fornecedor é obrigatório");
-      return supabaseRest("/fornecedores", "POST", secretKey, { nome: data.nome });
+      const resultado = await supabaseRest("/fornecedores", "POST", secretKey, { nome: data.nome });
+      await registrarAtividade(secretKey, { usuarioNome, acao: "criar", area: "fornecedor", descricao: data.nome, registroId: resultado && resultado[0] && resultado[0].id });
+      return resultado;
     }
 
     default:

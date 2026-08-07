@@ -32,6 +32,7 @@
 
 const https = require("https");
 const url   = require("url");
+const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL     = "https://emadqnrylsqjmevxasup.supabase.co";
 const DIGISAC_BASE     = process.env.DIGISAC_BASE_URL || "https://lolekviagens.digisac.app/api/v1";
@@ -158,6 +159,9 @@ exports.handler = async (event) => {
       status:            digisacOk ? "enviado" : "erro_envio",
       erro_envio:        erroDigisac,
     });
+
+    const sessao = await validarSessao(tokenDoEvento(event), supabaseKey);
+    await registrarAtividade(supabaseKey, { usuarioNome: sessao.nome, acao: "criar", area: "contrato", descricao: dados.nome_cliente, registroId: registro.id });
 
     if (!digisacOk) {
       return {

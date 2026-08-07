@@ -23,6 +23,7 @@
 //   alter table clientes add column if not exists endereco text;
 
 const https = require("https");
+const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
 const CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
@@ -46,25 +47,33 @@ exports.handler = async (event) => {
 
       const { action, data } = payload;
 
-      if (action === "criar") {
-        const registro = {};
-        CAMPOS.forEach(c => { registro[c] = data?.[c] || null; });
-        const [criado] = await supabaseRest("/clientes", "POST", secretKey, registro);
-        return { statusCode: 200, body: JSON.stringify(criado) };
-      }
+      if (action === "criar" || action === "atualizar" || action === "excluir") {
+        const sessao = await validarSessao(tokenDoEvento(event), secretKey);
+        if (!sessao.valido) return { statusCode: 401, body: JSON.stringify({ error: "Sessão expirada — faça login novamente." }) };
 
-      if (action === "atualizar") {
-        if (!data?.id) return { statusCode: 400, body: JSON.stringify({ error: "id é obrigatório" }) };
-        const registro = {};
-        CAMPOS.forEach(c => { registro[c] = data[c] || null; });
-        await supabaseRest("/clientes?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey, registro, { "Prefer": "return=minimal" });
-        return { statusCode: 200, body: JSON.stringify({ ok: true }) };
-      }
+        if (action === "criar") {
+          const registro = {};
+          CAMPOS.forEach(c => { registro[c] = data?.[c] || null; });
+          const [criado] = await supabaseRest("/clientes", "POST", secretKey, registro);
+          await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "criar", area: "cliente", descricao: registro.nome, registroId: criado.id });
+          return { statusCode: 200, body: JSON.stringify(criado) };
+        }
 
-      if (action === "excluir") {
-        if (!data?.id) return { statusCode: 400, body: JSON.stringify({ error: "id é obrigatório" }) };
-        await supabaseRest("/clientes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
-        return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+        if (action === "atualizar") {
+          if (!data?.id) return { statusCode: 400, body: JSON.stringify({ error: "id é obrigatório" }) };
+          const registro = {};
+          CAMPOS.forEach(c => { registro[c] = data[c] || null; });
+          await supabaseRest("/clientes?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey, registro, { "Prefer": "return=minimal" });
+          await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "editar", area: "cliente", descricao: registro.nome, registroId: data.id });
+          return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+        }
+
+        if (action === "excluir") {
+          if (!data?.id) return { statusCode: 400, body: JSON.stringify({ error: "id é obrigatório" }) };
+          await supabaseRest("/clientes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+          await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "excluir", area: "cliente", descricao: "Cliente excluído", registroId: data.id });
+          return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+        }
       }
 
       // Importação em lote — usada só na migração inicial do localStorage.

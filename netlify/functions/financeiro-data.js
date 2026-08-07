@@ -66,6 +66,7 @@
 
 const https  = require("https");
 const crypto = require("crypto");
+const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
 
@@ -90,7 +91,10 @@ exports.handler = async (event) => {
   }
 
   try {
-    const resultado = await executarAcao(action, data || {}, secretKey);
+    // A senha do Financeiro (acima) já protege a área inteira — a sessão aqui é só pra
+    // saber QUEM fez a ação no log de atividade, não bloqueia se não vier token.
+    const sessao = await validarSessao(tokenDoEvento(event), secretKey);
+    const resultado = await executarAcao(action, data || {}, secretKey, sessao.nome);
     return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(resultado) };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
@@ -144,7 +148,7 @@ function supabaseRest(path, method, secretKey, body, extraHeaders) {
   });
 }
 
-async function executarAcao(action, data, secretKey) {
+async function executarAcao(action, data, secretKey, usuarioNome) {
   switch (action) {
     // ===== Lançamentos =====
     case "listar_lancamentos":
@@ -153,18 +157,26 @@ async function executarAcao(action, data, secretKey) {
     case "criar_lancamento": {
       if (!data.descricao || !data.valor) throw new Error("Descrição e valor são obrigatórios");
       const { id, ...campos } = data;
-      return supabaseRest("/financeiro_lancamentos", "POST", secretKey, campos);
+      const resultado = await supabaseRest("/financeiro_lancamentos", "POST", secretKey, campos);
+      const criado = Array.isArray(resultado) ? resultado[0] : resultado;
+      await registrarAtividade(secretKey, { usuarioNome, acao: "criar", area: "financeiro", descricao: data.descricao, registroId: criado && criado.id });
+      return resultado;
     }
 
     case "atualizar_lancamento": {
       if (!data.id) throw new Error("id é obrigatório");
       const { id, ...campos } = data;
-      return supabaseRest("/financeiro_lancamentos?id=eq." + encodeURIComponent(id), "PATCH", secretKey, campos);
+      const resultado = await supabaseRest("/financeiro_lancamentos?id=eq." + encodeURIComponent(id), "PATCH", secretKey, campos);
+      await registrarAtividade(secretKey, { usuarioNome, acao: "editar", area: "financeiro", descricao: data.descricao || null, registroId: id });
+      return resultado;
     }
 
-    case "excluir_lancamento":
+    case "excluir_lancamento": {
       if (!data.id) throw new Error("id é obrigatório");
-      return supabaseRest("/financeiro_lancamentos?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      const resultado = await supabaseRest("/financeiro_lancamentos?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
+      await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "financeiro", descricao: "Lançamento excluído", registroId: data.id });
+      return resultado;
+    }
 
     case "importar_lancamentos": {
       const lista = Array.isArray(data.lancamentos) ? data.lancamentos : [];

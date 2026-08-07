@@ -145,7 +145,7 @@
     try {
       const resp = await fetch("/.netlify/functions/gerar-contrato", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
         body: JSON.stringify(dados),
       });
       const json = await resp.json().catch(() => ({}));

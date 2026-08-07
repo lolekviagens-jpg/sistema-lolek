@@ -53,7 +53,7 @@
   async function chamar(action, data) {
     const resp = await fetch("/.netlify/functions/clientes-data", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
       body: JSON.stringify({ action, data }),
     });
     const json = await resp.json().catch(() => null);
