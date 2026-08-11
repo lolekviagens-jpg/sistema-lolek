@@ -37,8 +37,32 @@
   }
 
   navItems.forEach((item) => {
-    item.addEventListener("click", () => activateTab(item.dataset.tab));
+    item.addEventListener("click", () => {
+      activateTab(item.dataset.tab);
+      closeMenu();
+    });
   });
+
+  // ===== Menu lateral (gaveta) no celular =====
+  const sidebar = document.querySelector(".sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  const menuToggle = document.getElementById("menu-toggle");
+
+  function openMenu() {
+    sidebar?.classList.add("is-open");
+    overlay?.classList.add("is-open");
+  }
+
+  function closeMenu() {
+    sidebar?.classList.remove("is-open");
+    overlay?.classList.remove("is-open");
+  }
+
+  menuToggle?.addEventListener("click", () => {
+    sidebar?.classList.contains("is-open") ? closeMenu() : openMenu();
+  });
+
+  overlay?.addEventListener("click", closeMenu);
 
   // ===== Data de hoje na topbar =====
   function renderDate() {

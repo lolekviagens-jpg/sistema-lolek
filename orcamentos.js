@@ -357,7 +357,7 @@
         const zoneId = "fotozone-" + p.pid;
         const zoneClass = isPassagem ? "orc-foto-zone orc-print-zone" : "orc-foto-zone";
         const zoneHint  = isPassagem
-          ? "📋 Cole aqui o print do bilhete (Ctrl+V) para extrair dados automaticamente"
+          ? "📋 Cole o print do bilhete (Ctrl+V) ou clique para enviar um arquivo — os dados são extraídos automaticamente"
           : isHospedagem
             ? "📷 Cole, arraste ou clique para adicionar fotos do hotel (aparecem no orçamento para o cliente)"
             : "📷 Cole (Ctrl+V), arraste ou clique para adicionar fotos";
@@ -367,7 +367,7 @@
         const printZoneId  = "fotozone-print-" + p.pid;
         const printZoneHtml = isHospedagem ? `
               <div class="orc-foto-zone orc-print-zone" id="${printZoneId}" tabindex="0">
-                <span class="orc-foto-hint">📋 Cole aqui o print da reserva do hotel (Ctrl+V) para extrair dados automaticamente</span>
+                <span class="orc-foto-hint">📋 Cole o print da reserva do hotel (Ctrl+V) ou clique para enviar um arquivo — os dados são extraídos automaticamente</span>
               </div>` : "";
 
         return `
@@ -701,16 +701,14 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
       for (const f of (e.dataTransfer?.files || []))
         if (f.type.startsWith("image/")) readFoto(pid, f, zoneId, tipo, destId);
     });
-    // Para fotos de hotel/outros: abre o seletor de arquivo ao clicar
-    // Para passagem: somente Ctrl+V, sem dialog de arquivo
-    if (tipo !== "passagem") {
-      zone.addEventListener("click", () => {
-        const inp = document.createElement("input");
-        inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
-        inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId, tipo, destId); };
-        inp.click();
-      });
-    }
+    // Clicar na zona também abre o seletor de arquivo (colar por Ctrl+V nem
+    // sempre é possível no celular, então isso vira a via principal lá).
+    zone.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+      inp.onchange = () => { for (const f of inp.files) readFoto(pid, f, zoneId, tipo, destId); };
+      inp.click();
+    });
   }
 
   function readFoto(pid, file, zoneId, tipo, destId) {
@@ -771,6 +769,21 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     zone.addEventListener("paste", (e) => {
       for (const item of (e.clipboardData?.items || []))
         if (item.type.startsWith("image/")) readFotoPrintHotel(pid, item.getAsFile(), zoneId, destId);
+    });
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault(); zone.classList.remove("dragover");
+      for (const f of (e.dataTransfer?.files || []))
+        if (f.type.startsWith("image/")) readFotoPrintHotel(pid, f, zoneId, destId);
+    });
+    // Clicar na zona também abre o seletor de arquivo (útil no celular, onde
+    // colar uma imagem por Ctrl+V nem sempre é possível).
+    zone.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+      inp.onchange = () => { for (const f of inp.files) readFotoPrintHotel(pid, f, zoneId, destId); };
+      inp.click();
     });
   }
 

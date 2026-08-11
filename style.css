@@ -259,6 +259,22 @@ body {
   background: var(--surface);
 }
 
+.topbar__menu-btn {
+  display: none;
+  align-self: center;
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--navy);
+  cursor: pointer;
+  padding: 4px 8px 4px 0;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
 .topbar__title {
   font-family: var(--font-title);
   font-size: 2.2rem;
@@ -3455,4 +3471,84 @@ textarea.input {
 
 .emp-senha-resultado strong {
   color: var(--navy);
+}
+
+/* ===================================================================
+   Celular / telas estreitas — o layout acima foi pensado pro desktop
+   (sidebar fixa de 264px). Aqui a sidebar vira uma gaveta que desliza
+   por cima do conteúdo, em vez de empurrar tudo pra um espaço minúsculo.
+   =================================================================== */
+@media (max-width: 860px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 200;
+    width: 82vw;
+    max-width: 300px;
+  }
+
+  .sidebar.is-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(7, 24, 46, 0.35);
+  }
+
+  .sidebar-overlay.is-open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(7, 24, 46, 0.5);
+    z-index: 150;
+  }
+
+  .content {
+    margin-left: 0;
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .topbar__menu-btn {
+    display: block;
+  }
+
+  .topbar {
+    padding: 16px 18px;
+    gap: 4px 12px;
+    flex-wrap: wrap;
+  }
+
+  .topbar__title {
+    font-size: 1.4rem;
+  }
+
+  .panel {
+    padding: 18px 16px;
+  }
+
+  /* Tabelas rolam de lado dentro do próprio cartão, em vez de cortar
+     ou espremer o conteúdo da página inteira. */
+  .card:has(.table) {
+    overflow-x: auto;
+  }
+
+  .table {
+    min-width: 640px;
+  }
+
+  /* Formulários e grades de campos: uma coluna só, mais fácil de tocar. */
+  .form__grid,
+  .orc-destino-grid,
+  .orc-milhas-grid,
+  .orc-produto-fields,
+  .vendas-func-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .modal {
+    padding: 12px;
+  }
+
+  .modal__dialog {
+    max-height: 94vh;
+  }
 }
