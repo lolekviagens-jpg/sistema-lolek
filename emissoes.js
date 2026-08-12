@@ -140,6 +140,7 @@
     { tipo: "hospedagem", label: "Hospedagem",         icon: "🏨" },
     { tipo: "seguro",     label: "Seguro viagem",      icon: "🛡️" },
     { tipo: "carro",      label: "Aluguel de carro",   icon: "🚗" },
+    { tipo: "trem",       label: "Trem",              icon: "🚆" },
     { tipo: "passeio",    label: "Passeio / Ingresso", icon: "🗺️" },
     { tipo: "transfer",   label: "Transfer",           icon: "🚌" },
     { tipo: "mala",       label: "Adicional de mala",  icon: "🧳" },
@@ -170,6 +171,13 @@
     carro: [
       { id: "locadora", label: "Locadora" },
       { id: "categoria", label: "Categoria" },
+    ],
+    trem: [
+      { id: "trecho", label: "Trecho", placeholder: "Ex: Paris → Lyon" },
+      { id: "companhia", label: "Companhia", placeholder: "Ex: SNCF, Trenitalia, Eurostar" },
+      { id: "data_viagem", label: "Data", type: "date" },
+      { id: "horario_partida", label: "Horário de partida" },
+      { id: "localizador", label: "Localizador / código da reserva" },
     ],
     passeio: [
       { id: "descricao", label: "Descrição" },

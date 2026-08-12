@@ -10,7 +10,7 @@
   // cada aba é uma IIFE independente, sem módulos compartilhados entre arquivos.
   const TIPO_LABEL = {
     passagem: "Passagem aérea", hospedagem: "Hospedagem", seguro: "Seguro viagem",
-    carro: "Aluguel de carro", passeio: "Passeio / Ingresso", transfer: "Transfer", mala: "Adicional de mala",
+    carro: "Aluguel de carro", trem: "Trem", passeio: "Passeio / Ingresso", transfer: "Transfer", mala: "Adicional de mala",
     assento: "Assento", consultoria_milhas: "Consultoria de milhas",
     visto_americano: "Visto americano", venda_milhas: "Venda de milhas",
     outro: "Outro / Diversos",
