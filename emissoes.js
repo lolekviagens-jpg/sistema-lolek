@@ -1597,7 +1597,7 @@
 
   function tabelaLinhas(linhas) {
     if (linhas.length === 0) return '<div class="empty-state empty-state--compact"><p>Nada por aqui</p></div>';
-    return `<div class="card"><table class="table">
+    return `<div class="card"><table class="table table--compact">
       <thead><tr><th>Data da venda</th><th>Cliente</th><th>Viagem</th><th>Produto</th><th>Data do produto</th><th>Fornecedor</th><th>Custo</th><th>Valor</th><th>Lucro</th><th>Pagamento</th><th>Funcionária</th><th></th></tr></thead>
       <tbody>${linhas.map(renderLinhaRow).join("")}</tbody>
     </table></div>`;

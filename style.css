@@ -647,8 +647,16 @@ textarea.input {
   overflow: hidden;
 }
 
+/* Quando a tabela é mais larga que o cartão (muitas colunas), deixa rolar de
+   lado em vez de simplesmente cortar/esconder as colunas do final — em
+   qualquer tamanho de tela, não só no celular. */
+.card:has(.table) {
+  overflow-x: auto;
+}
+
 .table {
   width: 100%;
+  min-width: max-content;
   border-collapse: collapse;
 }
 
@@ -662,6 +670,7 @@ textarea.input {
   background: #fafbfc;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .table tbody td {
@@ -669,6 +678,18 @@ textarea.input {
   font-size: 0.9rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+}
+
+/* Tabelas bem cheias de colunas (ex: lista de Emissões) — texto e espaçamento
+   um pouco menores, pra caber mais sem precisar rolar tanto. */
+.table--compact thead th {
+  padding: 10px 12px;
+  font-size: 0.66rem;
+}
+
+.table--compact tbody td {
+  padding: 9px 12px;
+  font-size: 0.8rem;
 }
 
 .table tbody tr:last-child td {
@@ -3523,16 +3544,6 @@ textarea.input {
 
   .panel {
     padding: 18px 16px;
-  }
-
-  /* Tabelas rolam de lado dentro do próprio cartão, em vez de cortar
-     ou espremer o conteúdo da página inteira. */
-  .card:has(.table) {
-    overflow-x: auto;
-  }
-
-  .table {
-    min-width: 640px;
   }
 
   /* Formulários e grades de campos: uma coluna só, mais fácil de tocar. */
