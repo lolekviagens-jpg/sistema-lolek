@@ -92,6 +92,8 @@
   let destinos = [], destCounter = 0;
   const fotoStore = {};       // fotos que aparecem para o cliente (preview/PDF)
   const fotoStorePrint = {};  // print de reserva usado só para a IA extrair dados (hospedagem)
+  let orcamentoRecenteId = null;  // id do orçamento recente atual (null = ainda não salvo/novo)
+  let orcamentosRecentesCache = [];
 
   // ===== Elementos =====
   const formWrap     = document.getElementById("orc-form-wrap");
@@ -243,6 +245,7 @@
 
     destinos = [];
     destCounter = 0;
+    orcamentoRecenteId = null;
     Object.keys(fotoStore).forEach((k) => delete fotoStore[k]);
     Object.keys(fotoStorePrint).forEach((k) => delete fotoStorePrint[k]);
 
@@ -258,6 +261,143 @@
     outputWrap.hidden = true;
     formWrap.hidden   = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ===== Orçamentos recentes (memória por usuário, últimos 7 dias) =====
+  // Guarda um atalho de acesso rápido pros rascunhos gerados recentemente, pra
+  // retomar e editar sem refazer do zero quando o cliente pede um ajuste horas
+  // depois. Não mexe em orçamentos já fechados/confirmados como venda — isso
+  // aqui é só o formulário desta aba.
+
+  // Snapshot completo do formulário: a estrutura de destinos/produtos (que
+  // determina quais campos existem) + o valor de cada campo pelo id + as fotos
+  // que aparecem pro cliente. É o suficiente pra reconstruir o formulário
+  // inteiro do zero (ver abrirOrcamentoRecente).
+  function snapshotFormulario() {
+    const campos = {};
+    formWrap.querySelectorAll("input,select,textarea").forEach((e) => { if (e.id) campos[e.id] = e.value; });
+    return {
+      destinos: JSON.parse(JSON.stringify(destinos)),
+      destCounter,
+      campos,
+      fotos: JSON.parse(JSON.stringify(fotoStore)),
+    };
+  }
+
+  async function chamarOrcamentosRecentes(action, data) {
+    const resp = await fetch("/.netlify/functions/orcamentos-recentes", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
+      body: JSON.stringify({ action, data: data || {} }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.error || "Erro HTTP " + resp.status);
+    return json;
+  }
+
+  // Salva/atualiza o orçamento atual na memória de recentes — chamado
+  // automaticamente sempre que a proposta é gerada (ou regerada depois de um
+  // ajuste), sem precisar de nenhum clique a mais. Silencioso: se falhar, não
+  // interrompe o fluxo principal (é só um atalho, não o orçamento em si).
+  async function salvarOrcamentoRecente(clienteNome, destinoResumo) {
+    if (!window.LolekAuth || !window.LolekAuth.token()) return;
+    try {
+      const r = await chamarOrcamentosRecentes("salvar", {
+        id: orcamentoRecenteId,
+        cliente_nome: clienteNome,
+        destino_resumo: destinoResumo,
+        dados: snapshotFormulario(),
+      });
+      if (r && r.id) orcamentoRecenteId = r.id;
+      carregarOrcamentosRecentes();
+    } catch (err) {
+      console.error("Não foi possível salvar nos orçamentos recentes:", err.message);
+    }
+  }
+
+  function tempoRelativo(iso) {
+    const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (diffMin < 1) return "agora mesmo";
+    if (diffMin < 60) return "há " + diffMin + " min";
+    const diffH = Math.round(diffMin / 60);
+    if (diffH < 24) return "há " + diffH + "h";
+    const diffD = Math.round(diffH / 24);
+    return "há " + diffD + " dia" + (diffD !== 1 ? "s" : "");
+  }
+
+  function renderOrcamentosRecentes() {
+    const countEl = document.getElementById("orc-recentes-count");
+    const listEl  = document.getElementById("orc-recentes-list");
+    if (!countEl || !listEl) return;
+
+    countEl.textContent = orcamentosRecentesCache.length > 0 ? ` (${orcamentosRecentesCache.length})` : "";
+
+    if (orcamentosRecentesCache.length === 0) {
+      listEl.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum orçamento recente nos últimos 7 dias</p></div>';
+      return;
+    }
+
+    listEl.innerHTML = orcamentosRecentesCache.map((o) => `
+      <div class="orc-recente-item">
+        <div class="orc-recente-info">
+          <span class="orc-recente-nome">${escapeHtml(o.cliente_nome || "Sem nome")}</span>
+          <span class="orc-recente-sub">${escapeHtml(o.destino_resumo || "")}${o.destino_resumo ? " · " : ""}${tempoRelativo(o.criado_em)}</span>
+        </div>
+        <div class="orc-recente-actions">
+          <button type="button" class="btn btn--ghost btn--sm" data-abrir-recente="${o.id}">Abrir</button>
+          <button type="button" class="orc-produto-remove" data-excluir-recente="${o.id}" title="Remover da lista">✕</button>
+        </div>
+      </div>`).join("");
+
+    listEl.querySelectorAll("[data-abrir-recente]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const item = orcamentosRecentesCache.find((o) => o.id === b.dataset.abrirRecente);
+        if (item) abrirOrcamentoRecente(item);
+      }));
+    listEl.querySelectorAll("[data-excluir-recente]").forEach((b) =>
+      b.addEventListener("click", () => excluirOrcamentoRecente(b.dataset.excluirRecente)));
+  }
+
+  async function carregarOrcamentosRecentes() {
+    if (!window.LolekAuth || !window.LolekAuth.token()) return;
+    try {
+      orcamentosRecentesCache = await chamarOrcamentosRecentes("listar");
+      renderOrcamentosRecentes();
+    } catch (err) {
+      console.error("Não foi possível carregar os orçamentos recentes:", err.message);
+    }
+  }
+
+  function abrirOrcamentoRecente(item) {
+    if (!confirm("Abrir este orçamento? As alterações não salvas no formulário atual serão perdidas.")) return;
+
+    const d = item.dados || {};
+    destinos = JSON.parse(JSON.stringify(d.destinos || []));
+    destCounter = d.destCounter || destinos.length;
+    orcamentoRecenteId = item.id;
+
+    Object.keys(fotoStore).forEach((k) => delete fotoStore[k]);
+    Object.keys(fotoStorePrint).forEach((k) => delete fotoStorePrint[k]);
+    Object.assign(fotoStore, d.fotos || {});
+
+    if (destinos.length === 0) addDestino(); else renderDestinos();
+    Object.entries(d.campos || {}).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
+
+    document.getElementById("orc-preview-wrap").innerHTML = "";
+    outputWrap.hidden = true;
+    formWrap.hidden   = false;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function excluirOrcamentoRecente(id) {
+    if (!confirm("Remover este orçamento da lista de recentes? Essa ação não pode ser desfeita.")) return;
+    try {
+      await chamarOrcamentosRecentes("excluir", { id });
+      if (orcamentoRecenteId === id) orcamentoRecenteId = null;
+      carregarOrcamentosRecentes();
+    } catch (err) {
+      alert("Não foi possível remover: " + err.message);
+    }
   }
 
   function addProduto(destId, tipo) {
@@ -1103,6 +1243,8 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     formWrap.hidden = true;
     outputWrap.hidden = false;
     window.scrollTo(0, 0);
+
+    salvarOrcamentoRecente(d.nome, d.roteiro);
   }
 
   // ===== PDF =====
@@ -1234,6 +1376,15 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
   pdfBtn.addEventListener("click", baixarPDF);
   copyBtn.addEventListener("click", copiarTexto);
 
+  // Orçamentos recentes: expandir/recolher
+  document.getElementById("orc-recentes-toggle")?.addEventListener("click", () => {
+    const body = document.getElementById("orc-recentes-body");
+    const icon = document.getElementById("orc-recentes-toggle-icon");
+    if (!body) return;
+    body.hidden = !body.hidden;
+    if (icon) icon.textContent = body.hidden ? "▼" : "▲";
+  });
+
   // Botão ⚙ Configurar IA
   document.getElementById("orc-ia-cfg-btn")?.addEventListener("click", () => abrirConfigIA());
 
@@ -1259,4 +1410,5 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
 
   // ===== Início =====
   addDestino();
+  carregarOrcamentosRecentes();
 })();

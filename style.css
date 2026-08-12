@@ -1443,6 +1443,48 @@ textarea.input {
   padding: 12px;
 }
 
+/* ===== Orçamentos recentes ===== */
+.orc-recente-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.orc-recente-item:last-child {
+  border-bottom: none;
+}
+
+.orc-recente-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.orc-recente-nome {
+  font-weight: 600;
+  color: var(--navy);
+  font-size: 0.9rem;
+}
+
+.orc-recente-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.orc-recente-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .orc-produto-fields {
   grid-template-columns: repeat(4, 1fr) !important;
 }

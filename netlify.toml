@@ -4,3 +4,6 @@
 
 [functions."zapsign-reconciliar-cron"]
   schedule = "*/30 * * * *"
+
+[functions."orcamentos-recentes-limpeza-cron"]
+  schedule = "0 6 * * *"
