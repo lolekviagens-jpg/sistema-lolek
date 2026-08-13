@@ -11,6 +11,40 @@
   function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
   function gel(id) { return document.getElementById(id); }
 
+  // Mapeamento de companhias → site de gerenciamento da reserva, pra montar a instrução
+  // "acesse o site da [companhia]..." no comprovante do cliente.
+  const AIRLINE_SITES = {
+    "latam":       { label: "LATAM Airlines",     path: "latam.com → Minha Conta → Minhas Viagens" },
+    "gol":         { label: "GOL Linhas Aéreas",  path: "voegol.com.br → Minha GOL → Gerenciar Reserva" },
+    "azul":        { label: "Azul Linhas Aéreas", path: "voeazul.com.br → Gerenciar → Minhas Viagens" },
+    "tap":         { label: "TAP Air Portugal",   path: "flytap.com → Gerir Reservas" },
+    "emirates":    { label: "Emirates",           path: "emirates.com → Manage Booking" },
+    "copa":        { label: "Copa Airlines",      path: "copaair.com → Minha Reserva" },
+    "american":    { label: "American Airlines",  path: "aa.com → My Trips" },
+    "delta":       { label: "Delta Air Lines",    path: "delta.com → My Trips" },
+    "united":      { label: "United Airlines",    path: "united.com → My Trips" },
+    "air france":  { label: "Air France",         path: "airfrance.com.br → Minha Reserva" },
+    "klm":         { label: "KLM",                path: "klm.com.br → Gerenciar Reserva" },
+    "iberia":      { label: "Iberia",             path: "iberia.com → Minhas Viagens" },
+    "lufthansa":   { label: "Lufthansa",          path: "lufthansa.com/pt → Minha Reserva" },
+    "avianca":     { label: "Avianca",            path: "avianca.com → Gerenciar Reserva" },
+    "turkish":     { label: "Turkish Airlines",   path: "turkishairlines.com/pt-br → Gerencie sua Reserva" },
+    "qatar":       { label: "Qatar Airways",      path: "qatarairways.com/pt → Gerenciar Reserva" },
+    "british":     { label: "British Airways",    path: "britishairways.com → Manage My Booking" },
+    "swiss":       { label: "SWISS",              path: "swiss.com/pt → Gerenciar Reserva" },
+    "aeromexico":  { label: "Aeroméxico",         path: "aeromexico.com/pt-br → Minha Reserva" },
+    "ita":         { label: "ITA Airways",        path: "ita-airways.com → Minhas Reservas" },
+    "alitalia":    { label: "ITA Airways",        path: "ita-airways.com → Minhas Reservas" },
+  };
+
+  function findAirline(str) {
+    const lower = (str || "").toLowerCase();
+    for (const [key, info] of Object.entries(AIRLINE_SITES)) {
+      if (lower.includes(key)) return info;
+    }
+    return null;
+  }
+
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
@@ -445,10 +479,12 @@
   }
 
   // Passagem tem seu próprio layout: um card só, com um bloco de campos pra "Ida" e,
-  // se marcado, outro pra "Volta" — mas só UM valor/custo total pro card inteiro (ida e
-  // volta juntos são uma compra só, não duas). Dentro de cada perna, uma LISTA de
-  // trechos/segmentos (não só um campo de texto) — pra mostrar cada conexão com aeroporto
-  // e horário próprios, igual a companhia aérea mostra, em vez de resumir numa frase.
+  // se marcado, outro pra "Volta" — pro cliente é 1 produto/1 cobrança só (ida e volta
+  // juntos), mas cada perna tem seu próprio financeiro (fornecedor/custo/milhas podem ser
+  // diferentes — ida e volta às vezes são compradas separadas). Dentro de cada perna, uma
+  // LISTA de trechos/segmentos (não só um campo de texto) — pra mostrar cada conexão com
+  // aeroporto e horário próprios, igual a companhia aérea mostra, em vez de resumir numa
+  // frase.
   function novoSegmento() {
     return { id: novoId("seg"), trecho: "", companhia: "", voo: "", horario_partida: "", horario_chegada: "" };
   }
@@ -500,6 +536,36 @@
     });
   }
 
+  // Financeiro de UMA perna (ida ou volta) — fica dentro do bloco da perna porque ida e
+  // volta às vezes são compradas de fornecedores/milheiros diferentes, com custo e milhas
+  // próprios, mesmo sendo uma passagem só pro cliente (1 valor cobrado, 1 pagamento).
+  function pernaFinanceiroHtml(prodId, perna) {
+    return `
+      <div class="orc-milhas-box" style="margin-top:10px">
+        <div class="orc-milhas-title">Financeiro da ${perna === "ida" ? "ida" : "volta"}</div>
+        <div class="form__grid">
+          <label class="field"><span class="field__label">Como foi comprada</span>
+            <select class="input" id="emi-prod-${prodId}-${perna}-compra_tipo">
+              <option value="milhas">Milhas</option>
+              <option value="tarifado">Tarifado / operadora (dinheiro)</option>
+            </select>
+          </label>
+          <label class="field" id="emi-prod-${prodId}-${perna}-wrap-milhas"><span class="field__label">Qtd. milhas <span class="table__muted">(informativo)</span></span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-qtd_milhas" />
+          </label>
+          <label class="field" id="emi-prod-${prodId}-${perna}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-valor_milha" step="0.01" />
+          </label>
+          <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos nesta perna (R$)</span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-custo" step="0.01" />
+          </label>
+          <label class="field field--full"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
+            <select class="input emi-sel-fornecedor" id="emi-prod-${prodId}-${perna}-fornecedor">${montarOptionsFornecedor(null)}</select>
+          </label>
+        </div>
+      </div>`;
+  }
+
   function pernaFormHtml(prodId, perna, titulo) {
     return `
       <div class="orc-cost-divider" style="margin:${perna === "ida" ? "0" : "14px"} 0 8px"><span>${titulo}</span></div>
@@ -507,7 +573,14 @@
         <input type="text" class="input" id="emi-prod-${prodId}-loc-${perna}" />
       </label>
       <div id="emi-prod-${prodId}-${perna}-segmentos"></div>
-      <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${perna}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar trecho (conexão)</button>`;
+      <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${perna}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar trecho (conexão)</button>
+      <label class="field field--full"><span class="field__label">Bagagem (franquia desta perna)</span>
+        <input type="text" class="input" id="emi-prod-${prodId}-${perna}-bagagem" placeholder="Ex: 1 despachada 23kg + 1 de mão 10kg" />
+      </label>
+      <label class="field field--full"><span class="field__label">Observações importantes (uma por linha — aparecem no comprovante do cliente)</span>
+        <textarea class="input" rows="2" id="emi-prod-${prodId}-${perna}-observacoes" placeholder="Ex: Tarifa Light, sem direito a reembolso. Remarcação com multa de R$ 300."></textarea>
+      </label>
+      ${pernaFinanceiroHtml(prodId, perna)}`;
   }
 
   function passagemCamposHtml(prodId) {
@@ -640,9 +713,13 @@
     // Preserva o que já foi digitado nos cards existentes — sem isso, adicionar/remover
     // um produto reconstrói o HTML inteiro e apaga os dados dos outros já preenchidos
     // (foi o que aconteceu com o "trecho da volta": ao adicionar o 2º card de passagem,
-    // o 1º perdia os dados).
+    // o 1º perdia os dados). Exclui inputs de arquivo: navegador nunca deixa restaurar o
+    // valor de um <input type="file"> por script (só aceita voltar pra vazio) — tentar
+    // atribuir o valor antigo lança um erro que interrompe o "forEach" no meio, deixando
+    // TODOS os campos seguintes (ex: custo/milhas/fornecedor, que vêm depois do campo de
+    // arquivo no HTML) sem ser restaurados. Isso já causou exatamente esse sintoma.
     const salvos = {};
-    wrap.querySelectorAll("input,select,textarea").forEach((e) => { if (e.id) salvos[e.id] = e.value; });
+    wrap.querySelectorAll("input:not([type=file]),select,textarea").forEach((e) => { if (e.id) salvos[e.id] = e.value; });
 
     if (produtos.length === 0) {
       wrap.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum produto adicionado ainda</p></div>';
@@ -685,32 +762,16 @@
           </div>` : ""}
 
           <div class="orc-milhas-box">
-            <div class="orc-milhas-title">Financeiro</div>
+            <div class="orc-milhas-title">${isPassagem ? "Cobrança do cliente" : "Financeiro"}</div>
             <div class="form__grid">
-              ${isPassagem ? `
-                <label class="field"><span class="field__label">Como foi comprada</span>
-                  <select class="input" id="emi-prod-${prod.id}-compra_tipo">
-                    <option value="milhas">Milhas</option>
-                    <option value="tarifado">Tarifado / operadora (dinheiro)</option>
-                  </select>
-                </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-milhas"><span class="field__label">Qtd. milhas <span class="table__muted">(informativo — controle do fornecedor)</span></span>
-                  <input type="number" class="input" id="emi-prod-${prod.id}-qtd_milhas" />
-                </label>
-                <label class="field" id="emi-prod-${prod.id}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
-                  <input type="number" class="input" id="emi-prod-${prod.id}-valor_milha" step="0.01" />
-                </label>
-                <label class="field"><span class="field__label">💸 CUSTO TOTAL — quanto NÓS pagamos, já com taxas/ajustes (R$)</span>
-                  <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
-                </label>
-              ` : `
+              ${isPassagem ? "" : `
                 <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos (R$)</span>
                   <input type="number" class="input" id="emi-prod-${prod.id}-custo" step="0.01" />
                 </label>
+                <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
+                  <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
+                </label>
               `}
-              <label class="field"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
-                <select class="input emi-sel-fornecedor" id="emi-prod-${prod.id}-fornecedor">${montarOptionsFornecedor(null)}</select>
-              </label>
               <label class="field field--full orc-field--highlight"><span class="field__label">💰 VALOR COBRADO DO CLIENTE — total (soma das formas de pagamento abaixo) (R$) ★</span>
                 <div class="emi-valor-total-display" id="emi-prod-${prod.id}-valor-total-display">R$ 0,00</div>
               </label>
@@ -748,20 +809,6 @@
       const removeBtn = document.querySelector(`[data-remove-prod="${prod.id}"]`);
       if (removeBtn) removeBtn.addEventListener("click", () => removeProduto(prod.id));
 
-      const compraTipoEl = gel(`emi-prod-${prod.id}-compra_tipo`);
-      if (compraTipoEl) {
-        const atualizarCompraTipo = () => {
-          const milhas = compraTipoEl.value === "milhas";
-          gel(`emi-prod-${prod.id}-wrap-milhas`).hidden = !milhas;
-          gel(`emi-prod-${prod.id}-wrap-milheiro`).hidden = !milhas;
-          // "Custo" fica sempre visível: mesmo comprando com milhas, o custo total é
-          // digitado à mão (pode ter ajuste com o milheiro, taxa de embarque etc.) — não
-          // é mais calculado automaticamente a partir de qtd. milhas × valor do milheiro.
-        };
-        compraTipoEl.addEventListener("change", atualizarCompraTipo);
-        atualizarCompraTipo();
-      }
-
       const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
       if (idaVoltaEl) {
         idaVoltaEl.checked = !!idaVoltaPorProduto[prod.id];
@@ -783,6 +830,40 @@
               if (!segmentosPorProduto[prod.id][perna]) segmentosPorProduto[prod.id][perna] = [];
               segmentosPorProduto[prod.id][perna].push(novoSegmento());
               renderSegmentos(prod.id, perna);
+            });
+          }
+
+          const compraTipoEl = gel(`emi-prod-${prod.id}-${perna}-compra_tipo`);
+          if (compraTipoEl) {
+            const atualizarCompraTipo = () => {
+              const milhas = compraTipoEl.value === "milhas";
+              gel(`emi-prod-${prod.id}-${perna}-wrap-milhas`).hidden = !milhas;
+              gel(`emi-prod-${prod.id}-${perna}-wrap-milheiro`).hidden = !milhas;
+              // "Custo" fica sempre visível: mesmo comprando com milhas, o custo é digitado
+              // à mão (pode ter ajuste com o milheiro, taxa de embarque etc.) — não é mais
+              // calculado automaticamente a partir de qtd. milhas × valor do milheiro.
+            };
+            compraTipoEl.addEventListener("change", atualizarCompraTipo);
+            atualizarCompraTipo();
+          }
+
+          const fornecedorPernaEl = gel(`emi-prod-${prod.id}-${perna}-fornecedor`);
+          if (fornecedorPernaEl) {
+            fornecedorPernaEl.addEventListener("change", async () => {
+              if (fornecedorPernaEl.value !== "__novo__") return;
+              const nome = prompt("Nome do novo fornecedor (milheiro/site/operadora):");
+              if (!nome || !nome.trim()) { fornecedorPernaEl.value = ""; return; }
+              try {
+                const [criado] = await chamarEmissoes("criar_fornecedor", { nome: nome.trim() });
+                fornecedoresCache.push(criado);
+                document.querySelectorAll(".emi-sel-fornecedor").forEach((sel) => {
+                  const valorAtual = sel === fornecedorPernaEl ? criado.id : sel.value;
+                  sel.innerHTML = montarOptionsFornecedor(valorAtual);
+                });
+              } catch (err) {
+                alert("Erro ao criar fornecedor: " + err.message);
+                fornecedorPernaEl.value = "";
+              }
             });
           }
         });
@@ -870,6 +951,14 @@
     if (!segmentosPorProduto[prodId]) segmentosPorProduto[prodId] = {};
     segmentosPorProduto[prodId][perna] = segs;
     renderSegmentos(prodId, perna);
+
+    const bagagemEl = gel(`emi-prod-${prodId}-${perna}-bagagem`);
+    if (bagagemEl && ex.bagagem) bagagemEl.value = ex.bagagem;
+    const obsEl = gel(`emi-prod-${prodId}-${perna}-observacoes`);
+    if (obsEl && ex.observacoes) obsEl.value = ex.observacoes;
+
+    const milhas = Number(ex.milhas) || 0;
+    if (milhas > 0) { const el = gel(`emi-prod-${prodId}-${perna}-qtd_milhas`); if (el) el.value = milhas; }
   }
 
   async function analisarDocumento(prodId, tipo, imageSrc, zone) {
@@ -880,7 +969,7 @@
     if (hintEl) hintEl.textContent = "⏳ Analisando...";
 
     const prompt = tipo === "passagem"
-      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
+      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
     const content = mime === "application/pdf"
@@ -907,8 +996,9 @@
         aplicarPernaExtraida(prodId, "ida", ex);
 
         // Print único mostrando ida e volta juntas (reserva round-trip): marca "Ida e
-        // volta" e preenche o segundo bloco, no MESMO card — ida e volta são uma compra
-        // só, com um valor/custo só.
+        // volta" e preenche o segundo bloco, no MESMO card — continuam sendo 1 produto/1
+        // cobrança do cliente, mas cada perna tem seu próprio financeiro (fornecedor/
+        // milhas/custo podem ser diferentes, ex: ida e volta compradas separadamente).
         if (ex.volta && typeof ex.volta === "object") {
           const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
           const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
@@ -918,8 +1008,6 @@
           aplicarPernaExtraida(prodId, "volta", ex.volta);
         }
 
-        const milhasTotal = (Number(ex.milhas) || 0) + (ex.volta ? (Number(ex.volta.milhas) || 0) : 0);
-        if (milhasTotal > 0) { const el = gel(`emi-prod-${prodId}-qtd_milhas`); if (el) el.value = milhasTotal; }
         const taxaEl = gel(`emi-prod-${prodId}-dados-taxa_embarque`);
         if (taxaEl && ex.taxa_embarque != null) taxaEl.value = ex.taxa_embarque;
       } else {
@@ -959,8 +1047,26 @@
       return { dados_novos, tamanho_mala: tamanho_mala.trim(), observacoes: observacoes.trim() };
     });
 
+    // Lê o financeiro (fornecedor/milhas/custo) de UMA perna de passagem — ida e volta têm
+    // cada uma o seu, já que às vezes são compradas de fornecedores diferentes.
+    const lerFinanceiroPerna = (prodId, perna) => {
+      const compraTipoEl = gel(`emi-prod-${prodId}-${perna}-compra_tipo`);
+      const compraMilhas = compraTipoEl ? compraTipoEl.value === "milhas" : false;
+      const fornecedorEl = gel(`emi-prod-${prodId}-${perna}-fornecedor`);
+      const fornecedorValor = fornecedorEl ? fornecedorEl.value : "";
+      return {
+        // "__novo__" é só o gatilho do "+ Novo fornecedor..." — nunca é um id válido.
+        fornecedor_id: (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null,
+        valor_milha: compraMilhas ? (parseFloat((gel(`emi-prod-${prodId}-${perna}-valor_milha`) || {}).value) || null) : null,
+        qtd_milhas: compraMilhas ? (parseFloat((gel(`emi-prod-${prodId}-${perna}-qtd_milhas`) || {}).value) || null) : null,
+        custo: parseFloat((gel(`emi-prod-${prodId}-${perna}-custo`) || {}).value) || 0,
+      };
+    };
+
     const produtosPayload = produtos.map((prod) => {
       let dados;
+      let financeiroIda = null, financeiroVolta = null;
+
       if (prod.tipo === "passagem") {
         const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
         const isIdaVolta = idaVoltaEl ? idaVoltaEl.checked : false;
@@ -969,13 +1075,22 @@
           segmentos: ((segmentosPorProduto[prod.id] || {})[perna] || [])
             .filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada)
             .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
+          bagagem: (gel(`emi-prod-${prod.id}-${perna}-bagagem`) || {}).value || "",
+          observacoes: (gel(`emi-prod-${prod.id}-${perna}-observacoes`) || {}).value || "",
         });
+        financeiroIda = lerFinanceiroPerna(prod.id, "ida");
+        // O financeiro de cada perna fica dentro de "dados.ida"/"dados.volta" (não é uma
+        // coluna própria) — assim dá pra recarregar certinho ao editar, e o backend lê
+        // "dados.volta.financeiro" pra registrar a dívida com o fornecedor da volta à parte.
         dados = {
           ida_volta: isIdaVolta,
-          ida: lerPerna("ida"),
+          ida: { ...lerPerna("ida"), financeiro: financeiroIda },
           taxa_embarque: (gel(`emi-prod-${prod.id}-dados-taxa_embarque`) || {}).value || "",
         };
-        if (isIdaVolta) dados.volta = lerPerna("volta");
+        if (isIdaVolta) {
+          financeiroVolta = lerFinanceiroPerna(prod.id, "volta");
+          dados.volta = { ...lerPerna("volta"), financeiro: financeiroVolta };
+        }
       } else {
         dados = {};
         (DADOS_CFG[prod.tipo] || []).forEach((f) => { dados[f.id] = (gel(`emi-prod-${prod.id}-dados-${f.id}`) || {}).value || ""; });
@@ -984,10 +1099,6 @@
       let indices = passageiros.filter((p) => (paxSelecionados[prod.id] || new Set()).has(p.id)).map((p) => idxPorPaxId.get(p.id));
       if (indices.length === 0) indices = passageiros.map((_, i) => i); // ninguém marcado -> aplica a todos
 
-      const compraTipoEl = gel(`emi-prod-${prod.id}-compra_tipo`);
-      const compraMilhas = compraTipoEl ? compraTipoEl.value === "milhas" : false;
-      const fornecedorValor = gel(`emi-prod-${prod.id}-fornecedor`).value;
-
       // Formas de pagamento: 1 ou mais, cada uma com seu próprio valor — o valor total
       // da linha é sempre a soma delas, nunca digitado à parte.
       const pagamentos = (pagamentosPorProduto[prod.id] || [])
@@ -995,15 +1106,27 @@
         .map((pg) => ({ forma: pg.forma, valor: Number(pg.valor) || 0, data_faturamento: pg.forma === "faturado" ? (pg.dataFaturamento || null) : null }));
       const valorVenda = pagamentos.reduce((s, pg) => s + pg.valor, 0);
 
+      // Fora de passagem, custo/fornecedor continuam no nível do card, como sempre.
+      let fornecedorId = null, valorMilha = null, qtdMilhas = null, custo = null;
+      if (prod.tipo === "passagem") {
+        fornecedorId = financeiroIda.fornecedor_id;
+        valorMilha   = financeiroIda.valor_milha;
+        qtdMilhas    = financeiroIda.qtd_milhas;
+        custo        = financeiroIda.custo + (financeiroVolta ? financeiroVolta.custo : 0);
+      } else {
+        const fornecedorValor = gel(`emi-prod-${prod.id}-fornecedor`).value;
+        fornecedorId = (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null;
+        custo = parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null;
+      }
+
       return {
         tipo: prod.tipo,
         passageiro_indices: indices,
         dados,
-        // "__novo__" é só o gatilho do "+ Novo fornecedor..." — nunca é um id válido.
-        fornecedor_id: (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null,
-        valor_milha: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-valor_milha`).value) || null) : null,
-        qtd_milhas: compraMilhas ? (parseFloat(gel(`emi-prod-${prod.id}-qtd_milhas`).value) || null) : null,
-        custo: parseFloat(gel(`emi-prod-${prod.id}-custo`).value) || null,
+        fornecedor_id: fornecedorId,
+        valor_milha: valorMilha,
+        qtd_milhas: qtdMilhas,
+        custo,
         valor_venda: valorVenda,
         pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
@@ -1128,7 +1251,24 @@
           const voltaWrap = gel(`emi-prod-${novoProdId}-volta-wrap`);
           if (voltaWrap) voltaWrap.hidden = !d.ida_volta;
         }
-        const restaurarPerna = (perna, obj) => {
+        // financeiroFallback: registros salvos antes do financeiro virar "por perna" só
+        // têm fornecedor/milhas/custo no nível do produto — nesse caso, cai tudo na ida
+        // (era assim que funcionava antes).
+        const restaurarFinanceiroPerna = (perna, financeiro) => {
+          if (!financeiro) return;
+          const fornecedorEl = gel(`emi-prod-${novoProdId}-${perna}-fornecedor`);
+          if (fornecedorEl) fornecedorEl.value = financeiro.fornecedor_id || "";
+          const compraTipoEl = gel(`emi-prod-${novoProdId}-${perna}-compra_tipo`);
+          if (compraTipoEl) {
+            compraTipoEl.value = (financeiro.valor_milha != null && financeiro.qtd_milhas != null) ? "milhas" : "tarifado";
+            compraTipoEl.dispatchEvent(new Event("change"));
+          }
+          const valorMilhaEl = gel(`emi-prod-${novoProdId}-${perna}-valor_milha`); if (valorMilhaEl && financeiro.valor_milha != null) valorMilhaEl.value = financeiro.valor_milha;
+          const qtdMilhasEl = gel(`emi-prod-${novoProdId}-${perna}-qtd_milhas`); if (qtdMilhasEl && financeiro.qtd_milhas != null) qtdMilhasEl.value = financeiro.qtd_milhas;
+          const custoEl = gel(`emi-prod-${novoProdId}-${perna}-custo`); if (custoEl && financeiro.custo != null) custoEl.value = financeiro.custo;
+        };
+
+        const restaurarPerna = (perna, obj, financeiroFallback) => {
           if (!obj) return;
           const locEl = gel(`emi-prod-${novoProdId}-loc-${perna}`);
           if (locEl) locEl.value = obj.localizador || "";
@@ -1141,9 +1281,14 @@
               }))
             : [novoSegmento()];
           renderSegmentos(novoProdId, perna);
+          const bagagemEl = gel(`emi-prod-${novoProdId}-${perna}-bagagem`); if (bagagemEl) bagagemEl.value = obj.bagagem || "";
+          const obsEl = gel(`emi-prod-${novoProdId}-${perna}-observacoes`); if (obsEl) obsEl.value = obj.observacoes || "";
+          restaurarFinanceiroPerna(perna, obj.financeiro || financeiroFallback);
         };
-        restaurarPerna("ida", d.ida);
-        restaurarPerna("volta", d.volta);
+        // Fallback só pra ida: registros antigos (antes do financeiro por perna) têm
+        // fornecedor/milhas/custo direto no produto, sem "dados.ida.financeiro".
+        restaurarPerna("ida", d.ida, { fornecedor_id: p.fornecedor_id, valor_milha: p.valor_milha, qtd_milhas: p.qtd_milhas, custo: p.custo });
+        restaurarPerna("volta", d.volta, null);
         const taxaEl = gel(`emi-prod-${novoProdId}-dados-taxa_embarque`);
         if (taxaEl && d.taxa_embarque != null) taxaEl.value = d.taxa_embarque;
       } else {
@@ -1151,19 +1296,11 @@
           const el = gel(`emi-prod-${novoProdId}-dados-${f.id}`);
           if (el && p.dados && p.dados[f.id] != null) el.value = p.dados[f.id];
         });
-      }
 
-      const fornecedorEl = gel(`emi-prod-${novoProdId}-fornecedor`);
-      if (fornecedorEl) fornecedorEl.value = p.fornecedor_id || "";
-
-      const compraTipoEl = gel(`emi-prod-${novoProdId}-compra_tipo`);
-      if (compraTipoEl) {
-        compraTipoEl.value = (p.valor_milha != null && p.qtd_milhas != null) ? "milhas" : "tarifado";
-        compraTipoEl.dispatchEvent(new Event("change"));
+        const fornecedorEl = gel(`emi-prod-${novoProdId}-fornecedor`);
+        if (fornecedorEl) fornecedorEl.value = p.fornecedor_id || "";
+        const custoEl = gel(`emi-prod-${novoProdId}-custo`); if (custoEl && p.custo != null) custoEl.value = p.custo;
       }
-      const valorMilhaEl = gel(`emi-prod-${novoProdId}-valor_milha`); if (valorMilhaEl && p.valor_milha != null) valorMilhaEl.value = p.valor_milha;
-      const qtdMilhasEl = gel(`emi-prod-${novoProdId}-qtd_milhas`); if (qtdMilhasEl && p.qtd_milhas != null) qtdMilhasEl.value = p.qtd_milhas;
-      const custoEl = gel(`emi-prod-${novoProdId}-custo`); if (custoEl && p.custo != null) custoEl.value = p.custo;
 
       // Formas de pagamento salvas (jsonb) — se o registro é de antes desse campo existir,
       // reconstrói uma única linha a partir dos campos antigos (forma_pagamento/valor_venda).
@@ -1257,12 +1394,42 @@
       </div>`;
   }
 
+  // Bagagem + observações + "acesse o site da companhia" de UMA perna — cada perna pode
+  // ser de uma companhia diferente (ex: ida e volta compradas separadas), então o site de
+  // gerenciamento é detectado a partir da própria companhia dos trechos dessa perna, não
+  // de um valor fixo pro card inteiro.
+  function infoImportantesPernaHtml(info) {
+    const items = [];
+    if (info.bagagem) items.push({ icon: "🧳", text: `<strong>Bagagem:</strong> ${escHtml(info.bagagem)}` });
+
+    (info.observacoes || "").split("\n").map((l) => l.trim()).filter(Boolean).forEach((linha) => {
+      items.push({ icon: "📌", text: escHtml(linha) });
+    });
+
+    const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
+    const companhia = segmentos.find((s) => s.companhia)?.companhia || "";
+    const airline = findAirline(companhia);
+    if (airline) {
+      items.push({
+        icon: "🌐",
+        text: `Você pode acessar e acompanhar esta reserva diretamente no site da <strong>${escHtml(airline.label)}</strong>: <strong>${escHtml(airline.path)}</strong>`,
+      });
+    }
+
+    if (!items.length) return "";
+    return `
+      <ul class="conf-obs-lista" style="margin-bottom:14px">
+        ${items.map((it) => `<li class="conf-obs-item"><span class="conf-obs-icon">${it.icon}</span><span>${it.text}</span></li>`).join("")}
+      </ul>`;
+  }
+
   function cardPassagemComprovante(dados, valorVenda) {
     const d = dados || {};
     const isIdaVolta = !!d.ida_volta && d.volta;
     const pernasHtml = isIdaVolta
-      ? pernaComprovanteHtml("IDA", d.ida || {}) + pernaComprovanteHtml("VOLTA", d.volta)
-      : pernaComprovanteHtml("PASSAGEM", d.ida || d);
+      ? pernaComprovanteHtml("IDA", d.ida || {}) + infoImportantesPernaHtml(d.ida || {})
+        + pernaComprovanteHtml("VOLTA", d.volta) + infoImportantesPernaHtml(d.volta)
+      : pernaComprovanteHtml("PASSAGEM", d.ida || d) + infoImportantesPernaHtml(d.ida || d);
     return `
       <div class="orc-prev-flight-card">
         <div class="orc-prev-flight-card-header">

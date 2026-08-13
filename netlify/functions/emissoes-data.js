@@ -391,6 +391,28 @@ async function criarEmissao(data, secretKey) {
           emissao_produto_id: produtoCriado.id,
         });
       }
+
+      // Passagem "ida e volta" com fornecedor/milhas próprios pra volta (comprada separada
+      // da ida, ex: companhias diferentes): o custo de cada perna já entrou somado no
+      // "custo" do produto acima (pro lucro total ficar certo), mas a dívida com o
+      // fornecedor da volta só aparece em Financeiro > Fornecedores se ela tiver o próprio
+      // lançamento com o sheet_meta dela — daí esse lançamento extra, valor 0 (não é uma
+      // cobrança a mais do cliente, só registro de custo/milhas pro controle de fornecedor).
+      const voltaFinanceiro = prod.tipo === "passagem" ? (prod.dados && prod.dados.volta && prod.dados.volta.financeiro) : null;
+      if (voltaFinanceiro && voltaFinanceiro.fornecedor_id && voltaFinanceiro.valor_milha != null && voltaFinanceiro.qtd_milhas != null) {
+        await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
+          tipo: "entrada",
+          status: "pago",
+          fonte: "emissao_app",
+          descricao: "Custo da volta (fornecedor separado)" + (emissao.destino ? " — " + emissao.destino : ""),
+          categoria: TIPO_LABEL[prod.tipo],
+          valor: 0,
+          vencimento: dataVenda,
+          fornecedor_id: voltaFinanceiro.fornecedor_id,
+          sheet_meta: { valor_milha: voltaFinanceiro.valor_milha, qtd_milhas: voltaFinanceiro.qtd_milhas },
+          emissao_produto_id: produtoCriado.id,
+        });
+      }
     }
 
     return { emissao: emissaoCriada, passageiros: passageirosCriados, produtos: produtosCriados };
