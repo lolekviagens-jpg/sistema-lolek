@@ -258,8 +258,16 @@
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
   const funcSelecionadas = {};       // produtoId -> Set(nomeVendedora) — sobrevive a re-render das checkboxes
   const pagamentosPorProduto = {};   // produtoId -> [{ id, forma, valor, dataFaturamento }] — permite dividir o pagamento em mais de uma forma
-  const idaVoltaPorProduto = {};     // produtoId -> bool — sobrevive a re-render, igual paxSelecionados/funcSelecionadas
-  const segmentosPorProduto = {};    // produtoId -> { ida: [{id,trecho,companhia,voo,horario_partida,horario_chegada}], volta: [...] }
+  // produtoId -> "ida" | "ida_volta" | "multitrechos" — controla quantos/quais blocos de
+  // trecho aparecem no card de passagem.
+  const modoPassagemPorProduto = {};
+  // produtoId -> [{ id, label }] — a LISTA de trechos ativos desse produto. Em "ida" tem 1
+  // (id "ida"); em "ida e volta" tem 2 fixos (ids "ida"/"volta"); em "multitrechos" tem N,
+  // com id gerado, pra viagens com 3+ pernas (ex: FOR→LIS→ROM→FOR) ou ida/volta com
+  // companhias tão diferentes que faz mais sentido tratar como trechos soltos.
+  const trechosPorProduto = {};
+  // produtoId -> { <trechoId>: [{id,trecho,companhia,voo,horario_partida,horario_chegada}] }
+  const segmentosPorProduto = {};
   let emissoesSalvas = null;
   let filtroListaEmi = "data"; // "data" (padrão, lista cronológica como na planilha) ou "viagem" (agrupado)
   let filtroMesEmi = "";          // "" = todos os meses, ou "YYYY-MM"
@@ -445,8 +453,9 @@
     paxSelecionados[id] = new Set(passageiros.map((p) => p.id));
     funcSelecionadas[id] = new Set();
     pagamentosPorProduto[id] = [novoPagamento("pix")];
-    idaVoltaPorProduto[id] = false;
-    segmentosPorProduto[id] = { ida: [novoSegmento()], volta: [] };
+    modoPassagemPorProduto[id] = "ida";
+    trechosPorProduto[id] = [{ id: "ida", label: "Passagem" }];
+    segmentosPorProduto[id] = { ida: [novoSegmento()] };
     renderProdutos();
   }
 
@@ -455,8 +464,51 @@
     delete paxSelecionados[id];
     delete funcSelecionadas[id];
     delete pagamentosPorProduto[id];
-    delete idaVoltaPorProduto[id];
+    delete modoPassagemPorProduto[id];
+    delete trechosPorProduto[id];
     delete segmentosPorProduto[id];
+    renderProdutos();
+  }
+
+  // Troca o modo (ida / ida e volta / multitrechos) de um produto de passagem, ajustando a
+  // lista de trechos ativos sem perder o que já foi digitado nos trechos que continuam
+  // existindo (ex: trocar de "ida e volta" pra "multitrechos" mantém ida e volta como estão
+  // e só passa a permitir adicionar mais).
+  function definirModoPassagem(prodId, modo) {
+    modoPassagemPorProduto[prodId] = modo;
+    const atuais = trechosPorProduto[prodId] || [];
+
+    // Reaproveita os ids dos trechos que já existiam (ex: "ida"/"volta") — o que já foi
+    // digitado neles (segmentosPorProduto, campos com id) continua lá, já que nada disso é
+    // apagado aqui, só a LISTA de quais trechos aparecem é que muda.
+    if (modo === "ida") {
+      trechosPorProduto[prodId] = [{ id: "ida", label: "Passagem" }];
+    } else if (modo === "ida_volta") {
+      trechosPorProduto[prodId] = [
+        { id: "ida", label: "Ida" },
+        { id: "volta", label: "Volta" },
+      ];
+    } else {
+      // multitrechos: reaproveita os trechos que já existiam (relabelados "Trecho N"),
+      // garante pelo menos 2 pra já vir num formato útil.
+      const base = atuais.length > 0 ? atuais : [{ id: "ida" }, { id: "volta" }];
+      trechosPorProduto[prodId] = base.map((t, i) => ({ id: t.id, label: "Trecho " + (i + 1) }));
+    }
+
+    renderProdutos();
+  }
+
+  function adicionarTrecho(prodId) {
+    const lista = trechosPorProduto[prodId] || (trechosPorProduto[prodId] = []);
+    lista.push({ id: novoId("trecho"), label: "Trecho " + (lista.length + 1) });
+    renderProdutos();
+  }
+
+  function removerTrecho(prodId, trechoId) {
+    const lista = trechosPorProduto[prodId];
+    if (!lista || lista.length <= 1) return;
+    trechosPorProduto[prodId] = lista.filter((t) => t.id !== trechoId).map((t, i) => ({ ...t, label: "Trecho " + (i + 1) }));
+    delete (segmentosPorProduto[prodId] || {})[trechoId];
     renderProdutos();
   }
 
@@ -539,69 +591,84 @@
   // Financeiro de UMA perna (ida ou volta) — fica dentro do bloco da perna porque ida e
   // volta às vezes são compradas de fornecedores/milheiros diferentes, com custo e milhas
   // próprios, mesmo sendo uma passagem só pro cliente (1 valor cobrado, 1 pagamento).
-  function pernaFinanceiroHtml(prodId, perna) {
+  function trechoFinanceiroHtml(prodId, trechoId) {
     return `
       <div class="orc-milhas-box" style="margin-top:10px">
-        <div class="orc-milhas-title">Financeiro da ${perna === "ida" ? "ida" : "volta"}</div>
+        <div class="orc-milhas-title">Financeiro deste trecho</div>
         <div class="form__grid">
           <label class="field"><span class="field__label">Como foi comprada</span>
-            <select class="input" id="emi-prod-${prodId}-${perna}-compra_tipo">
+            <select class="input" id="emi-prod-${prodId}-${trechoId}-compra_tipo">
               <option value="milhas">Milhas</option>
               <option value="tarifado">Tarifado / operadora (dinheiro)</option>
             </select>
           </label>
-          <label class="field" id="emi-prod-${prodId}-${perna}-wrap-milhas"><span class="field__label">Qtd. milhas <span class="table__muted">(informativo)</span></span>
-            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-qtd_milhas" />
+          <label class="field" id="emi-prod-${prodId}-${trechoId}-wrap-milhas"><span class="field__label">Qtd. milhas <span class="table__muted">(informativo)</span></span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${trechoId}-qtd_milhas" />
           </label>
-          <label class="field" id="emi-prod-${prodId}-${perna}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
-            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-valor_milha" step="0.01" />
+          <label class="field" id="emi-prod-${prodId}-${trechoId}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${trechoId}-valor_milha" step="0.01" />
           </label>
-          <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos nesta perna (R$)</span>
-            <input type="number" class="input" id="emi-prod-${prodId}-${perna}-custo" step="0.01" />
+          <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos neste trecho (R$)</span>
+            <input type="number" class="input" id="emi-prod-${prodId}-${trechoId}-custo" step="0.01" />
           </label>
           <label class="field field--full"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
-            <select class="input emi-sel-fornecedor" id="emi-prod-${prodId}-${perna}-fornecedor">${montarOptionsFornecedor(null)}</select>
+            <select class="input emi-sel-fornecedor" id="emi-prod-${prodId}-${trechoId}-fornecedor">${montarOptionsFornecedor(null)}</select>
           </label>
         </div>
       </div>`;
   }
 
-  function pernaFormHtml(prodId, perna, titulo) {
+  function trechoFormHtml(prodId, trechoId, label, removivel) {
     return `
-      <div class="orc-cost-divider" style="margin:${perna === "ida" ? "0" : "14px"} 0 8px"><span>${titulo}</span></div>
+      <div class="orc-cost-divider" style="margin:8px 0"><span>${escHtml(label)}</span>${removivel ? `<button type="button" class="orc-produto-remove emi-trecho-remover" data-trecho="${trechoId}" style="margin-left:auto">✕ Remover trecho</button>` : ""}</div>
       <label class="field field--full"><span class="field__label">Localizador / código</span>
-        <input type="text" class="input" id="emi-prod-${prodId}-loc-${perna}" />
+        <input type="text" class="input" id="emi-prod-${prodId}-loc-${trechoId}" />
       </label>
-      <div id="emi-prod-${prodId}-${perna}-segmentos"></div>
-      <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${perna}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar trecho (conexão)</button>
+      <div id="emi-prod-${prodId}-${trechoId}-segmentos"></div>
+      <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${trechoId}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar conexão/escala neste trecho</button>
 
-      <div class="orc-foto-zone" id="emi-prod-${prodId}-${perna}-fotozone" tabindex="0">
-        <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste o print/arquivo do bilhete ${perna === "ida" ? "da ida" : "da volta"} pra IA ler os dados</div>
-        <input type="file" id="emi-prod-${prodId}-${perna}-arquivo-input" accept="image/*,.pdf" hidden />
+      <div class="orc-foto-zone" id="emi-prod-${prodId}-${trechoId}-fotozone" tabindex="0">
+        <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste o print/arquivo deste trecho pra IA ler os dados</div>
+        <input type="file" id="emi-prod-${prodId}-${trechoId}-arquivo-input" accept="image/*,.pdf" hidden />
       </div>
       <div style="display:flex;justify-content:center;margin:6px 0 10px">
-        <button type="button" id="emi-prod-${prodId}-${perna}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
+        <button type="button" id="emi-prod-${prodId}-${trechoId}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
       </div>
 
-      <label class="field field--full"><span class="field__label">Bagagem (franquia desta perna)</span>
-        <input type="text" class="input" id="emi-prod-${prodId}-${perna}-bagagem" placeholder="Ex: 1 despachada 23kg + 1 de mão 10kg" />
+      <label class="field field--full"><span class="field__label">Bagagem (franquia deste trecho)</span>
+        <input type="text" class="input" id="emi-prod-${prodId}-${trechoId}-bagagem" placeholder="Ex: 1 despachada 23kg + 1 de mão 10kg" />
       </label>
       <label class="field field--full"><span class="field__label">Observações importantes (uma por linha — aparecem no comprovante do cliente)</span>
-        <textarea class="input" rows="2" id="emi-prod-${prodId}-${perna}-observacoes" placeholder="Ex: Tarifa Light, sem direito a reembolso. Remarcação com multa de R$ 300."></textarea>
+        <textarea class="input" rows="2" id="emi-prod-${prodId}-${trechoId}-observacoes" placeholder="Ex: Tarifa Light, sem direito a reembolso. Remarcação com multa de R$ 300."></textarea>
       </label>
-      ${pernaFinanceiroHtml(prodId, perna)}`;
+      ${trechoFinanceiroHtml(prodId, trechoId)}`;
   }
 
   function passagemCamposHtml(prodId) {
+    const modo = modoPassagemPorProduto[prodId] || "ida";
+    const trechos = trechosPorProduto[prodId] || [];
+    const modos = [
+      { v: "ida", l: "Somente ida" },
+      { v: "ida_volta", l: "Ida e volta" },
+      { v: "multitrechos", l: "Múltiplos trechos" },
+    ];
     return `
-      <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:0.85rem">
-        <input type="checkbox" id="emi-prod-${prodId}-ida_volta" />
-        Ida e volta <span class="table__muted">(desmarcado = somente ida)</span>
-      </label>
-      ${pernaFormHtml(prodId, "ida", "Ida")}
-      <div id="emi-prod-${prodId}-volta-wrap" hidden>
-        ${pernaFormHtml(prodId, "volta", "Volta")}
+      <div class="form__grid" style="margin-bottom:10px">
+        <label class="field field--full"><span class="field__label">Tipo de passagem</span>
+          <select class="input emi-modo-passagem" id="emi-prod-${prodId}-modo" data-prod="${prodId}">
+            ${modos.map((m) => `<option value="${m.v}" ${m.v === modo ? "selected" : ""}>${m.l}</option>`).join("")}
+          </select>
+        </label>
       </div>
+      <div class="table__muted" style="font-size:0.76rem;margin:-4px 0 10px">
+        ${modo === "ida" ? "Um trecho só, sem volta." : modo === "ida_volta"
+          ? "Ida e volta — se forem companhias/bilhetes diferentes, cada uma tem sua própria zona de arquivo e financeiro."
+          : "Quantos trechos precisar — útil pra ida/volta com bilhetes bem separados ou roteiros com 3+ paradas (ex: FOR → LIS → ROM → FOR)."}
+      </div>
+      <div id="emi-prod-${prodId}-trechos-wrap">
+        ${trechos.map((t) => trechoFormHtml(prodId, t.id, t.label, modo === "multitrechos" && trechos.length > 1)).join("")}
+      </div>
+      ${modo === "multitrechos" ? `<button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-add-trecho" style="margin:4px 0 10px;font-size:0.78rem">+ Adicionar trecho</button>` : ""}
       <div class="form__grid" style="margin-top:10px">
         <label class="field"><span class="field__label">Taxa de embarque total (R$, informativo)</span>
           <input type="number" class="input" id="emi-prod-${prodId}-dados-taxa_embarque" step="0.01" />
@@ -811,19 +878,15 @@
       const removeBtn = document.querySelector(`[data-remove-prod="${prod.id}"]`);
       if (removeBtn) removeBtn.addEventListener("click", () => removeProduto(prod.id));
 
-      const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
-      if (idaVoltaEl) {
-        idaVoltaEl.checked = !!idaVoltaPorProduto[prod.id];
-        const voltaWrapEl = gel(`emi-prod-${prod.id}-volta-wrap`);
-        if (voltaWrapEl) voltaWrapEl.hidden = !idaVoltaEl.checked;
-        idaVoltaEl.addEventListener("change", () => {
-          idaVoltaPorProduto[prod.id] = idaVoltaEl.checked;
-          if (voltaWrapEl) voltaWrapEl.hidden = !idaVoltaEl.checked;
-        });
+      const modoEl = gel(`emi-prod-${prod.id}-modo`);
+      if (modoEl) {
+        modoEl.addEventListener("change", () => definirModoPassagem(prod.id, modoEl.value));
       }
+      const addTrechoBtn = gel(`emi-prod-${prod.id}-add-trecho`);
+      if (addTrechoBtn) addTrechoBtn.addEventListener("click", () => adicionarTrecho(prod.id));
 
       if (isPassagem) {
-        ["ida", "volta"].forEach((perna) => {
+        (trechosPorProduto[prod.id] || []).forEach(({ id: perna }) => {
           renderSegmentos(prod.id, perna);
           const addSegBtn = gel(`emi-prod-${prod.id}-${perna}-add-seg`);
           if (addSegBtn) {
@@ -834,6 +897,9 @@
               renderSegmentos(prod.id, perna);
             });
           }
+
+          const removerTrechoBtn = document.querySelector(`.emi-trecho-remover[data-trecho="${perna}"]`);
+          if (removerTrechoBtn) removerTrechoBtn.addEventListener("click", () => removerTrecho(prod.id, perna));
 
           const compraTipoEl = gel(`emi-prod-${prod.id}-${perna}-compra_tipo`);
           if (compraTipoEl) {
@@ -948,6 +1014,31 @@
     }
   }
 
+  // Lê "dados" de um produto de passagem já salvo e devolve { modo, trechos } no formato
+  // novo (lista), aceitando tanto o formato atual (dados.trechos) quanto o antigo (dados.
+  // ida/dados.volta, de antes de existir "multitrechos" e financeiro por trecho — nesse
+  // caso o financeiro cai todo no 1º trecho, igual funcionava antes).
+  function normalizarTrechosPassagem(p) {
+    const d = p.dados || {};
+    if (Array.isArray(d.trechos) && d.trechos.length > 0) {
+      return { modo: d.modo || (d.trechos.length > 1 ? "ida_volta" : "ida"), trechos: d.trechos };
+    }
+    const idaObj = d.ida || d;
+    const trechos = [{
+      id: "ida", label: d.volta ? "Ida" : "Passagem",
+      localizador: idaObj.localizador, segmentos: idaObj.segmentos, bagagem: idaObj.bagagem, observacoes: idaObj.observacoes,
+      financeiro: idaObj.financeiro || { fornecedor_id: p.fornecedor_id, valor_milha: p.valor_milha, qtd_milhas: p.qtd_milhas, custo: p.custo },
+    }];
+    if (d.volta) {
+      trechos.push({
+        id: "volta", label: "Volta",
+        localizador: d.volta.localizador, segmentos: d.volta.segmentos, bagagem: d.volta.bagagem, observacoes: d.volta.observacoes,
+        financeiro: d.volta.financeiro || null,
+      });
+    }
+    return { modo: d.volta ? "ida_volta" : "ida", trechos };
+  }
+
   // ===== Leitura de print por IA (passagem / hospedagem) =====
   // prefixo: "ida" ou "volta" — os dois trechos ficam no mesmo card de passagem.
   // Aplica os dados extraídos pela IA numa perna (ida ou volta): localizador + a lista de
@@ -1014,35 +1105,29 @@
 
       let zonaFinal = pernaAlvo || "ida";
 
-      if (tipo === "passagem" && pernaAlvo === "volta") {
-        // Bilhete separado da volta (upload feito direto na zona da volta): o conteúdo
-        // inteiro do documento é a volta, mesmo que a IA não tenha rotulado assim — não
-        // mexe na ida nem olha um "volta" aninhado (não deveria existir num bilhete
-        // avulso, mas por segurança).
-        const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
-        const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
-        if (idaVoltaEl) idaVoltaEl.checked = true;
-        if (voltaWrap) voltaWrap.hidden = false;
-        idaVoltaPorProduto[prodId] = true;
-        aplicarPernaExtraida(prodId, "volta", ex);
-      } else if (tipo === "passagem") {
-        aplicarPernaExtraida(prodId, "ida", ex);
+      if (tipo === "passagem") {
+        const modoAtual = modoPassagemPorProduto[prodId] || "ida";
+        // O auto-split "um documento mostrando ida e volta juntas" só faz sentido quando o
+        // upload foi feito na zona da ida, num produto ainda em modo "ida" ou "ida e volta"
+        // (2 pernas fixas) — em multitrechos cada zona já é um trecho explícito, então cada
+        // upload preenche só aquele trecho, sem tentar adivinhar mais nada.
+        const podeAutoExpandir = zonaFinal === "ida" && modoAtual !== "multitrechos" && ex.volta && typeof ex.volta === "object";
 
-        // Print único mostrando ida e volta juntas (reserva round-trip): marca "Ida e
-        // volta" e preenche o segundo bloco, no MESMO card — continuam sendo 1 produto/1
-        // cobrança do cliente, mas cada perna tem seu próprio financeiro (fornecedor/
-        // milhas/custo podem ser diferentes, ex: ida e volta compradas separadamente).
-        if (ex.volta && typeof ex.volta === "object") {
-          const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
-          const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
-          if (idaVoltaEl) idaVoltaEl.checked = true;
-          if (voltaWrap) voltaWrap.hidden = false;
-          idaVoltaPorProduto[prodId] = true;
+        aplicarPernaExtraida(prodId, zonaFinal, ex);
+
+        if (podeAutoExpandir) {
+          // Print único mostrando ida e volta juntas (reserva round-trip): garante que o
+          // trecho de volta existe e preenche com o que veio aninhado em "ex.volta" —
+          // continua sendo 1 produto/1 cobrança do cliente, mas cada trecho tem seu
+          // próprio financeiro (fornecedor/milhas/custo podem ser diferentes).
+          if (modoAtual === "ida") definirModoPassagem(prodId, "ida_volta");
           aplicarPernaExtraida(prodId, "volta", ex.volta);
         }
 
-        const taxaEl = gel(`emi-prod-${prodId}-dados-taxa_embarque`);
-        if (taxaEl && ex.taxa_embarque != null) taxaEl.value = ex.taxa_embarque;
+        if (zonaFinal === "ida" || zonaFinal === trechosPorProduto[prodId]?.[0]?.id) {
+          const taxaEl = gel(`emi-prod-${prodId}-dados-taxa_embarque`);
+          if (taxaEl && ex.taxa_embarque != null) taxaEl.value = ex.taxa_embarque;
+        }
       } else {
         const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
         fill("hotel", ex.hotel);
@@ -1101,32 +1186,40 @@
 
     const produtosPayload = produtos.map((prod) => {
       let dados;
-      let financeiroIda = null, financeiroVolta = null;
+      let financeirosTrechos = []; // [{fornecedor_id, valor_milha, qtd_milhas, custo}, ...] na ordem dos trechos
 
       if (prod.tipo === "passagem") {
-        const idaVoltaEl = gel(`emi-prod-${prod.id}-ida_volta`);
-        const isIdaVolta = idaVoltaEl ? idaVoltaEl.checked : false;
-        const lerPerna = (perna) => ({
-          localizador: (gel(`emi-prod-${prod.id}-loc-${perna}`) || {}).value || "",
-          segmentos: ((segmentosPorProduto[prod.id] || {})[perna] || [])
-            .filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada)
-            .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
-          bagagem: (gel(`emi-prod-${prod.id}-${perna}-bagagem`) || {}).value || "",
-          observacoes: (gel(`emi-prod-${prod.id}-${perna}-observacoes`) || {}).value || "",
-        });
-        financeiroIda = lerFinanceiroPerna(prod.id, "ida");
-        // O financeiro de cada perna fica dentro de "dados.ida"/"dados.volta" (não é uma
-        // coluna própria) — assim dá pra recarregar certinho ao editar, e o backend lê
-        // "dados.volta.financeiro" pra registrar a dívida com o fornecedor da volta à parte.
+        const modo = modoPassagemPorProduto[prod.id] || "ida";
+        const listaTrechos = trechosPorProduto[prod.id] || [];
+        const lerTrecho = (t) => {
+          const financeiro = lerFinanceiroPerna(prod.id, t.id);
+          financeirosTrechos.push(financeiro);
+          return {
+            id: t.id,
+            label: t.label,
+            localizador: (gel(`emi-prod-${prod.id}-loc-${t.id}`) || {}).value || "",
+            segmentos: ((segmentosPorProduto[prod.id] || {})[t.id] || [])
+              .filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada)
+              .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
+            bagagem: (gel(`emi-prod-${prod.id}-${t.id}-bagagem`) || {}).value || "",
+            observacoes: (gel(`emi-prod-${prod.id}-${t.id}-observacoes`) || {}).value || "",
+            financeiro,
+          };
+        };
+        const trechosLidos = listaTrechos.map(lerTrecho);
+
+        // "dados.ida"/"dados.volta"/"dados.ida_volta" continuam existindo (1º trecho vira
+        // ida, último vira volta) só pra manter o Check-in (checkin.js) funcionando — ele
+        // lê especificamente esses dois nomes. "dados.trechos" é a lista completa de
+        // verdade, usada pelo comprovante e por aqui mesmo ao editar depois.
         dados = {
-          ida_volta: isIdaVolta,
-          ida: { ...lerPerna("ida"), financeiro: financeiroIda },
+          modo,
+          trechos: trechosLidos,
+          ida_volta: trechosLidos.length > 1,
+          ida: trechosLidos[0] || { segmentos: [] },
           taxa_embarque: (gel(`emi-prod-${prod.id}-dados-taxa_embarque`) || {}).value || "",
         };
-        if (isIdaVolta) {
-          financeiroVolta = lerFinanceiroPerna(prod.id, "volta");
-          dados.volta = { ...lerPerna("volta"), financeiro: financeiroVolta };
-        }
+        if (trechosLidos.length > 1) dados.volta = trechosLidos[trechosLidos.length - 1];
       } else {
         dados = {};
         (DADOS_CFG[prod.tipo] || []).forEach((f) => { dados[f.id] = (gel(`emi-prod-${prod.id}-dados-${f.id}`) || {}).value || ""; });
@@ -1145,10 +1238,11 @@
       // Fora de passagem, custo/fornecedor continuam no nível do card, como sempre.
       let fornecedorId = null, valorMilha = null, qtdMilhas = null, custo = null;
       if (prod.tipo === "passagem") {
-        fornecedorId = financeiroIda.fornecedor_id;
-        valorMilha   = financeiroIda.valor_milha;
-        qtdMilhas    = financeiroIda.qtd_milhas;
-        custo        = financeiroIda.custo + (financeiroVolta ? financeiroVolta.custo : 0);
+        const primeiro = financeirosTrechos[0] || { fornecedor_id: null, valor_milha: null, qtd_milhas: null, custo: 0 };
+        fornecedorId = primeiro.fornecedor_id;
+        valorMilha   = primeiro.valor_milha;
+        qtdMilhas    = primeiro.qtd_milhas;
+        custo        = financeirosTrechos.reduce((s, f) => s + (f.custo || 0), 0);
       } else {
         const fornecedorValor = gel(`emi-prod-${prod.id}-fornecedor`).value;
         fornecedorId = (fornecedorValor && fornecedorValor !== "__novo__") ? fornecedorValor : null;
@@ -1178,7 +1272,8 @@
     Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
     Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
     Object.keys(pagamentosPorProduto).forEach((k) => delete pagamentosPorProduto[k]);
-    Object.keys(idaVoltaPorProduto).forEach((k) => delete idaVoltaPorProduto[k]);
+    Object.keys(modoPassagemPorProduto).forEach((k) => delete modoPassagemPorProduto[k]);
+    Object.keys(trechosPorProduto).forEach((k) => delete trechosPorProduto[k]);
     Object.keys(segmentosPorProduto).forEach((k) => delete segmentosPorProduto[k]);
     ["emi-destino", "emi-data-ida", "emi-data-volta", "emi-tipo-viagem", "emi-obs-gerais"].forEach((id) => { const el = gel(id); if (el) el.value = ""; });
     renderPassageiros(); renderProdutos();
@@ -1272,6 +1367,27 @@
       const obs = gel(`emi-pax-${novoPaxId}-obs`); if (obs) obs.value = pax.observacoes || "";
     });
 
+    // Passagem: prepara modo/trechos/segmentos ANTES do primeiro render — os blocos de
+    // trecho só aparecem no HTML de acordo com esse estado, então precisam existir antes
+    // de tentar preencher valor nenhum neles.
+    prodsOriginais.forEach((p, i) => {
+      if (p.tipo !== "passagem") return;
+      const novoProdId = produtos[i].id;
+      const { modo, trechos } = normalizarTrechosPassagem(p);
+      modoPassagemPorProduto[novoProdId] = modo;
+      trechosPorProduto[novoProdId] = trechos.map((t) => ({ id: t.id, label: t.label }));
+      segmentosPorProduto[novoProdId] = {};
+      trechos.forEach((t) => {
+        segmentosPorProduto[novoProdId][t.id] = (Array.isArray(t.segmentos) && t.segmentos.length > 0)
+          ? t.segmentos.map((s) => ({
+              id: novoId("seg"),
+              trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+              horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
+            }))
+          : [novoSegmento()];
+      });
+    });
+
     renderProdutos();
     prodsOriginais.forEach((p, i) => {
       const novoProdId = produtos[i].id;
@@ -1280,51 +1396,30 @@
 
       if (p.tipo === "passagem") {
         const d = p.dados || {};
-        idaVoltaPorProduto[novoProdId] = !!d.ida_volta;
-        const idaVoltaEl = gel(`emi-prod-${novoProdId}-ida_volta`);
-        if (idaVoltaEl) {
-          idaVoltaEl.checked = !!d.ida_volta;
-          const voltaWrap = gel(`emi-prod-${novoProdId}-volta-wrap`);
-          if (voltaWrap) voltaWrap.hidden = !d.ida_volta;
-        }
-        // financeiroFallback: registros salvos antes do financeiro virar "por perna" só
-        // têm fornecedor/milhas/custo no nível do produto — nesse caso, cai tudo na ida
-        // (era assim que funcionava antes).
-        const restaurarFinanceiroPerna = (perna, financeiro) => {
+        const { trechos } = normalizarTrechosPassagem(p);
+
+        trechos.forEach((t) => {
+          const locEl = gel(`emi-prod-${novoProdId}-loc-${t.id}`);
+          if (locEl) locEl.value = t.localizador || "";
+          renderSegmentos(novoProdId, t.id); // já semeado na 1ª passada, só desenha
+
+          const bagagemEl = gel(`emi-prod-${novoProdId}-${t.id}-bagagem`); if (bagagemEl) bagagemEl.value = t.bagagem || "";
+          const obsEl = gel(`emi-prod-${novoProdId}-${t.id}-observacoes`); if (obsEl) obsEl.value = t.observacoes || "";
+
+          const financeiro = t.financeiro;
           if (!financeiro) return;
-          const fornecedorEl = gel(`emi-prod-${novoProdId}-${perna}-fornecedor`);
+          const fornecedorEl = gel(`emi-prod-${novoProdId}-${t.id}-fornecedor`);
           if (fornecedorEl) fornecedorEl.value = financeiro.fornecedor_id || "";
-          const compraTipoEl = gel(`emi-prod-${novoProdId}-${perna}-compra_tipo`);
+          const compraTipoEl = gel(`emi-prod-${novoProdId}-${t.id}-compra_tipo`);
           if (compraTipoEl) {
             compraTipoEl.value = (financeiro.valor_milha != null && financeiro.qtd_milhas != null) ? "milhas" : "tarifado";
             compraTipoEl.dispatchEvent(new Event("change"));
           }
-          const valorMilhaEl = gel(`emi-prod-${novoProdId}-${perna}-valor_milha`); if (valorMilhaEl && financeiro.valor_milha != null) valorMilhaEl.value = financeiro.valor_milha;
-          const qtdMilhasEl = gel(`emi-prod-${novoProdId}-${perna}-qtd_milhas`); if (qtdMilhasEl && financeiro.qtd_milhas != null) qtdMilhasEl.value = financeiro.qtd_milhas;
-          const custoEl = gel(`emi-prod-${novoProdId}-${perna}-custo`); if (custoEl && financeiro.custo != null) custoEl.value = financeiro.custo;
-        };
+          const valorMilhaEl = gel(`emi-prod-${novoProdId}-${t.id}-valor_milha`); if (valorMilhaEl && financeiro.valor_milha != null) valorMilhaEl.value = financeiro.valor_milha;
+          const qtdMilhasEl = gel(`emi-prod-${novoProdId}-${t.id}-qtd_milhas`); if (qtdMilhasEl && financeiro.qtd_milhas != null) qtdMilhasEl.value = financeiro.qtd_milhas;
+          const custoEl = gel(`emi-prod-${novoProdId}-${t.id}-custo`); if (custoEl && financeiro.custo != null) custoEl.value = financeiro.custo;
+        });
 
-        const restaurarPerna = (perna, obj, financeiroFallback) => {
-          if (!obj) return;
-          const locEl = gel(`emi-prod-${novoProdId}-loc-${perna}`);
-          if (locEl) locEl.value = obj.localizador || "";
-          if (!segmentosPorProduto[novoProdId]) segmentosPorProduto[novoProdId] = {};
-          segmentosPorProduto[novoProdId][perna] = (Array.isArray(obj.segmentos) && obj.segmentos.length > 0)
-            ? obj.segmentos.map((s) => ({
-                id: novoId("seg"),
-                trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
-                horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
-              }))
-            : [novoSegmento()];
-          renderSegmentos(novoProdId, perna);
-          const bagagemEl = gel(`emi-prod-${novoProdId}-${perna}-bagagem`); if (bagagemEl) bagagemEl.value = obj.bagagem || "";
-          const obsEl = gel(`emi-prod-${novoProdId}-${perna}-observacoes`); if (obsEl) obsEl.value = obj.observacoes || "";
-          restaurarFinanceiroPerna(perna, obj.financeiro || financeiroFallback);
-        };
-        // Fallback só pra ida: registros antigos (antes do financeiro por perna) têm
-        // fornecedor/milhas/custo direto no produto, sem "dados.ida.financeiro".
-        restaurarPerna("ida", d.ida, { fornecedor_id: p.fornecedor_id, valor_milha: p.valor_milha, qtd_milhas: p.qtd_milhas, custo: p.custo });
-        restaurarPerna("volta", d.volta, null);
         const taxaEl = gel(`emi-prod-${novoProdId}-dados-taxa_embarque`);
         if (taxaEl && d.taxa_embarque != null) taxaEl.value = d.taxa_embarque;
       } else {
@@ -1459,17 +1554,27 @@
       </ul>`;
   }
 
+  // Mesma normalização de normalizarTrechosPassagem, mas só com o "dados" (sem a linha do
+  // produto inteira) — o comprovante não precisa de financeiro, só do que aparece pro
+  // cliente (localizador/trechos/bagagem/observações).
+  function normalizarTrechosComprovante(d) {
+    if (Array.isArray(d.trechos) && d.trechos.length > 0) return d.trechos;
+    const trechos = [{ label: d.volta ? "Ida" : "Passagem", ...(d.ida || d) }];
+    if (d.volta) trechos.push({ label: "Volta", ...d.volta });
+    return trechos;
+  }
+
   function cardPassagemComprovante(dados, valorVenda) {
     const d = dados || {};
-    const isIdaVolta = !!d.ida_volta && d.volta;
-    const pernasHtml = isIdaVolta
-      ? pernaComprovanteHtml("IDA", d.ida || {}) + infoImportantesPernaHtml(d.ida || {})
-        + pernaComprovanteHtml("VOLTA", d.volta) + infoImportantesPernaHtml(d.volta)
-      : pernaComprovanteHtml("PASSAGEM", d.ida || d) + infoImportantesPernaHtml(d.ida || d);
+    const trechos = normalizarTrechosComprovante(d);
+    const titulo = trechos.length === 1 ? "PASSAGEM AÉREA" : trechos.length === 2 ? "IDA E VOLTA" : "MÚLTIPLOS TRECHOS";
+    const pernasHtml = trechos
+      .map((t) => pernaComprovanteHtml((t.label || "").toUpperCase(), t) + infoImportantesPernaHtml(t))
+      .join("");
     return `
       <div class="orc-prev-flight-card">
         <div class="orc-prev-flight-card-header">
-          <span class="orc-prev-flight-label">✈️ ${isIdaVolta ? "IDA E VOLTA" : "PASSAGEM AÉREA"}</span>
+          <span class="orc-prev-flight-label">✈️ ${titulo}</span>
           <span class="orc-prev-flight-card-voo">${fBRL(valorVenda)}</span>
         </div>
         <div style="padding:20px 24px 6px">${pernasHtml}</div>

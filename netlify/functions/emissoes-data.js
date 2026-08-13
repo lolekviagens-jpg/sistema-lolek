@@ -392,24 +392,27 @@ async function criarEmissao(data, secretKey) {
         });
       }
 
-      // Passagem "ida e volta" com fornecedor/milhas próprios pra volta (comprada separada
-      // da ida, ex: companhias diferentes): o custo de cada perna já entrou somado no
-      // "custo" do produto acima (pro lucro total ficar certo), mas a dívida com o
-      // fornecedor da volta só aparece em Financeiro > Fornecedores se ela tiver o próprio
-      // lançamento com o sheet_meta dela — daí esse lançamento extra, valor 0 (não é uma
-      // cobrança a mais do cliente, só registro de custo/milhas pro controle de fornecedor).
-      const voltaFinanceiro = prod.tipo === "passagem" ? (prod.dados && prod.dados.volta && prod.dados.volta.financeiro) : null;
-      if (voltaFinanceiro && voltaFinanceiro.fornecedor_id && voltaFinanceiro.valor_milha != null && voltaFinanceiro.qtd_milhas != null) {
+      // Passagem com 2+ trechos, cada um com fornecedor/milhas próprios (comprados
+      // separado, ex: ida e volta ou trechos de um roteiro em companhias diferentes): o
+      // custo de cada trecho já entrou somado no "custo" do produto acima (pro lucro total
+      // ficar certo) e o 1º trecho já vira o lançamento normal (fornecedor_id/sheet_meta
+      // do produto, no loop de pagamentos acima) — aqui é só o restante dos trechos (2º em
+      // diante), cada um com seu próprio lançamento extra de valor 0 (não é uma cobrança a
+      // mais do cliente, só registro de custo/milhas pro controle daquele fornecedor).
+      const trechosPassagem = prod.tipo === "passagem" && prod.dados && Array.isArray(prod.dados.trechos) ? prod.dados.trechos : [];
+      for (const trecho of trechosPassagem.slice(1)) {
+        const fin = trecho.financeiro;
+        if (!fin || !fin.fornecedor_id || fin.valor_milha == null || fin.qtd_milhas == null) continue;
         await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
           tipo: "entrada",
           status: "pago",
           fonte: "emissao_app",
-          descricao: "Custo da volta (fornecedor separado)" + (emissao.destino ? " — " + emissao.destino : ""),
+          descricao: "Custo — " + (trecho.label || "trecho") + " (fornecedor separado)" + (emissao.destino ? " — " + emissao.destino : ""),
           categoria: TIPO_LABEL[prod.tipo],
           valor: 0,
           vencimento: dataVenda,
-          fornecedor_id: voltaFinanceiro.fornecedor_id,
-          sheet_meta: { valor_milha: voltaFinanceiro.valor_milha, qtd_milhas: voltaFinanceiro.qtd_milhas },
+          fornecedor_id: fin.fornecedor_id,
+          sheet_meta: { valor_milha: fin.valor_milha, qtd_milhas: fin.qtd_milhas },
           emissao_produto_id: produtoCriado.id,
         });
       }
