@@ -588,13 +588,13 @@
     });
   }
 
-  // Financeiro de UMA perna (ida ou volta) — fica dentro do bloco da perna porque ida e
-  // volta às vezes são compradas de fornecedores/milheiros diferentes, com custo e milhas
-  // próprios, mesmo sendo uma passagem só pro cliente (1 valor cobrado, 1 pagamento).
-  function trechoFinanceiroHtml(prodId, trechoId) {
+  // Financeiro — normalmente é 1 só pra passagem inteira (mesma companhia/compra), mas em
+  // "multitrechos" cada trecho pode ter o seu (fornecedores/milheiros diferentes por
+  // trecho), daí o "trechoId" pra saber em qual bloco os campos ficam.
+  function trechoFinanceiroHtml(prodId, trechoId, titulo) {
     return `
       <div class="orc-milhas-box" style="margin-top:10px">
-        <div class="orc-milhas-title">Financeiro deste trecho</div>
+        <div class="orc-milhas-title">${escHtml(titulo)}</div>
         <div class="form__grid">
           <label class="field"><span class="field__label">Como foi comprada</span>
             <select class="input" id="emi-prod-${prodId}-${trechoId}-compra_tipo">
@@ -608,7 +608,7 @@
           <label class="field" id="emi-prod-${prodId}-${trechoId}-wrap-milheiro"><span class="field__label">Valor do milheiro (R$) <span class="table__muted">(informativo)</span></span>
             <input type="number" class="input" id="emi-prod-${prodId}-${trechoId}-valor_milha" step="0.01" />
           </label>
-          <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos neste trecho (R$)</span>
+          <label class="field"><span class="field__label">💸 CUSTO — quanto NÓS pagamos (R$)</span>
             <input type="number" class="input" id="emi-prod-${prodId}-${trechoId}-custo" step="0.01" />
           </label>
           <label class="field field--full"><span class="field__label">Fornecedor (milheiro / site / operadora) ★</span>
@@ -618,7 +618,22 @@
       </div>`;
   }
 
-  function trechoFormHtml(prodId, trechoId, label, removivel) {
+  function trechoUploadHtml(prodId, trechoId, hint) {
+    return `
+      <div class="orc-foto-zone" id="emi-prod-${prodId}-${trechoId}-fotozone" tabindex="0">
+        <div class="orc-foto-hint">📎 ${hint}</div>
+        <input type="file" id="emi-prod-${prodId}-${trechoId}-arquivo-input" accept="image/*,.pdf" hidden />
+      </div>
+      <div style="display:flex;justify-content:center;margin:6px 0 10px">
+        <button type="button" id="emi-prod-${prodId}-${trechoId}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
+      </div>`;
+  }
+
+  // comFinanceiroEArquivo: false pra "ida e volta" da MESMA compra — nesse caso o upload e
+  // o financeiro ficam só uma vez (no trecho "ida", compartilhado pros dois), porque é uma
+  // reserva só, lida de um documento só. Só fica true por trecho no modo "multitrechos",
+  // onde cada trecho pode ter vindo de uma compra/companhia diferente.
+  function trechoFormHtml(prodId, trechoId, label, removivel, comFinanceiroEArquivo) {
     return `
       <div class="orc-cost-divider" style="margin:8px 0"><span>${escHtml(label)}</span>${removivel ? `<button type="button" class="orc-produto-remove emi-trecho-remover" data-trecho="${trechoId}" style="margin-left:auto">✕ Remover trecho</button>` : ""}</div>
       <label class="field field--full"><span class="field__label">Localizador / código</span>
@@ -627,13 +642,7 @@
       <div id="emi-prod-${prodId}-${trechoId}-segmentos"></div>
       <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${trechoId}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar conexão/escala neste trecho</button>
 
-      <div class="orc-foto-zone" id="emi-prod-${prodId}-${trechoId}-fotozone" tabindex="0">
-        <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste o print/arquivo deste trecho pra IA ler os dados</div>
-        <input type="file" id="emi-prod-${prodId}-${trechoId}-arquivo-input" accept="image/*,.pdf" hidden />
-      </div>
-      <div style="display:flex;justify-content:center;margin:6px 0 10px">
-        <button type="button" id="emi-prod-${prodId}-${trechoId}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
-      </div>
+      ${comFinanceiroEArquivo ? trechoUploadHtml(prodId, trechoId, "Cole aqui (Ctrl+V) ou arraste o print/arquivo deste trecho pra IA ler os dados") : ""}
 
       <label class="field field--full"><span class="field__label">Bagagem (franquia deste trecho)</span>
         <input type="text" class="input" id="emi-prod-${prodId}-${trechoId}-bagagem" placeholder="Ex: 1 despachada 23kg + 1 de mão 10kg" />
@@ -641,7 +650,7 @@
       <label class="field field--full"><span class="field__label">Observações importantes (uma por linha — aparecem no comprovante do cliente)</span>
         <textarea class="input" rows="2" id="emi-prod-${prodId}-${trechoId}-observacoes" placeholder="Ex: Tarifa Light, sem direito a reembolso. Remarcação com multa de R$ 300."></textarea>
       </label>
-      ${trechoFinanceiroHtml(prodId, trechoId)}`;
+      ${comFinanceiroEArquivo ? trechoFinanceiroHtml(prodId, trechoId, "Financeiro deste trecho") : ""}`;
   }
 
   function passagemCamposHtml(prodId) {
@@ -662,12 +671,16 @@
       </div>
       <div class="table__muted" style="font-size:0.76rem;margin:-4px 0 10px">
         ${modo === "ida" ? "Um trecho só, sem volta." : modo === "ida_volta"
-          ? "Ida e volta — se forem companhias/bilhetes diferentes, cada uma tem sua própria zona de arquivo e financeiro."
-          : "Quantos trechos precisar — útil pra ida/volta com bilhetes bem separados ou roteiros com 3+ paradas (ex: FOR → LIS → ROM → FOR)."}
+          ? "Ida e volta da mesma compra/companhia — cole o bilhete uma vez, a IA lê os dois trechos automaticamente."
+          : "Quantos trechos precisar, cada um com seu próprio arquivo e financeiro — útil pra ida/volta com bilhetes bem separados (companhias diferentes) ou roteiros com 3+ paradas (ex: FOR → LIS → ROM → FOR)."}
       </div>
       <div id="emi-prod-${prodId}-trechos-wrap">
-        ${trechos.map((t) => trechoFormHtml(prodId, t.id, t.label, modo === "multitrechos" && trechos.length > 1)).join("")}
+        ${trechos.map((t) => trechoFormHtml(prodId, t.id, t.label, modo === "multitrechos" && trechos.length > 1, modo !== "ida_volta")).join("")}
       </div>
+      ${modo === "ida_volta" ? `
+        ${trechoUploadHtml(prodId, "ida", "Cole aqui (Ctrl+V) ou arraste o bilhete — se mostrar ida e volta juntas, os dois trechos acima são preenchidos automaticamente")}
+        ${trechoFinanceiroHtml(prodId, "ida", "Financeiro (ida e volta)")}
+      ` : ""}
       ${modo === "multitrechos" ? `<button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-add-trecho" style="margin:4px 0 10px;font-size:0.78rem">+ Adicionar trecho</button>` : ""}
       <div class="form__grid" style="margin-top:10px">
         <label class="field"><span class="field__label">Taxa de embarque total (R$, informativo)</span>
@@ -1117,11 +1130,13 @@
 
         if (podeAutoExpandir) {
           // Print único mostrando ida e volta juntas (reserva round-trip): garante que o
-          // trecho de volta existe e preenche com o que veio aninhado em "ex.volta" —
-          // continua sendo 1 produto/1 cobrança do cliente, mas cada trecho tem seu
-          // próprio financeiro (fornecedor/milhas/custo podem ser diferentes).
+          // trecho de volta existe e preenche com o que veio aninhado em "ex.volta". É a
+          // mesma compra/companhia, então o financeiro continua compartilhado (1 só) — as
+          // milhas dos dois trechos entram somadas no campo único da ida.
           if (modoAtual === "ida") definirModoPassagem(prodId, "ida_volta");
           aplicarPernaExtraida(prodId, "volta", ex.volta);
+          const milhasTotal = (Number(ex.milhas) || 0) + (Number(ex.volta.milhas) || 0);
+          if (milhasTotal > 0) { const el = gel(`emi-prod-${prodId}-ida-qtd_milhas`); if (el) el.value = milhasTotal; }
         }
 
         if (zonaFinal === "ida" || zonaFinal === trechosPorProduto[prodId]?.[0]?.id) {
