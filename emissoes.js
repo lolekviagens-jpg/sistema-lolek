@@ -574,6 +574,15 @@
       </label>
       <div id="emi-prod-${prodId}-${perna}-segmentos"></div>
       <button type="button" class="btn btn--ghost" id="emi-prod-${prodId}-${perna}-add-seg" style="margin:2px 0 10px;font-size:0.76rem">+ Adicionar trecho (conexão)</button>
+
+      <div class="orc-foto-zone" id="emi-prod-${prodId}-${perna}-fotozone" tabindex="0">
+        <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste o print/arquivo do bilhete ${perna === "ida" ? "da ida" : "da volta"} pra IA ler os dados</div>
+        <input type="file" id="emi-prod-${prodId}-${perna}-arquivo-input" accept="image/*,.pdf" hidden />
+      </div>
+      <div style="display:flex;justify-content:center;margin:6px 0 10px">
+        <button type="button" id="emi-prod-${prodId}-${perna}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
+      </div>
+
       <label class="field field--full"><span class="field__label">Bagagem (franquia desta perna)</span>
         <input type="text" class="input" id="emi-prod-${prodId}-${perna}-bagagem" placeholder="Ex: 1 despachada 23kg + 1 de mão 10kg" />
       </label>
@@ -746,13 +755,6 @@
 
           ${dadosSecaoHtml}
 
-          ${isPassagem ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
-            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da passagem/reserva pra IA ler os dados</div>
-            <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
-          </div>
-          <div style="display:flex;justify-content:center;margin:6px 0 10px">
-            <button type="button" id="emi-prod-${prod.id}-btn-arquivo" class="btn btn--ghost" style="font-size:0.78rem">📎 Selecionar arquivo (imagem ou PDF)</button>
-          </div>` : ""}
           ${prod.tipo === "hospedagem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
             <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da reserva do hotel pra IA ler os dados</div>
             <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
@@ -866,6 +868,13 @@
               }
             });
           }
+
+          wireFotoZone(
+            gel(`emi-prod-${prod.id}-${perna}-fotozone`),
+            gel(`emi-prod-${prod.id}-${perna}-arquivo-input`),
+            gel(`emi-prod-${prod.id}-${perna}-btn-arquivo`),
+            (imageSrc, zone) => analisarDocumento(prod.id, "passagem", imageSrc, zone, perna)
+          );
         });
       }
 
@@ -899,37 +908,44 @@
         });
       }
 
-      if (prod.tipo === "passagem" || prod.tipo === "hospedagem") {
-        const zone = gel(`emi-prod-${prod.id}-fotozone`);
-        const arquivoInput = gel(`emi-prod-${prod.id}-arquivo-input`);
-        const btnArquivo = gel(`emi-prod-${prod.id}-btn-arquivo`);
-        if (zone) {
-          const carregarArquivo = (file) => {
-            if (!file) return;
-            const r = new FileReader();
-            r.onload = (ev) => analisarDocumento(prod.id, prod.tipo, ev.target.result, zone);
-            r.readAsDataURL(file);
-          };
-
-          zone.addEventListener("paste", (e) => {
-            for (const item of (e.clipboardData?.items || [])) {
-              if (item.type.startsWith("image/")) { carregarArquivo(item.getAsFile()); break; }
-            }
-          });
-          zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
-          zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
-          zone.addEventListener("drop", (e) => {
-            e.preventDefault(); zone.classList.remove("dragover");
-            carregarArquivo(e.dataTransfer?.files?.[0]);
-          });
-
-          if (btnArquivo && arquivoInput) {
-            btnArquivo.addEventListener("click", () => arquivoInput.click());
-            arquivoInput.addEventListener("change", () => carregarArquivo(arquivoInput.files?.[0]));
-          }
-        }
+      if (prod.tipo === "hospedagem") {
+        wireFotoZone(
+          gel(`emi-prod-${prod.id}-fotozone`),
+          gel(`emi-prod-${prod.id}-arquivo-input`),
+          gel(`emi-prod-${prod.id}-btn-arquivo`),
+          (imageSrc, zone) => analisarDocumento(prod.id, "hospedagem", imageSrc, zone)
+        );
       }
     });
+  }
+
+  // Liga colar/arrastar/clicar-pra-selecionar numa zona de upload, chamando onFile(dataUrl,
+  // zone) quando um arquivo chega por qualquer um dos três caminhos.
+  function wireFotoZone(zone, arquivoInput, btnArquivo, onFile) {
+    if (!zone) return;
+    const carregarArquivo = (file) => {
+      if (!file) return;
+      const r = new FileReader();
+      r.onload = (ev) => onFile(ev.target.result, zone);
+      r.readAsDataURL(file);
+    };
+
+    zone.addEventListener("paste", (e) => {
+      for (const item of (e.clipboardData?.items || [])) {
+        if (item.type.startsWith("image/")) { carregarArquivo(item.getAsFile()); break; }
+      }
+    });
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("dragover"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault(); zone.classList.remove("dragover");
+      carregarArquivo(e.dataTransfer?.files?.[0]);
+    });
+
+    if (btnArquivo && arquivoInput) {
+      btnArquivo.addEventListener("click", () => arquivoInput.click());
+      arquivoInput.addEventListener("change", () => carregarArquivo(arquivoInput.files?.[0]));
+    }
   }
 
   // ===== Leitura de print por IA (passagem / hospedagem) =====
@@ -961,7 +977,11 @@
     if (milhas > 0) { const el = gel(`emi-prod-${prodId}-${perna}-qtd_milhas`); if (el) el.value = milhas; }
   }
 
-  async function analisarDocumento(prodId, tipo, imageSrc, zone) {
+  // pernaAlvo (só passagem): "ida" (padrão) ou "volta" — qual zona recebeu o arquivo.
+  // Upload feito na zona da volta é tratado como um bilhete separado só dessa perna (ida e
+  // volta às vezes são compradas em companhias diferentes, cada uma com seu próprio
+  // documento) — não mexe na ida nem olha um eventual "volta" aninhado na resposta.
+  async function analisarDocumento(prodId, tipo, imageSrc, zone, pernaAlvo) {
     const match = imageSrc.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return;
     const [, mime, b64] = match;
@@ -992,7 +1012,20 @@
       if (!jsonStr) throw new Error("Resposta inesperada da IA");
       const ex = JSON.parse(jsonStr);
 
-      if (tipo === "passagem") {
+      let zonaFinal = pernaAlvo || "ida";
+
+      if (tipo === "passagem" && pernaAlvo === "volta") {
+        // Bilhete separado da volta (upload feito direto na zona da volta): o conteúdo
+        // inteiro do documento é a volta, mesmo que a IA não tenha rotulado assim — não
+        // mexe na ida nem olha um "volta" aninhado (não deveria existir num bilhete
+        // avulso, mas por segurança).
+        const idaVoltaEl = gel(`emi-prod-${prodId}-ida_volta`);
+        const voltaWrap = gel(`emi-prod-${prodId}-volta-wrap`);
+        if (idaVoltaEl) idaVoltaEl.checked = true;
+        if (voltaWrap) voltaWrap.hidden = false;
+        idaVoltaPorProduto[prodId] = true;
+        aplicarPernaExtraida(prodId, "volta", ex);
+      } else if (tipo === "passagem") {
         aplicarPernaExtraida(prodId, "ida", ex);
 
         // Print único mostrando ida e volta juntas (reserva round-trip): marca "Ida e
@@ -1017,9 +1050,12 @@
         fill("checkin", ex.checkin); fill("checkout", ex.checkout);
         if (ex.custo != null) { const el = gel(`emi-prod-${prodId}-custo`); if (el) el.value = ex.custo; }
       }
-      // Reconsulta a zona/hint pelo id — se detectou volta, addProduto() re-renderizou a
-      // lista e o "zone"/"hintEl" capturados no início não existem mais no DOM.
-      const hintAtual = gel(`emi-prod-${prodId}-fotozone`)?.querySelector(".orc-foto-hint");
+      // Reconsulta a zona/hint pelo id — se detectou volta, o "voltaWrap" pode ter acabado
+      // de ficar visível, então o "zone"/"hintEl" capturados no início continuam válidos
+      // pra passagem (é sempre a mesma zona onde o arquivo entrou), mas refazemos a busca
+      // por segurança.
+      const hintId = tipo === "passagem" ? `emi-prod-${prodId}-${zonaFinal}-fotozone` : `emi-prod-${prodId}-fotozone`;
+      const hintAtual = gel(hintId)?.querySelector(".orc-foto-hint");
       if (hintAtual) hintAtual.textContent = "✓ Dados extraídos! Cole outro print pra tentar de novo.";
     } catch (err) {
       if (hintEl) hintEl.textContent = "Erro ao analisar: " + err.message + " — tente colar novamente.";
