@@ -3,7 +3,8 @@
   "use strict";
 
   const CHECKINS_FN = "/.netlify/functions/checkins";
-  const CONFIRMS_POLL_MS = 20000; // reconsulta as confirmações de outros computadores periodicamente
+  const CONFIRMS_POLL_MS = 20000;        // reconsulta as confirmações de outros computadores periodicamente
+  const DADOS_POLL_MS    = 5 * 60 * 1000; // recarrega passageiros/datas periodicamente (5 min)
 
   // ===== Estado =====
   let lastPassengers = [];
@@ -440,4 +441,12 @@
   renderCalendar(); // renderiza calendário vazio enquanto carrega
   carregarDados();
   setInterval(pollConfirms, CONFIRMS_POLL_MS);
+  // A lista de passageiros/datas era carregada só uma vez, na abertura da página — se a aba
+  // ficasse aberta de um dia pro outro (comum numa aba fixa do trabalho), "hoje"/"amanhã"
+  // nunca se atualizavam sozinhos e viagens novas/relevantes não apareciam até dar F5. Agora
+  // recarrega sozinho de tempos em tempos e sempre que a aba volta a ficar visível.
+  setInterval(carregarDados, DADOS_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) carregarDados();
+  });
 })();
