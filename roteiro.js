@@ -16,7 +16,7 @@
     "alto padrão": "Alto padrão / luxo",
   };
 
-  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-sonnet-4-6"; }
   function gel(id) { return document.getElementById(id); }
 
   // Contexto pra IA não "chutar" um ano errado (ex: 2024) quando o print não mostra o ano da data.

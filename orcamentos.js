@@ -8,7 +8,7 @@
 
   const LS_MODEL = "lolek_anthropic_model";
 
-  function getModel()    { return localStorage.getItem(LS_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel()    { return localStorage.getItem(LS_MODEL) || "claude-sonnet-4-6"; }
 
   // Contexto pra IA não "chutar" um ano errado (ex: 2024) quando o print não mostra o ano da data.
   function contextoDataAtual() {
@@ -1397,7 +1397,7 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
   // Modal: salvar
   document.getElementById("orc-ia-modal-save")?.addEventListener("click", () => {
     const modEl = document.getElementById("orc-ia-model");
-    const model = modEl?.value || "claude-haiku-4-5-20251001";
+    const model = modEl?.value || "claude-sonnet-4-6";
 
     localStorage.setItem(LS_MODEL, model);
 

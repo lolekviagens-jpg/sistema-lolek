@@ -25,7 +25,7 @@
     );
   }
 
-  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-sonnet-4-6"; }
 
   function fBRL(v) {
     return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

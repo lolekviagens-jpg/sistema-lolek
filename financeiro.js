@@ -26,7 +26,7 @@
     return "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-sonnet-4-6"; }
 
   // ===== Chamada à function do Financeiro (Supabase) =====
   async function chamar(action, data) {

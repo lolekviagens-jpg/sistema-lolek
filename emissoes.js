@@ -8,7 +8,7 @@
   "use strict";
 
   const LS_AI_MODEL = "lolek_anthropic_model";
-  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel() { return localStorage.getItem(LS_AI_MODEL) || "claude-sonnet-4-6"; }
   function gel(id) { return document.getElementById(id); }
 
   // Mapeamento de companhias → site de gerenciamento da reserva, pra montar a instrução

@@ -3,12 +3,48 @@
   "use strict";
 
   const SHEET_ID   = "1xyyqOlYBcxB1odxA09zCff6xax6l5vIceNQkmXoOips";
-  const LS_EVENTOS = "lolek_eventos_especiais";
-  const LS_ENVIADOS    = "lolek_fu_enviados";
-  const LS_DESCARTADOS = "lolek_fu_descartados";
 
   // Quantos dias o item fica oculto após envio (por seção)
   const DIAS_OCULTAR = { upsell: 30, reativacao: 60 };
+
+  // Tudo nesta aba fica sincronizado entre computadores (Supabase, ver
+  // netlify/functions/followup-data.js) — antes ficava no localStorage do navegador, então
+  // o que uma funcionária marcava/cadastrava num computador não aparecia pras outras, e
+  // cada uma via uma lista diferente.
+  async function chamarFollowup(action, data) {
+    const resp = await fetch("/.netlify/functions/followup-data", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, data: data || {} }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.error || "Erro HTTP " + resp.status);
+    return json;
+  }
+
+  let acoesCache = { enviados: {}, descartados: {} };
+
+  async function carregarAcoes() {
+    try {
+      const rows = await chamarFollowup("listar_acoes");
+      const enviados = {}, descartados = {};
+      (rows || []).forEach((r) => {
+        if (r.acao === "enviado") enviados[r.chave] = r.em;
+        else if (r.acao === "descartado") descartados[r.chave] = true;
+      });
+      acoesCache = { enviados, descartados };
+    } catch {
+      // falha de rede: segue com o que já tinha em memória (evita travar a aba inteira)
+    }
+  }
+
+  async function salvarAcao(chave, acao) {
+    try {
+      await chamarFollowup("marcar_acao", { chave, acao });
+    } catch (err) {
+      console.error("Não foi possível sincronizar a ação do follow-up:", err.message);
+    }
+  }
 
   // Abas da planilha "passagens emitidas"
   const ABAS = [
@@ -360,20 +396,14 @@
   }
 
   // ===== Controle de enviados =====
-  function getEnviados() {
-    try { return JSON.parse(localStorage.getItem(LS_ENVIADOS) || "{}"); }
-    catch { return {}; }
-  }
-
   function marcarEnviado(secao, nome) {
-    const env = getEnviados();
-    env[secao + ":" + normNome(nome)] = new Date().toISOString();
-    localStorage.setItem(LS_ENVIADOS, JSON.stringify(env));
+    const chave = secao + ":" + normNome(nome);
+    acoesCache.enviados[chave] = new Date().toISOString();
+    salvarAcao(chave, "enviado");
   }
 
   function getEnvio(secao, nome) {
-    const env = getEnviados();
-    return env[secao + ":" + normNome(nome)] || null;
+    return acoesCache.enviados[secao + ":" + normNome(nome)] || null;
   }
 
   function foiEnviadoRecente(secao, nome) {
@@ -385,19 +415,14 @@
     return new Date(ts) > limite;
   }
 
-  function getDescartados() {
-    try { return JSON.parse(localStorage.getItem(LS_DESCARTADOS) || "{}"); }
-    catch { return {}; }
-  }
-
   function descartar(secao, nome) {
-    const d = getDescartados();
-    d[secao + ":" + normNome(nome)] = true;
-    localStorage.setItem(LS_DESCARTADOS, JSON.stringify(d));
+    const chave = secao + ":" + normNome(nome);
+    acoesCache.descartados[chave] = true;
+    salvarAcao(chave, "descartado");
   }
 
   function foiDescartado(secao, nome) {
-    return !!getDescartados()[secao + ":" + normNome(nome)];
+    return !!acoesCache.descartados[secao + ":" + normNome(nome)];
   }
 
   function fmtEnvio(isoTs) {
@@ -528,14 +553,21 @@
   }
 
   // ===== Seção de eventos especiais (com mini-formulário) =====
-  function carregarEventos() {
-    try { return JSON.parse(localStorage.getItem(LS_EVENTOS) || "[]"); }
-    catch { return []; }
+  let eventosCache = [];
+
+  async function carregarEventosRemoto() {
+    try {
+      const rows = await chamarFollowup("listar_eventos");
+      eventosCache = (rows || []).map((r) => ({
+        id: r.id, nomeCliente: r.nome_cliente, ocasiao: r.ocasiao,
+        dataViagem: r.data_viagem, destino: r.destino, telefone: r.telefone,
+      }));
+    } catch {
+      // falha de rede: segue com o que já tinha em memória
+    }
   }
 
-  function salvarEventos(eventos) {
-    localStorage.setItem(LS_EVENTOS, JSON.stringify(eventos));
-  }
+  function carregarEventos() { return eventosCache; }
 
   function renderFormEventos() {
     return `
@@ -583,23 +615,28 @@
       container.innerHTML = `<p class="fu-vazio" style="margin:8px 0">Nenhum evento especial cadastrado.</p>`;
       return;
     }
-    container.innerHTML = eventos.map((e, i) => `
+    container.innerHTML = eventos.map((e) => `
       <div class="fu-card" style="margin-bottom:6px">
         <div class="fu-card__info">
           <div class="fu-card__nome">${esc(e.nomeCliente)}</div>
           <div class="fu-card__sub">${esc(e.ocasiao)} — ${esc(e.dataViagem)}${e.destino ? " · " + esc(e.destino) : ""}</div>
         </div>
         <div class="fu-card__actions">
-          <button class="btn btn--ghost btn--icon fu-ev-del" data-idx="${i}" title="Remover">✕</button>
+          <button class="btn btn--ghost btn--icon fu-ev-del" data-id="${esc(e.id)}" title="Remover">✕</button>
         </div>
       </div>`).join("");
 
     container.querySelectorAll(".fu-ev-del").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const ev = carregarEventos();
-        ev.splice(+btn.dataset.idx, 1);
-        salvarEventos(ev);
-        renderListaEventos(carregarEventos());
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          await chamarFollowup("excluir_evento", { id: btn.dataset.id });
+          eventosCache = eventosCache.filter((e) => e.id !== btn.dataset.id);
+          renderListaEventos(carregarEventos());
+        } catch (err) {
+          alert("Não foi possível remover: " + err.message);
+          btn.disabled = false;
+        }
       });
     });
   }
@@ -711,6 +748,8 @@
     const [viagensPlanilha, viagensEmissoes] = await Promise.all([
       carregarTodasViagens(),                     // histórico antigo (planilha, até a Nova Emissão existir)
       carregarViagensEmissoes(clienteNomePorId),  // dados atuais (Nova Emissão)
+      carregarAcoes(),                            // "enviado"/"descartado" — precisa estar pronto antes dos cálculos abaixo
+      carregarEventosRemoto(),                    // eventos especiais — idem
     ]);
     const viagens = [...viagensPlanilha, ...viagensEmissoes];
     if (!viagens.length) {
@@ -743,7 +782,7 @@
     btnAdicionar.addEventListener("click", () => { form.hidden = false; });
     btnCancelar.addEventListener("click",  () => { form.hidden = true; });
 
-    btnSalvar.addEventListener("click", () => {
+    btnSalvar.addEventListener("click", async () => {
       const nome    = (gel("fu-ev-nome").value    || "").trim();
       const ocasiao = gel("fu-ev-ocasiao").value;
       const data    = (gel("fu-ev-data").value    || "").trim();
@@ -752,9 +791,18 @@
 
       if (!nome || !data) { alert("Preencha ao menos o nome e a data."); return; }
 
-      const ev = carregarEventos();
-      ev.push({ nomeCliente: nome, ocasiao, dataViagem: data, destino, telefone: tel, criadoEm: new Date().toISOString().slice(0, 10) });
-      salvarEventos(ev);
+      btnSalvar.disabled = true;
+      try {
+        const criado = await chamarFollowup("criar_evento", {
+          nome_cliente: nome, ocasiao, data_viagem: data, destino, telefone: tel,
+        });
+        eventosCache.push({ id: criado.id, nomeCliente: nome, ocasiao, dataViagem: data, destino, telefone: tel });
+      } catch (err) {
+        alert("Não foi possível salvar: " + err.message);
+        btnSalvar.disabled = false;
+        return;
+      }
+      btnSalvar.disabled = false;
 
       form.hidden = true;
       gel("fu-ev-nome").value = gel("fu-ev-data").value = gel("fu-ev-destino").value = gel("fu-ev-tel").value = "";

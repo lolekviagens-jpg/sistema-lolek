@@ -14,7 +14,7 @@
   function norm(s) {
     return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
   }
-  function getModel()    { return localStorage.getItem(LS_AI_MODEL) || "claude-haiku-4-5-20251001"; }
+  function getModel()    { return localStorage.getItem(LS_AI_MODEL) || "claude-sonnet-4-6"; }
 
   // Extrai o primeiro objeto JSON balanceado da resposta da IA, ignorando qualquer
   // texto antes/depois (a IA às vezes não obedece "só JSON, sem texto adicional").
