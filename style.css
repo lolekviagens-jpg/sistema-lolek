@@ -649,9 +649,26 @@ textarea.input {
 
 /* Quando a tabela é mais larga que o cartão (muitas colunas), deixa rolar de
    lado em vez de simplesmente cortar/esconder as colunas do final — em
-   qualquer tamanho de tela, não só no celular. */
+   qualquer tamanho de tela, não só no celular. A barra de rolagem fica
+   SEMPRE visível (não só ao passar o mouse) — no Mac, por padrão, ela é
+   invisível até tocar, o que faz parecer que as outras colunas simplesmente
+   não existem, quando na verdade só precisam rolar pra aparecer. */
 .card:has(.table) {
   overflow-x: auto;
+  scrollbar-width: auto; /* Firefox: nunca usa o modo "fino"/discreto aqui */
+}
+
+.card:has(.table)::-webkit-scrollbar {
+  height: 10px;
+}
+
+.card:has(.table)::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+.card:has(.table)::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 5px;
 }
 
 .table {
