@@ -38,7 +38,7 @@
 //   create table venda_emissoes_produtos (
 //     id uuid primary key default gen_random_uuid(),
 //     emissao_id uuid not null references venda_emissoes(id) on delete cascade,
-//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro')),
+//     tipo text not null check (tipo in ('passagem','hospedagem','seguro','carro','trem','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro')),
 //     passageiro_ids jsonb not null default '[]',
 //     dados jsonb not null default '{}',
 //     fornecedor_id uuid references fornecedores(id),
@@ -66,11 +66,12 @@
 //   alter table financeiro_lancamentos add constraint financeiro_lancamentos_fonte_check
 //     check (fonte in ('manual','extrato_texto','extrato_ofx','extrato_csv','extrato_pdf','planilha_venda','emissao_app'));
 //
-//   -- Se a tabela venda_emissoes_produtos já existia antes destes 4 tipos novos
-//   -- (assento, consultoria_milhas, visto_americano, venda_milhas), rodar uma vez:
+//   -- Se a tabela venda_emissoes_produtos já existia antes destes tipos novos
+//   -- (assento, consultoria_milhas, visto_americano, venda_milhas, trem), rodar uma vez
+//   -- (inclui "trem", adicionado depois e esquecido aqui até 2026-08-17):
 //   alter table venda_emissoes_produtos drop constraint venda_emissoes_produtos_tipo_check;
 //   alter table venda_emissoes_produtos add constraint venda_emissoes_produtos_tipo_check
-//     check (tipo in ('passagem','hospedagem','seguro','carro','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro'));
+//     check (tipo in ('passagem','hospedagem','seguro','carro','trem','passeio','transfer','mala','assento','consultoria_milhas','visto_americano','venda_milhas','outro'));
 //
 //   -- Se a tabela já existia antes do campo "pagamentos" (múltiplas formas de pagamento
 //   -- por produto), rodar uma vez:
@@ -98,6 +99,7 @@ const TIPO_LABEL = {
   hospedagem: "Hospedagem",
   seguro:     "Seguro viagem",
   carro:      "Aluguel de carro",
+  trem:       "Trem",
   passeio:    "Passeio / Ingresso",
   transfer:   "Transfer",
   mala:       "Adicional de mala",
@@ -316,6 +318,19 @@ async function criarEmissao(data, secretKey) {
       passageirosCriados.push(passageiroCriado);
     }
 
+    // Nomes dos clientes — só pra linha de backup na planilha (ver enviarParaPlanilhaBackup
+    // logo abaixo); o resto da função só guarda cliente_id.
+    const idsClientesUnicos = [...new Set(passageirosCriados.map((p) => p.cliente_id).filter(Boolean))];
+    const clienteNomePorId = new Map();
+    if (idsClientesUnicos.length > 0) {
+      try {
+        const clientesRows = await supabaseRest("/clientes?id=in.(" + idsClientesUnicos.join(",") + ")&select=id,nome", "GET", secretKey);
+        (clientesRows || []).forEach((c) => clienteNomePorId.set(c.id, c.nome));
+      } catch (err) {
+        console.error("[emissoes-data] falha ao buscar nomes pro backup da planilha:", err.message);
+      }
+    }
+
     const hoje = new Date().toISOString().slice(0, 10);
 
     for (const prod of produtos) {
@@ -368,6 +383,17 @@ async function criarEmissao(data, secretKey) {
         data_venda: dataVenda,
       });
       produtosCriados.push(produtoCriado);
+
+      // Backup: espelha esta linha na planilha antiga do Drive (Apps Script), pra nunca
+      // depender só do Supabase. "await" aqui não é pra travar a emissão — é só pra
+      // garantir que o envio realmente saia antes da function encerrar (em ambiente
+      // serverless, sem esperar, a chamada pode ser cortada antes de completar). Falha
+      // no backup nunca derruba a emissão (enviarParaPlanilhaBackup nunca lança erro).
+      const nomesPaxProduto = passageiroIds.map((id) => {
+        const pax = passageirosCriados.find((p) => p.id === id);
+        return pax && clienteNomePorId.get(pax.cliente_id);
+      }).filter(Boolean).join(" / ");
+      await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
 
       // Um lançamento financeiro POR forma de pagamento — assim uma entrada de Pix e um
       // saldo faturado do mesmo produto aparecem como eventos de caixa distintos.
@@ -437,6 +463,107 @@ async function reverterEmissaoParcial(emissaoCriada, produtosCriados, clientesCr
   for (const clienteId of clientesCriadosNestaChamada) {
     await supabaseRest("/clientes?id=eq." + encodeURIComponent(clienteId), "DELETE", secretKey).catch(() => {});
   }
+}
+
+// ===== Backup automático na planilha antiga do Drive (Apps Script) =====
+// Variável de ambiente opcional: PLANILHA_BACKUP_URL — URL do Web App do Apps Script
+// (ver netlify/functions/../apps-script-backup.gs, ou o arquivo que a Thay tem). Se não
+// estiver configurada, simplesmente não faz nada (não é erro).
+function fmtDataBR(iso) {
+  if (!iso) return "";
+  const partes = String(iso).slice(0, 10).split("-");
+  return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : iso;
+}
+
+function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
+  const d = prod.dados || {};
+  let saida = "", companhia = "", reserva = "";
+
+  if (prod.tipo === "passagem") {
+    const ida = d.ida || d;
+    const seg = (ida.segmentos && ida.segmentos[0]) || ida;
+    const partesTrecho = (seg.trecho || "").split("→").map((s) => s.trim()).filter(Boolean);
+    saida = partesTrecho[0] || "";
+    companhia = seg.companhia || "";
+    reserva = ida.localizador || "";
+  } else if (prod.tipo === "hospedagem") {
+    companhia = d.hotel || "";
+    reserva = d.localizador || "";
+  } else if (prod.tipo === "carro") {
+    companhia = d.locadora || "";
+    reserva = d.localizador || "";
+  } else if (prod.tipo === "seguro") {
+    companhia = d.seguradora || "";
+    reserva = d.localizador || "";
+  } else if (prod.tipo === "trem") {
+    companhia = d.companhia || "";
+    reserva = d.localizador || "";
+  } else {
+    reserva = d.localizador || "";
+  }
+
+  const primeiraForma = (prod.pagamentos && prod.pagamentos[0] && prod.pagamentos[0].forma) || prod.forma_pagamento;
+
+  return {
+    data: fmtDataBR(produtoCriado.data_venda),
+    situacao: "AGUARDANDO VIAGEM",
+    venda: prod.funcionaria || "",
+    lead: prod.origem_lead || "",
+    nome: nomesPax || "",
+    ida: fmtDataBR(emissao.data_ida),
+    volta: fmtDataBR(emissao.data_volta),
+    saida,
+    destino: emissao.destino || "",
+    companhia,
+    milheiro: "", // fornecedor vira nome só via join — não vale o custo extra aqui, fica em branco
+    reserva,
+    forma: FORMA_PAG_LABEL[primeiraForma] || primeiraForma || "",
+    taxaEmbarque: prod.tipo === "passagem" ? (d.taxa_embarque || "") : "",
+    valorTotal: produtoCriado.valor_venda || "",
+    lucro: produtoCriado.lucro || "",
+    valorMilha: produtoCriado.valor_milha || "",
+    taxas: "",
+    qtdMilhas: produtoCriado.qtd_milhas || "",
+  };
+}
+
+async function enviarParaPlanilhaBackup(linha) {
+  const url = process.env.PLANILHA_BACKUP_URL;
+  if (!url) return; // backup não configurado — segue normalmente
+  try {
+    await postJsonSeguindoRedirect(url, linha);
+  } catch (err) {
+    console.error("[emissoes-data] falha ao espelhar na planilha de backup:", err.message);
+  }
+}
+
+// Apps Script Web Apps sempre respondem com um redirecionamento (302) antes do resultado
+// de verdade — https.request do Node não segue redirecionamento sozinho.
+function postJsonSeguindoRedirect(urlStr, body, redirectsRestantes) {
+  if (redirectsRestantes == null) redirectsRestantes = 4;
+  return new Promise((resolve, reject) => {
+    const u = new URL(urlStr);
+    const payload = JSON.stringify(body);
+    const options = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
+    };
+    const req = https.request(options, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && redirectsRestantes > 0) {
+        res.resume();
+        postJsonSeguindoRedirect(res.headers.location, body, redirectsRestantes - 1).then(resolve, reject);
+        return;
+      }
+      let chunks = "";
+      res.on("data", (c) => (chunks += c));
+      res.on("end", () => resolve(chunks));
+    });
+    req.on("error", reject);
+    req.write(payload);
+    req.end();
+  });
 }
 
 // ===== Chamada genérica para a REST API do Supabase (PostgREST) =====
