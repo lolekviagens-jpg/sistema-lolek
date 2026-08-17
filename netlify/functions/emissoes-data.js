@@ -531,29 +531,25 @@ async function enviarParaPlanilhaBackup(linha) {
   const url = process.env.PLANILHA_BACKUP_URL;
   if (!url) return; // backup não configurado — segue normalmente
   try {
-    await postJsonSeguindoRedirect(url, linha);
+    // GET, não POST: nesta conta do Google, o redirecionamento do Apps Script Web App só
+    // aceita GET/HEAD até o ponto de execução real (POST dá 405 antes do script rodar,
+    // confirmado testando manualmente) — os dados vão como parâmetro "dados" na URL.
+    const urlComDados = new URL(url);
+    urlComDados.searchParams.set("dados", JSON.stringify(linha));
+    await getSeguindoRedirect(urlComDados.toString());
   } catch (err) {
     console.error("[emissoes-data] falha ao espelhar na planilha de backup:", err.message);
   }
 }
 
-// Apps Script Web Apps sempre respondem com um redirecionamento (302) antes do resultado
-// de verdade — https.request do Node não segue redirecionamento sozinho.
-function postJsonSeguindoRedirect(urlStr, body, redirectsRestantes) {
+function getSeguindoRedirect(urlStr, redirectsRestantes) {
   if (redirectsRestantes == null) redirectsRestantes = 4;
   return new Promise((resolve, reject) => {
     const u = new URL(urlStr);
-    const payload = JSON.stringify(body);
-    const options = {
-      hostname: u.hostname,
-      path: u.pathname + u.search,
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) },
-    };
-    const req = https.request(options, (res) => {
+    const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: "GET" }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && redirectsRestantes > 0) {
         res.resume();
-        postJsonSeguindoRedirect(res.headers.location, body, redirectsRestantes - 1).then(resolve, reject);
+        getSeguindoRedirect(res.headers.location, redirectsRestantes - 1).then(resolve, reject);
         return;
       }
       let chunks = "";
@@ -561,7 +557,6 @@ function postJsonSeguindoRedirect(urlStr, body, redirectsRestantes) {
       res.on("end", () => resolve(chunks));
     });
     req.on("error", reject);
-    req.write(payload);
     req.end();
   });
 }
