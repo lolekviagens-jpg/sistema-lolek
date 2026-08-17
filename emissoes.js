@@ -869,12 +869,12 @@
                 <div id="emi-prod-${prod.id}-pagamentos-list"></div>
                 <button type="button" class="btn btn--ghost" id="emi-prod-${prod.id}-add-pagamento" style="margin-top:6px;font-size:0.78rem">+ Adicionar forma de pagamento</button>
               </div>
-              ${isPassagem ? `<label class="field"><span class="field__label">Origem do lead</span>
+              <label class="field"><span class="field__label">Origem do lead</span>
                 <select class="input" id="emi-prod-${prod.id}-origem_lead">
                   <option value="">—</option>
                   ${ORIGENS_LEAD.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}
                 </select>
-              </label>` : ""}
+              </label>
             </div>
 
             <div class="orc-extras-label" style="margin-top:10px">Funcionária responsável</div>
@@ -1283,7 +1283,7 @@
         valor_venda: valorVenda,
         pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
-        origem_lead: prod.tipo === "passagem" ? gel(`emi-prod-${prod.id}-origem_lead`).value : null,
+        origem_lead: gel(`emi-prod-${prod.id}-origem_lead`)?.value || null,
       };
     });
 

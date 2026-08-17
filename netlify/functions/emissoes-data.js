@@ -364,7 +364,7 @@ async function criarEmissao(data, secretKey) {
           data_faturamento: pg.forma === "faturado" ? (pg.data_faturamento || null) : null,
         })),
         funcionaria: prod.funcionaria || null,
-        origem_lead: prod.tipo === "passagem" ? (prod.origem_lead || null) : null,
+        origem_lead: prod.origem_lead || null,
         data_venda: dataVenda,
       });
       produtosCriados.push(produtoCriado);
