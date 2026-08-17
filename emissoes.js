@@ -196,15 +196,18 @@
       { id: "regime", label: "Regime", type: "select", options: ["Sem café", "Café incluso", "Meia pensão", "Pensão completa", "All inclusive"] },
       { id: "checkin", label: "Check-in", type: "date" },
       { id: "checkout", label: "Check-out", type: "date" },
+      { id: "localizador", label: "Localizador / número da reserva" },
     ],
     seguro: [
       { id: "seguradora", label: "Seguradora" },
       { id: "plano", label: "Plano" },
       { id: "cobertura", label: "Cobertura" },
+      { id: "localizador", label: "Localizador / número da reserva" },
     ],
     carro: [
       { id: "locadora", label: "Locadora" },
       { id: "categoria", label: "Categoria" },
+      { id: "localizador", label: "Localizador / número da reserva" },
     ],
     trem: [
       { id: "trecho", label: "Trecho", placeholder: "Ex: Paris → Lyon" },
@@ -216,10 +219,12 @@
     passeio: [
       { id: "descricao", label: "Descrição" },
       { id: "data_passeio", label: "Data", type: "date" },
+      { id: "localizador", label: "Localizador / número da reserva" },
     ],
     transfer: [
       { id: "trecho", label: "Trecho" },
       { id: "tipo_transfer", label: "Tipo", type: "select", options: ["Privativo", "Compartilhado", "Executivo"] },
+      { id: "localizador", label: "Localizador / número da reserva" },
     ],
     mala: [
       { id: "descricao", label: "Descrição", placeholder: "Ex: 1 mala extra 23kg" },
@@ -234,6 +239,7 @@
     visto_americano: [
       { id: "tipo_visto", label: "Tipo de visto", placeholder: "Ex: B1/B2" },
       { id: "data_entrevista", label: "Data da entrevista", type: "date" },
+      { id: "localizador", label: "Número do protocolo / caso" },
     ],
     venda_milhas: [
       { id: "programa", label: "Programa de milhagem", placeholder: "Ex: Latam Pass, Smiles, Azul" },
@@ -241,6 +247,7 @@
     ],
     outro: [
       { id: "descricao", label: "Descrição", placeholder: "Ex: Roteiro de viagem, consultoria, trem..." },
+      { id: "localizador", label: "Localizador / número da reserva (se houver)" },
     ],
   };
 
@@ -1094,7 +1101,7 @@
 
     const prompt = tipo === "passagem"
       ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
-      : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
+      : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "localizador": "código/localizador/número de confirmação da reserva, ou null se não aparecer",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
     const content = mime === "application/pdf"
       ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }, { type: "text", text: prompt }]
@@ -1148,6 +1155,7 @@
         fill("hotel", ex.hotel);
         if (ex.regime && DADOS_CFG.hospedagem[1].options.includes(ex.regime)) fill("regime", ex.regime);
         fill("checkin", ex.checkin); fill("checkout", ex.checkout);
+        fill("localizador", ex.localizador);
         if (ex.custo != null) { const el = gel(`emi-prod-${prodId}-custo`); if (el) el.value = ex.custo; }
       }
       // Reconsulta a zona/hint pelo id — se detectou volta, o "voltaWrap" pode ter acabado
