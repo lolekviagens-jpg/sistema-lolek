@@ -4,7 +4,7 @@
 // como reserva se não tiver internet. Nunca cacheia chamadas às Netlify Functions
 // (dados sempre precisam vir ao vivo).
 
-const CACHE_NAME = "lolek-shell-v1";
+const CACHE_NAME = "lolek-shell-v2";
 const SHELL_FILES = ["/", "/index.html", "/style.css", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -30,7 +30,11 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET" || url.pathname.startsWith("/.netlify/")) return;
 
   event.respondWith(
-    fetch(event.request)
+    // cache: "no-store" — sem isso, o fetch aqui dentro podia devolver uma cópia
+    // antiga guardada pelo próprio navegador (cache HTTP comum), mesmo essa função
+    // achando que buscou "ao vivo" — aconteceu com checkin.js/style.css ficando
+    // desatualizados mesmo depois de recarregar a página forçado.
+    fetch(event.request, { cache: "no-store" })
       .then((resp) => {
         const copy = resp.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => {});
