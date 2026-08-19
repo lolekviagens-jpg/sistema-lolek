@@ -184,10 +184,24 @@ async function executarAcao(action, data, secretKey, sessao) {
 
     case "editar_emissao": {
       if (!data.id) throw new Error("id é obrigatório");
+
+      // A edição recria a emissão do zero (ver criarEmissao) — sem isso, ela ganharia um
+      // criado_em novo e pularia pro topo da lista/Emissões como se tivesse sido cadastrada
+      // hoje, mesmo sendo só uma correção de algo antigo. Preserva a data original.
+      const [antiga] = await supabaseRest(
+        "/venda_emissoes?id=eq." + encodeURIComponent(data.id) + "&select=criado_em",
+        "GET", secretKey
+      );
+
       // Cria a versão nova primeiro; só apaga a antiga depois de confirmar sucesso — se a
       // criação falhar no meio do caminho (criarEmissao já reverte o que criou), a emissão
       // antiga continua intacta em vez de a usuária perder os dados.
-      const resultado = await criarEmissao(data, secretKey);
+      // pularBackupPlanilha: uma edição não é uma venda nova — sem isso, cada correção
+      // mandaria mais uma linha pra planilha do Drive, duplicando o que já tá lá.
+      const resultado = await criarEmissao(data, secretKey, {
+        criadoEm: antiga && antiga.criado_em,
+        pularBackupPlanilha: true,
+      });
       await registrarAtividade(secretKey, {
         usuarioNome, acao: "editar", area: "emissao",
         descricao: "Emissão editada" + ((data.emissao || {}).destino ? " — " + data.emissao.destino : ""),
@@ -269,7 +283,8 @@ async function executarAcao(action, data, secretKey, sessao) {
   }
 }
 
-async function criarEmissao(data, secretKey) {
+async function criarEmissao(data, secretKey, opcoes) {
+  opcoes = opcoes || {};
   const emissao     = data.emissao || {};
   const passageiros = Array.isArray(data.passageiros) ? data.passageiros : [];
   const produtos     = Array.isArray(data.produtos) ? data.produtos : [];
@@ -293,6 +308,7 @@ async function criarEmissao(data, secretKey) {
       data_volta:         emissao.data_volta || null,
       tipo_viagem:        emissao.tipo_viagem || null,
       observacoes_gerais: emissao.observacoes_gerais || null,
+      criado_em:          opcoes.criadoEm || undefined,
     });
 
     // Criados em sequência (não em lote) porque a ordem da resposta do PostgREST não é
@@ -389,11 +405,13 @@ async function criarEmissao(data, secretKey) {
       // garantir que o envio realmente saia antes da function encerrar (em ambiente
       // serverless, sem esperar, a chamada pode ser cortada antes de completar). Falha
       // no backup nunca derruba a emissão (enviarParaPlanilhaBackup nunca lança erro).
-      const nomesPaxProduto = passageiroIds.map((id) => {
-        const pax = passageirosCriados.find((p) => p.id === id);
-        return pax && clienteNomePorId.get(pax.cliente_id);
-      }).filter(Boolean).join(" / ");
-      await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
+      if (!opcoes.pularBackupPlanilha) {
+        const nomesPaxProduto = passageiroIds.map((id) => {
+          const pax = passageirosCriados.find((p) => p.id === id);
+          return pax && clienteNomePorId.get(pax.cliente_id);
+        }).filter(Boolean).join(" / ");
+        await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
+      }
 
       // Um lançamento financeiro POR forma de pagamento — assim uma entrada de Pix e um
       // saldo faturado do mesmo produto aparecem como eventos de caixa distintos.

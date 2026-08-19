@@ -671,6 +671,34 @@ textarea.input {
   border-radius: 5px;
 }
 
+/* Barra de rolagem "espelho" (ver navigation.js) — fica logo acima da tabela, pra dar pra
+   rolar pro lado sem precisar descer até o fim da lista. */
+.scroll-espelho {
+  display: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 12px;
+  margin-bottom: 6px;
+  scrollbar-width: auto;
+}
+
+.scroll-espelho > div {
+  height: 1px;
+}
+
+.scroll-espelho::-webkit-scrollbar {
+  height: 10px;
+}
+
+.scroll-espelho::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+.scroll-espelho::-webkit-scrollbar-thumb {
+  background: var(--gold);
+  border-radius: 5px;
+}
+
 .table {
   width: 100%;
   min-width: max-content;
@@ -3620,5 +3648,17 @@ textarea.input {
 
   .modal__dialog {
     max-height: 94vh;
+  }
+
+  /* Tabelas no celular: menos espaço entre colunas, senão o nome fica longe do
+     resto da linha e é preciso rolar muito pro lado só pra ver as informações. */
+  .table thead th {
+    padding: 10px 10px;
+    font-size: 0.66rem;
+  }
+
+  .table tbody td {
+    padding: 9px 10px;
+    font-size: 0.82rem;
   }
 }

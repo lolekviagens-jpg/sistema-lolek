@@ -309,7 +309,7 @@
     }
 
     const table = document.createElement("table");
-    table.className = "table";
+    table.className = "table table--compact";
     table.innerHTML = `
       <thead>
         <tr>
