@@ -309,8 +309,12 @@
     }
 
     const table = document.createElement("table");
-    table.className = "table table--compact";
+    table.className = "table table--compact ci-table";
     table.innerHTML = `
+      <colgroup>
+        <col style="width:24%"><col style="width:20%"><col style="width:20%">
+        <col style="width:14%"><col style="width:22%">
+      </colgroup>
       <thead>
         <tr>
           <th>Passageiro</th>
