@@ -120,24 +120,6 @@ exports.handler = async (event) => {
 
   try {
     if (event.httpMethod === "GET") {
-      // Diagnóstico temporário do backup na planilha (sem exigir login — só checa se a
-      // env var existe e se o Apps Script responde). Remover depois de confirmado.
-      if (event.queryStringParameters && event.queryStringParameters.diag === "planilha") {
-        const url = process.env.PLANILHA_BACKUP_URL;
-        if (!url) {
-          return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ envVarConfigurada: false }) };
-        }
-        const linhaTeste = { data: "19/08/2026", situacao: "TESTE DIAGNOSTICO", nome: "TESTE DIAGNOSTICO NETLIFY", valorTotal: "1" };
-        try {
-          const urlComDados = new URL(url);
-          urlComDados.searchParams.set("dados", JSON.stringify(linhaTeste));
-          const resposta = await getSeguindoRedirect(urlComDados.toString());
-          return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ envVarConfigurada: true, urlComeca: url.slice(0, 45), respostaAppsScript: resposta }) };
-        } catch (err) {
-          return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ envVarConfigurada: true, urlComeca: url.slice(0, 45), erro: err.message }) };
-        }
-      }
-
       // O Supabase corta em 1000 linhas por padrão — sem paginar aqui, viagens antigas
       // (criado_em mais distante) somem da lista assim que a tabela passa de 1000 linhas
       // (ex: depois da importação do histórico da planilha antiga).
