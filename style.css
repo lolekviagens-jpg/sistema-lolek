@@ -752,12 +752,16 @@ textarea.input {
 
 /* Nome do passageiro no Check-in: sem isso, o nome (a coluna com o texto mais comprido)
    estica e puxa o resto da tabela (trecho, companhia, localizador) pra bem longe, fora da
-   tela — corta com reticências e mostra o nome completo ao passar o mouse. */
+   tela — corta com reticências e mostra o nome completo ao passar o mouse. Precisa ser um
+   elemento à parte (não direto no <td>) — max-width numa célula de tabela é ignorado pelo
+   navegador quando ele decide esticar aquela coluna. */
 .ci-nome {
+  display: inline-block;
   max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: middle;
 }
 
 .table__muted {
