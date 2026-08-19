@@ -750,6 +750,16 @@ textarea.input {
   color: var(--navy);
 }
 
+/* Nome do passageiro no Check-in: sem isso, o nome (a coluna com o texto mais comprido)
+   estica e puxa o resto da tabela (trecho, companhia, localizador) pra bem longe, fora da
+   tela — corta com reticências e mostra o nome completo ao passar o mouse. */
+.ci-nome {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .table__muted {
   color: var(--text-muted);
 }

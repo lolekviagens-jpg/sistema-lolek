@@ -334,7 +334,7 @@
       if (confirmedAt) tr.classList.add("ci-row--done");
 
       tr.innerHTML = `
-        <td class="table__client">${escapeHtml(p.nome)}</td>
+        <td class="table__client ci-nome" title="${escapeHtml(p.nome)}">${escapeHtml(p.nome)}</td>
         <td>${rota}</td>
         <td class="table__muted">${escapeHtml(p.companhia) || "—"}</td>
         <td class="table__muted">${escapeHtml(p.localizador) || "—"}</td>
