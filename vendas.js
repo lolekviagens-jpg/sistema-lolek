@@ -425,15 +425,22 @@
     const canvas = gel("vendas-grafico-ano");
     if (!canvas || typeof Chart === "undefined") return;
 
+    // Ano corrente: corta os meses futuros (ainda sem vendas, ficariam zerados puxando o gráfico pra baixo).
+    // Anos passados mostram o ano completo.
+    const hoje = new Date();
+    const ultimoMes = ano === hoje.getFullYear() ? hoje.getMonth() : 11;
+    const labels        = MESES_LABEL.slice(0, ultimoMes + 1).map((m) => m.slice(0, 3));
+    const mesesVisiveis = meses.slice(0, ultimoMes + 1);
+
     if (chartAno) { chartAno.destroy(); chartAno = null; }
     chartAno = new Chart(canvas.getContext("2d"), {
       type: "line",
       data: {
-        labels: MESES_LABEL.map((m) => m.slice(0, 3)),
+        labels,
         datasets: [
-          { label: "Faturamento", data: meses.map((m) => m.faturamento), borderColor: "#0a1f3d", backgroundColor: "#0a1f3d", yAxisID: "y", tension: 0.3 },
-          { label: "Lucro",       data: meses.map((m) => m.lucro),       borderColor: "#c9a84c", backgroundColor: "#c9a84c", yAxisID: "y", tension: 0.3 },
-          { label: "Margem %",    data: meses.map((m) => m.margem),      borderColor: "#1f8a4c", backgroundColor: "#1f8a4c", yAxisID: "y1", tension: 0.3 },
+          { label: "Faturamento", data: mesesVisiveis.map((m) => m.faturamento), borderColor: "#0a1f3d", backgroundColor: "#0a1f3d", yAxisID: "y", tension: 0.3, borderWidth: 2, pointRadius: 2, pointHoverRadius: 4 },
+          { label: "Lucro",       data: mesesVisiveis.map((m) => m.lucro),       borderColor: "#c9a84c", backgroundColor: "#c9a84c", yAxisID: "y", tension: 0.3, borderWidth: 2, pointRadius: 2, pointHoverRadius: 4 },
+          { label: "Margem %",    data: mesesVisiveis.map((m) => m.margem),      borderColor: "#1f8a4c99", backgroundColor: "#1f8a4c99", yAxisID: "y1", tension: 0.3, borderWidth: 1, borderDash: [5, 4], pointRadius: 0, pointHoverRadius: 3 },
         ],
       },
       options: {
