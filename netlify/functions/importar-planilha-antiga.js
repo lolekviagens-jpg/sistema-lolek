@@ -69,28 +69,6 @@ exports.handler = async (event) => {
   const modo = params.modo || "dry";
 
   try {
-    // Limpeza pontual: apaga um lote das emissões já importadas antes (marcadas pela
-    // observação), pra poder reimportar do zero com a regra corrigida (linha por linha,
-    // sem agrupar). Chamar em sequência (mesmo offset=0 sempre, já que cada lote apagado
-    // sai da consulta seguinte) até "apagadas_neste_lote" vir 0.
-    if (modo === "apagar_importados") {
-      const limit = Math.min(parseInt(params.limit, 10) || 200, 200);
-      const emissoesImportadas = await supabaseRest(
-        "/venda_emissoes?observacoes_gerais=ilike.*" + encodeURIComponent("Importado da planilha antiga") + "*&select=id&limit=" + limit,
-        "GET", secretKey
-      );
-      const ids = (emissoesImportadas || []).map((e) => e.id);
-      if (ids.length > 0) {
-        const produtos = await supabaseRest("/venda_emissoes_produtos?emissao_id=in.(" + ids.join(",") + ")&select=id", "GET", secretKey);
-        const idsProdutos = (produtos || []).map((p) => p.id);
-        if (idsProdutos.length > 0) {
-          await supabaseRest("/financeiro_lancamentos?emissao_produto_id=in.(" + idsProdutos.join(",") + ")", "DELETE", secretKey).catch(() => {});
-        }
-        await supabaseRest("/venda_emissoes?id=in.(" + ids.join(",") + ")", "DELETE", secretKey);
-      }
-      return json(200, { apagadas_neste_lote: ids.length });
-    }
-
     const { grupos, relatorio } = await montarGrupos();
 
     if (modo === "dry") {
