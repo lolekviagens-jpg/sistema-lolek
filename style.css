@@ -2485,6 +2485,143 @@ textarea.input {
   margin-top: 5px;
 }
 
+/* Seletor de mês/ano do Dashboard */
+.vendas-mes-seletor {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vendas-sel-mes, .vendas-sel-ano {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+/* ===== Comparativos ===== */
+.vendas-grafico-card {
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+.vendas-grafico-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.vendas-grafico-titulo {
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.vendas-grafico-legenda {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.vendas-legenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.vendas-legenda-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.vendas-grafico-wrap {
+  position: relative;
+}
+
+.vendas-comp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.vendas-comp-card {
+  padding: 18px 20px;
+}
+
+.vendas-comp-card__titulo {
+  font-family: var(--font-title);
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 10px;
+}
+
+.vendas-comp-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.vendas-comp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vendas-comp-table td, .vendas-comp-table th {
+  padding: 8px 6px;
+  font-size: 0.86rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.vendas-comp-table thead th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.vendas-comp-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.vendas-comp-label {
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.vendas-comp-valor {
+  font-weight: 600;
+}
+
+.vendas-comp-valor--muted {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.vendas-comp-row--melhor td {
+  background: rgba(201, 168, 76, 0.08);
+}
+
+.vendas-var {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.vendas-var--up      { color: #1f8a4c; }
+.vendas-var--down    { color: #c0392b; }
+.vendas-var--neutro  { color: var(--text-muted); }
+
 /* Sugestão abaixo dos valores */
 .vendas-empresa-sugestao {
   font-size: 0.82rem;

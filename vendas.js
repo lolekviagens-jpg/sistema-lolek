@@ -125,9 +125,27 @@
     }
   }
 
-  function chaveAtual() {
-    const n = new Date();
-    return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0");
+  // Chave do mês/ano que está selecionado nos seletores no momento (não necessariamente
+  // o mês real de hoje) — metas passam a ser editadas/consultadas pro mês em exibição.
+  function chaveSelecionada() {
+    return selAno + "-" + String(selMes + 1).padStart(2, "0");
+  }
+
+  // ===== Seletor de mês/ano =====
+  const ANO_INICIAL = 2024; // primeiro ano com dados no sistema
+  let selMes = new Date().getMonth();
+  let selAno = new Date().getFullYear();
+
+  function popularSeletores() {
+    const selM = gel("vendas-sel-mes");
+    const selA = gel("vendas-sel-ano");
+    selM.innerHTML = MESES_LABEL.map((m, i) => `<option value="${i}">${m}</option>`).join("");
+    const anoAtual = new Date().getFullYear();
+    const anos = [];
+    for (let a = anoAtual; a >= ANO_INICIAL; a--) anos.push(a);
+    selA.innerHTML = anos.map((a) => `<option value="${a}">${a}</option>`).join("");
+    selM.value = selMes;
+    selA.value = selAno;
   }
 
   // ===== Render principal =====
@@ -140,8 +158,12 @@
 
     gel("vendas-mes-label").textContent = MESES_LABEL[d.month] + " " + d.year;
 
-    const diasR = diasUteisRestantes();
-    gel("vendas-dias-uteis").textContent = diasR + " dia" + (diasR !== 1 ? "s úteis" : " útil") + " restante" + (diasR !== 1 ? "s" : "") + " no mês";
+    const hoje = new Date();
+    const ehMesAtual = d.month === hoje.getMonth() && d.year === hoje.getFullYear();
+    const diasR = ehMesAtual ? diasUteisRestantes() : 0;
+    gel("vendas-dias-uteis").textContent = ehMesAtual
+      ? diasR + " dia" + (diasR !== 1 ? "s úteis" : " útil") + " restante" + (diasR !== 1 ? "s" : "") + " no mês"
+      : "Mês encerrado";
 
     const chave = d.year + "-" + String(d.month + 1).padStart(2, "0");
     const metas = cfg.metas[chave] || {};
@@ -326,28 +348,31 @@
     }).join("");
   }
 
-  // ===== Busca as vendas do mês atual (cadastradas em Emissões) =====
-  async function carregarMes() {
+  // ===== Busca os produtos vendidos num período qualquer (cadastrados em Emissões) =====
+  async function buscarProdutosPeriodo(de, ate) {
+    const resp = await fetch("/.netlify/functions/emissoes-data", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "listar_produtos_periodo", data: { de, ate } }),
+    });
+    const rows = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(rows.error || "Erro HTTP " + resp.status);
+    return rows;
+  }
+
+  // ===== Busca as vendas do mês selecionado (ano/mês vêm dos seletores) =====
+  async function carregarMes(ano = selAno, mes = selMes) {
     const statusEl = gel("vendas-status");
     const btn      = gel("vendas-refresh-btn");
     if (btn) btn.disabled = true;
     statusEl.innerHTML = `<div class="notice">Carregando vendas do mês…</div>`;
 
     try {
-      const hoje = new Date();
-      const ano = hoje.getFullYear(), mes = hoje.getMonth();
       const de  = ano + "-" + String(mes + 1).padStart(2, "0") + "-01";
       const ultimoDia = new Date(ano, mes + 1, 0).getDate();
       const ate = ano + "-" + String(mes + 1).padStart(2, "0") + "-" + String(ultimoDia).padStart(2, "0");
 
-      const resp = await fetch("/.netlify/functions/emissoes-data", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "listar_produtos_periodo", data: { de, ate } }),
-      });
-      const rows = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(rows.error || "Erro HTTP " + resp.status);
-
+      const rows = await buscarProdutosPeriodo(de, ate);
       const data = processaEmissoes(rows, mes, ano);
 
       statusEl.innerHTML = "";
@@ -360,12 +385,148 @@
     }
   }
 
+  // ===== Comparativos (gráfico do ano, mesmo mês ano passado, trimestral) =====
+  let chartAno = null;
+  let comparativosCache = {}; // ano -> array de 12 buckets, evita rebuscar o mesmo ano toda hora
+
+  function bucketizarPorMes(rows) {
+    const meses = Array.from({ length: 12 }, () => ({ faturamento: 0, lucro: 0 }));
+    rows.forEach((r) => {
+      const m = Number((r.data_venda || "").slice(5, 7)) - 1;
+      if (m < 0 || m > 11) return;
+      meses[m].faturamento += Number(r.valor_venda) || 0;
+      meses[m].lucro += Number(r.lucro) || 0;
+    });
+    return meses.map((m) => ({ ...m, margem: m.faturamento > 0 ? (m.lucro / m.faturamento) * 100 : 0 }));
+  }
+
+  async function buscarAnoBucketizado(ano) {
+    if (comparativosCache[ano]) return comparativosCache[ano];
+    const rows = await buscarProdutosPeriodo(ano + "-01-01", ano + "-12-31");
+    const bucket = bucketizarPorMes(rows);
+    comparativosCache[ano] = bucket;
+    return bucket;
+  }
+
+  function variacaoPct(atual, anterior) {
+    if (!anterior) return null;
+    return ((atual - anterior) / anterior) * 100;
+  }
+
+  function badgeVariacao(pct) {
+    if (pct == null || !isFinite(pct)) return `<span class="vendas-var vendas-var--neutro">—</span>`;
+    const cls  = pct > 0.05 ? "vendas-var--up" : pct < -0.05 ? "vendas-var--down" : "vendas-var--neutro";
+    const seta = pct > 0.05 ? "▲" : pct < -0.05 ? "▼" : "•";
+    return `<span class="vendas-var ${cls}">${seta} ${Math.abs(pct).toFixed(1).replace(".", ",")}%</span>`;
+  }
+
+  function renderGrafico(ano, meses) {
+    gel("vendas-grafico-ano-label").textContent = ano;
+    const canvas = gel("vendas-grafico-ano");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    if (chartAno) { chartAno.destroy(); chartAno = null; }
+    chartAno = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: {
+        labels: MESES_LABEL.map((m) => m.slice(0, 3)),
+        datasets: [
+          { label: "Faturamento", data: meses.map((m) => m.faturamento), borderColor: "#0a1f3d", backgroundColor: "#0a1f3d", yAxisID: "y", tension: 0.3 },
+          { label: "Lucro",       data: meses.map((m) => m.lucro),       borderColor: "#c9a84c", backgroundColor: "#c9a84c", yAxisID: "y", tension: 0.3 },
+          { label: "Margem %",    data: meses.map((m) => m.margem),      borderColor: "#1f8a4c", backgroundColor: "#1f8a4c", yAxisID: "y1", tension: 0.3 },
+        ],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.dataset.label + ": " + (ctx.dataset.label === "Margem %" ? fPct(ctx.parsed.y) : fBRL(ctx.parsed.y)),
+            },
+          },
+        },
+        scales: {
+          y:  { type: "linear", position: "left",  ticks: { callback: (v) => "R$ " + (v / 1000).toFixed(0) + "k" } },
+          y1: { type: "linear", position: "right", grid: { drawOnChartArea: false }, ticks: { callback: (v) => v + "%" } },
+        },
+      },
+    });
+  }
+
+  function renderComparativoAnoAnterior(ano, mes, atualMeses, anteriorMeses) {
+    const box = gel("vendas-comp-anoanterior");
+    const atual    = atualMeses[mes];
+    const anterior = anteriorMeses[mes];
+    const linhas = [
+      ["Faturamento", atual.faturamento, anterior.faturamento, fBRL],
+      ["Lucro",       atual.lucro,       anterior.lucro,       fBRL],
+      ["Margem",      atual.margem,      anterior.margem,      fPct],
+    ];
+    box.innerHTML = `
+      <div class="vendas-comp-sub">${MESES_LABEL[mes]} ${ano} vs ${MESES_LABEL[mes]} ${ano - 1}</div>
+      <table class="vendas-comp-table">
+        ${linhas.map(([label, a, b, fmt]) => `
+          <tr>
+            <td class="vendas-comp-label">${label}</td>
+            <td class="vendas-comp-valor">${fmt(a)}</td>
+            <td class="vendas-comp-valor vendas-comp-valor--muted">${fmt(b)}</td>
+            <td>${badgeVariacao(variacaoPct(a, b))}</td>
+          </tr>`).join("")}
+      </table>`;
+  }
+
+  function renderComparativoTrimestral(meses) {
+    const box = gel("vendas-comp-trimestre");
+    const trimestres = [0, 1, 2, 3].map((t) => {
+      const grupo = meses.slice(t * 3, t * 3 + 3);
+      const faturamento = grupo.reduce((s, m) => s + m.faturamento, 0);
+      const lucro       = grupo.reduce((s, m) => s + m.lucro, 0);
+      return { faturamento, lucro, margem: faturamento > 0 ? (lucro / faturamento) * 100 : 0 };
+    });
+    const melhorLucro = Math.max(...trimestres.map((t) => t.lucro));
+
+    box.innerHTML = `
+      <table class="vendas-comp-table vendas-comp-table--trimestre">
+        <thead><tr><th></th><th>Faturamento</th><th>Lucro</th><th>Margem</th></tr></thead>
+        <tbody>
+          ${trimestres.map((t, i) => `
+            <tr class="${t.lucro === melhorLucro && melhorLucro > 0 ? "vendas-comp-row--melhor" : ""}">
+              <td class="vendas-comp-label">${i + 1}º trim${t.lucro === melhorLucro && melhorLucro > 0 ? " 🏆" : ""}</td>
+              <td>${fBRL(t.faturamento)}</td>
+              <td>${fBRL(t.lucro)}</td>
+              <td>${fPct(t.margem)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>`;
+  }
+
+  async function carregarComparativos(ano, mes) {
+    const statusEl = gel("vendas-comparativos-status");
+    statusEl.innerHTML = `<div class="notice">Carregando comparativos…</div>`;
+    try {
+      const [doAno, doAnoAnterior] = await Promise.all([
+        buscarAnoBucketizado(ano),
+        buscarAnoBucketizado(ano - 1),
+      ]);
+      statusEl.innerHTML = "";
+      renderGrafico(ano, doAno);
+      renderComparativoAnoAnterior(ano, mes, doAno, doAnoAnterior);
+      renderComparativoTrimestral(doAno);
+    } catch (e) {
+      statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar comparativos.</strong><p>${escHtml(e.message)}</p></div>`;
+    }
+  }
+
   // ===== Modal de metas =====
   function abrirMetas() {
-    const chave = chaveAtual();
+    const chave = chaveSelecionada();
     const metas = cfg.metas[chave] || {};
     gel("metas-meta-emp").value = metas._empresa || "";
     renderMetasFuncs(chave, metas);
+    const tituloEl = document.querySelector("#metas-modal .modal__title");
+    if (tituloEl) tituloEl.textContent = "Metas — " + MESES_LABEL[selMes] + " " + selAno;
     gel("metas-modal").hidden = false;
   }
 
@@ -391,7 +552,7 @@
   }
 
   async function salvarMetas() {
-    const chave  = chaveAtual();
+    const chave  = chaveSelecionada();
     const metas  = { _empresa: parseFloat(gel("metas-meta-emp").value) || 0 };
     gel("metas-funcs").querySelectorAll("[data-id]").forEach(row => {
       const id   = row.dataset.id;
@@ -418,15 +579,35 @@
 
   function addFuncRow() {
     cfg.funcs.push({ id: "f" + Date.now() + "-" + Math.random().toString(36).slice(2, 8), nome: "" });
-    const chave = chaveAtual();
+    const chave = chaveSelecionada();
     renderMetasFuncs(chave, cfg.metas[chave] || {});
     gel("metas-funcs").querySelector("[data-id]:last-child .vcfg-nome")?.focus();
   }
 
   // ===== Init =====
+  function carregarTudo() {
+    carregarMes(selAno, selMes);
+    carregarComparativos(selAno, selMes);
+  }
+
   async function init() {
+    popularSeletores();
+
     gel("vendas-metas-btn").addEventListener("click", abrirMetas);
-    gel("vendas-refresh-btn").addEventListener("click", carregarMes);
+    gel("vendas-refresh-btn").addEventListener("click", () => {
+      delete comparativosCache[selAno]; // força buscar de novo o ano corrente (pode ter venda nova)
+      carregarTudo();
+    });
+    gel("vendas-sel-mes").addEventListener("change", (e) => { selMes = Number(e.target.value); carregarTudo(); });
+    gel("vendas-sel-ano").addEventListener("change", (e) => { selAno = Number(e.target.value); carregarTudo(); });
+    gel("vendas-hoje-btn").addEventListener("click", () => {
+      const hoje = new Date();
+      selMes = hoje.getMonth();
+      selAno = hoje.getFullYear();
+      popularSeletores();
+      carregarTudo();
+    });
+
     gel("metas-modal-close").addEventListener("click", () => { gel("metas-modal").hidden = true; });
     gel("metas-modal-cancel").addEventListener("click", () => { gel("metas-modal").hidden = true; });
     gel("metas-modal-save").addEventListener("click", salvarMetas);
@@ -434,7 +615,7 @@
     gel("metas-modal").addEventListener("click", e => { if (e.target === gel("metas-modal")) gel("metas-modal").hidden = true; });
 
     await carregarCfg();
-    carregarMes();
+    carregarTudo();
   }
 
   init();

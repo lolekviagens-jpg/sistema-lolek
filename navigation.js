@@ -10,7 +10,7 @@
   const TITLES = {
     checkin:    "Check-in do dia",
     orcamentos: "Orçamentos",
-    vendas:     "Vendas",
+    vendas:     "Dashboard",
     "nova-emissao": "Novas Emissões",
     emissoes:    "Emissões",
     clientes:    "Clientes",

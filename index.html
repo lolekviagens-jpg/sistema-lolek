@@ -22,6 +22,7 @@
   />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -66,7 +67,7 @@
         </button>
         <button class="nav__item" data-tab="vendas">
           <span class="nav__icon">📊</span>
-          <span class="nav__label">Vendas</span>
+          <span class="nav__label">Dashboard</span>
         </button>
         <button class="nav__item" data-tab="nova-emissao">
           <span class="nav__icon">➕</span>
@@ -264,7 +265,12 @@
 
         <div class="toolbar">
           <div>
-            <div id="vendas-mes-label" class="vendas-mes-heading"></div>
+            <div class="vendas-mes-seletor">
+              <div id="vendas-mes-label" class="vendas-mes-heading"></div>
+              <select id="vendas-sel-mes" class="input vendas-sel-mes"></select>
+              <select id="vendas-sel-ano" class="input vendas-sel-ano"></select>
+              <button class="btn btn--ghost btn--icon" id="vendas-hoje-btn" type="button" title="Voltar pro mês atual">Hoje</button>
+            </div>
             <div id="vendas-dias-uteis" class="vendas-dias-label"></div>
           </div>
           <div style="display:flex;gap:8px;align-items:center">
@@ -322,6 +328,35 @@
         <!-- Cards funcionárias -->
         <div class="vendas-section-title">Funcionárias</div>
         <div id="vendas-func-grid" class="vendas-func-grid"></div>
+
+        <!-- Comparativos -->
+        <div class="vendas-section-title">Comparativos</div>
+        <div id="vendas-comparativos-status"></div>
+
+        <div class="card vendas-grafico-card">
+          <div class="vendas-grafico-header">
+            <span class="vendas-grafico-titulo">Evolução no ano — <span id="vendas-grafico-ano-label"></span></span>
+            <div class="vendas-grafico-legenda">
+              <span class="vendas-legenda-item"><span class="vendas-legenda-dot" style="background:#0a1f3d"></span>Faturamento</span>
+              <span class="vendas-legenda-item"><span class="vendas-legenda-dot" style="background:#c9a84c"></span>Lucro</span>
+              <span class="vendas-legenda-item"><span class="vendas-legenda-dot" style="background:#1f8a4c"></span>Margem %</span>
+            </div>
+          </div>
+          <div class="vendas-grafico-wrap">
+            <canvas id="vendas-grafico-ano" height="90"></canvas>
+          </div>
+        </div>
+
+        <div class="vendas-comp-grid">
+          <div class="card vendas-comp-card">
+            <div class="vendas-comp-card__titulo">📅 Mesmo mês, ano passado</div>
+            <div id="vendas-comp-anoanterior"></div>
+          </div>
+          <div class="card vendas-comp-card">
+            <div class="vendas-comp-card__titulo">📊 Comparativo trimestral</div>
+            <div id="vendas-comp-trimestre"></div>
+          </div>
+        </div>
 
         <!-- Modal: metas -->
         <div class="modal" id="metas-modal" hidden>
