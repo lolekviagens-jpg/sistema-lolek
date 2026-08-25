@@ -1005,12 +1005,44 @@
     });
   }
 
+  // Netlify Functions recusa (HTTP 413) requisições acima de ~6MB — um print de tela em
+  // resolução alta (retina, PNG) facilmente passa disso em base64. Redimensiona pro maior
+  // lado caber em FOTO_MAX_DIM e reexporta como JPEG antes de mandar pra IA; o texto do
+  // bilhete continua perfeitamente legível nesse tamanho.
+  const FOTO_MAX_DIM = 1800;
+  const FOTO_JPEG_QUALIDADE = 0.85;
+
+  function redimensionarImagem(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const escala = Math.min(1, FOTO_MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * escala);
+        const h = Math.round(img.height * escala);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", FOTO_JPEG_QUALIDADE));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
+      img.src = url;
+    });
+  }
+
   // Liga colar/arrastar/clicar-pra-selecionar numa zona de upload, chamando onFile(dataUrl,
   // zone) quando um arquivo chega por qualquer um dos três caminhos.
   function wireFotoZone(zone, arquivoInput, btnArquivo, onFile) {
     if (!zone) return;
-    const carregarArquivo = (file) => {
+    const carregarArquivo = async (file) => {
       if (!file) return;
+      if (file.type.startsWith("image/")) {
+        try {
+          onFile(await redimensionarImagem(file), zone);
+          return;
+        } catch { /* se falhar o redimensionamento, cai pro caminho normal abaixo */ }
+      }
       const r = new FileReader();
       r.onload = (ev) => onFile(ev.target.result, zone);
       r.readAsDataURL(file);
