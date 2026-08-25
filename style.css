@@ -2544,6 +2544,9 @@ textarea.input {
 
 .vendas-grafico-wrap {
   position: relative;
+  /* Obrigatório pro Chart.js "responsive": sem uma altura fixa aqui, o container e o
+   * gráfico ficam tentando se dimensionar um pelo outro e o desenho nunca aparece. */
+  height: 320px;
 }
 
 .vendas-comp-grid {

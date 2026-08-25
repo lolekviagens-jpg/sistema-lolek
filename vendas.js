@@ -438,6 +438,7 @@
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false, // usa a altura fixa do container (.vendas-grafico-wrap)
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: { display: false },
