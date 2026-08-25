@@ -167,22 +167,11 @@ async function montarGrupos() {
     });
   }
 
-  // Agrupa linhas da MESMA venda (mesma reserva não-vazia + mesma data + mesmo valor) —
-  // é assim que a planilha registra vários passageiros de uma reserva só (uma linha por
-  // pessoa, com os mesmos dados financeiros repetidos). Sem reserva, cada linha é uma
-  // venda própria (não arrisca agrupar por adivinhação).
-  const gruposMap = new Map();
-  const semGrupo = [];
-  todasLinhas.forEach((l) => {
-    if (!l.reserva) { semGrupo.push(l); return; }
-    const chave = [l.ano, l.reserva, l.dataVenda, l.valorTotal, l.destino].join("||");
-    if (!gruposMap.has(chave)) gruposMap.set(chave, []);
-    gruposMap.get(chave).push(l);
-  });
-
-  const gruposDeLinhas = [...gruposMap.values(), ...semGrupo.map((l) => [l])];
-
-  const grupos = gruposDeLinhas.map((linhas) => construirEmissaoCandidata(linhas));
+  // Até julho/2026 (antes do sistema novo passar a ser usado exclusivamente), cada linha
+  // da planilha era uma venda própria — mesmo quando várias pessoas viajavam juntas na
+  // mesma reserva, o valor de cada uma era contado separado, linha por linha, sem somar
+  // nem agrupar. Preserva esse mesmo critério aqui: 1 linha = 1 emissão, sempre.
+  const grupos = todasLinhas.map((l) => construirEmissaoCandidata([l]));
 
   const relatorio = {
     linhas_lidas_total: contadores.linhas_lidas,
