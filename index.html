@@ -57,17 +57,17 @@
       </div>
 
       <nav class="nav">
-        <button class="nav__item is-active" data-tab="checkin">
+        <button class="nav__item is-active" data-tab="vendas">
+          <span class="nav__icon">📊</span>
+          <span class="nav__label">Dashboard</span>
+        </button>
+        <button class="nav__item" data-tab="checkin">
           <span class="nav__icon">✈</span>
           <span class="nav__label">Check-in do dia</span>
         </button>
         <button class="nav__item" data-tab="orcamentos">
           <span class="nav__icon">✦</span>
           <span class="nav__label">Orçamentos</span>
-        </button>
-        <button class="nav__item" data-tab="vendas">
-          <span class="nav__icon">📊</span>
-          <span class="nav__label">Dashboard</span>
         </button>
         <button class="nav__item" data-tab="nova-emissao">
           <span class="nav__icon">➕</span>
@@ -120,12 +120,12 @@
     <main class="content">
       <header class="topbar">
         <button type="button" class="topbar__menu-btn" id="menu-toggle" aria-label="Abrir menu">☰</button>
-        <h1 class="topbar__title" id="page-title">Check-in do dia</h1>
+        <h1 class="topbar__title" id="page-title">Dashboard</h1>
         <div class="topbar__date" id="page-date"></div>
       </header>
 
       <!-- ===== PAINEL CHECK-IN ===== -->
-      <section class="panel is-active" data-panel="checkin">
+      <section class="panel" data-panel="checkin">
 
         <div class="toolbar">
           <span class="toolbar__info" id="checkin-updated"></span>
@@ -261,7 +261,7 @@
       </section>
 
       <!-- ===== PAINEL VENDAS ===== -->
-      <section class="panel" data-panel="vendas">
+      <section class="panel is-active" data-panel="vendas">
 
         <div class="toolbar">
           <div>
