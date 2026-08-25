@@ -34,6 +34,11 @@
     if (TITLES[tab]) {
       pageTitle.textContent = TITLES[tab];
     }
+
+    // Avisa a aba que acabou de aparecer — necessário pra gráficos (Chart.js) criados
+    // enquanto o painel ainda estava escondido (display:none), que nascem com tamanho
+    // zero e ficam em branco até alguém mandar recalcular o tamanho.
+    document.dispatchEvent(new CustomEvent("aba:ativada", { detail: { tab } }));
   }
 
   navItems.forEach((item) => {

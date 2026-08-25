@@ -614,6 +614,12 @@
     gel("metas-add-func").addEventListener("click", addFuncRow);
     gel("metas-modal").addEventListener("click", e => { if (e.target === gel("metas-modal")) gel("metas-modal").hidden = true; });
 
+    // O gráfico nasce com tamanho zero se a aba Dashboard não for a primeira a abrir
+    // (o painel começa escondido) — recalcula o tamanho toda vez que a aba é ativada.
+    document.addEventListener("aba:ativada", (e) => {
+      if (e.detail.tab === "vendas" && chartAno) chartAno.resize();
+    });
+
     await carregarCfg();
     carregarTudo();
   }
