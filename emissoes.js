@@ -261,6 +261,7 @@
   let clientesCache = [];
   let fornecedoresCache = [];
   let vendedoresCache = []; // [{ id, nome }] — mesma lista das Metas em Vendas, pro nome bater certinho
+  let empresasCache = []; // [{ id, nome }] — pro seletor de empresa quando origem do lead = Corporativo
   let passageiros = [];              // [{ id, cliente_id: string|null, nome }]
   let produtos = [];                 // [{ id, tipo }]
   const paxSelecionados = {};        // produtoId -> Set(paxId) — sobrevive a re-render das checkboxes
@@ -314,6 +315,11 @@
       const cfg = resp.ok ? await resp.json() : null;
       vendedoresCache = (cfg && Array.isArray(cfg.funcs)) ? cfg.funcs : [];
     } catch { vendedoresCache = []; }
+  }
+
+  async function carregarEmpresas() {
+    try { empresasCache = await chamarEmissoes("listar_empresas_nomes"); }
+    catch { empresasCache = []; }
   }
 
   // ===== Passageiros =====
@@ -876,6 +882,13 @@
                   ${ORIGENS_LEAD.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}
                 </select>
               </label>
+              <label class="field" id="emi-prod-${prod.id}-empresa-wrap" hidden>
+                <span class="field__label">Empresa</span>
+                <select class="input" id="emi-prod-${prod.id}-empresa_id">
+                  <option value="">—</option>
+                  ${empresasCache.map((e) => `<option value="${escHtml(e.id)}">${escHtml(e.nome)}</option>`).join("")}
+                </select>
+              </label>
             </div>
 
             <div class="orc-extras-label" style="margin-top:10px">Funcionária responsável</div>
@@ -1002,6 +1015,15 @@
           gel(`emi-prod-${prod.id}-btn-arquivo`),
           (imageSrc, zone) => analisarDocumento(prod.id, "hospedagem", imageSrc, zone)
         );
+      }
+
+      // O seletor de empresa só faz sentido pra venda corporativa — some pros outros casos.
+      const origemLeadEl  = gel(`emi-prod-${prod.id}-origem_lead`);
+      const empresaWrapEl = gel(`emi-prod-${prod.id}-empresa-wrap`);
+      if (origemLeadEl && empresaWrapEl) {
+        const atualizarVisibilidadeEmpresa = () => { empresaWrapEl.hidden = origemLeadEl.value !== "Corporativo"; };
+        origemLeadEl.addEventListener("change", atualizarVisibilidadeEmpresa);
+        atualizarVisibilidadeEmpresa();
       }
     });
   }
@@ -1281,6 +1303,14 @@
         (DADOS_CFG[prod.tipo] || []).forEach((f) => { dados[f.id] = (gel(`emi-prod-${prod.id}-dados-${f.id}`) || {}).value || ""; });
       }
 
+      // Venda corporativa com empresa escolhida: grava dentro de "dados" (sem migração de
+      // banco) — o servidor usa isso pra criar a emissão correspondente no Portal Corporativo.
+      const origemLeadValor = gel(`emi-prod-${prod.id}-origem_lead`)?.value || null;
+      if (origemLeadValor === "Corporativo") {
+        const empresaIdValor = gel(`emi-prod-${prod.id}-empresa_id`)?.value || "";
+        if (empresaIdValor) dados.empresa_id = empresaIdValor;
+      }
+
       let indices = passageiros.filter((p) => (paxSelecionados[prod.id] || new Set()).has(p.id)).map((p) => idxPorPaxId.get(p.id));
       if (indices.length === 0) indices = passageiros.map((_, i) => i); // ninguém marcado -> aplica a todos
 
@@ -1316,7 +1346,7 @@
         valor_venda: valorVenda,
         pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
-        origem_lead: gel(`emi-prod-${prod.id}-origem_lead`)?.value || null,
+        origem_lead: origemLeadValor,
       };
     });
 
@@ -1498,7 +1528,13 @@
 
       funcSelecionadas[novoProdId] = new Set((p.funcionaria || "").split("/").map((n) => n.trim()).filter(Boolean));
       renderProdutoFuncChecks(novoProdId);
-      const origemEl = gel(`emi-prod-${novoProdId}-origem_lead`); if (origemEl && p.origem_lead) origemEl.value = p.origem_lead;
+      const origemEl = gel(`emi-prod-${novoProdId}-origem_lead`);
+      if (origemEl && p.origem_lead) {
+        origemEl.value = p.origem_lead;
+        origemEl.dispatchEvent(new Event("change")); // mostra o seletor de empresa se for Corporativo
+      }
+      const empresaEl = gel(`emi-prod-${novoProdId}-empresa_id`);
+      if (empresaEl && p.dados && p.dados.empresa_id) empresaEl.value = p.dados.empresa_id;
     });
 
     gel("emi-editando-aviso").hidden = false;
@@ -2186,7 +2222,7 @@
     renderPassageiros();
     renderProdutos();
 
-    await Promise.all([carregarClientes(), carregarFornecedores(), carregarVendedores(), carregarListaEmissoes()]);
+    await Promise.all([carregarClientes(), carregarFornecedores(), carregarVendedores(), carregarEmpresas(), carregarListaEmissoes()]);
     if (filtroFuncEl && vendedoresCache.length > 0) {
       filtroFuncEl.innerHTML = '<option value="">Todas as funcionárias</option>' +
         vendedoresCache.map((f) => `<option value="${escHtml(f.nome)}">${escHtml(f.nome)}</option>`).join("");

@@ -278,6 +278,12 @@ async function executarAcao(action, data, secretKey, sessao) {
       return resultado;
     }
 
+    // Só nome/id (sem CNPJ nem nada sensível) — pra popular o seletor de empresa numa
+    // venda marcada como Corporativo, sem exigir a senha do Portal Corporativo
+    // (empresas-admin.js) só pra isso.
+    case "listar_empresas_nomes":
+      return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }
@@ -405,12 +411,27 @@ async function criarEmissao(data, secretKey, opcoes) {
       // garantir que o envio realmente saia antes da function encerrar (em ambiente
       // serverless, sem esperar, a chamada pode ser cortada antes de completar). Falha
       // no backup nunca derruba a emissão (enviarParaPlanilhaBackup nunca lança erro).
+      // Mesma condição usada abaixo pro Portal Corporativo: uma edição (pularBackupPlanilha)
+      // é só a correção de uma venda que já existe, não uma venda nova de novo — sincronizar
+      // de novo criaria um registro duplicado no portal da empresa.
       if (!opcoes.pularBackupPlanilha) {
         const nomesPaxProduto = passageiroIds.map((id) => {
           const pax = passageirosCriados.find((p) => p.id === id);
           return pax && clienteNomePorId.get(pax.cliente_id);
         }).filter(Boolean).join(" / ");
         await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
+
+        // Venda corporativa com empresa selecionada: cria automaticamente o registro
+        // correspondente no Portal Corporativo (aba Empresas), pra não precisar cadastrar
+        // duas vezes. Nunca pode derrubar a venda em si — qualquer erro aqui só fica
+        // registrado no log da function.
+        if (prod.origem_lead === "Corporativo" && prod.dados && prod.dados.empresa_id) {
+          try {
+            await sincronizarEmissaoCorporativa({ emissao, prod, dataVenda, valorVenda, nomesPaxProduto }, secretKey);
+          } catch (err) {
+            console.error("[emissoes-data] falha ao sincronizar venda corporativa com o Portal Corporativo (produto " + produtoCriado.id + "):", err.message);
+          }
+        }
       }
 
       // Um lançamento financeiro POR forma de pagamento — assim uma entrada de Pix e um
@@ -481,6 +502,52 @@ async function reverterEmissaoParcial(emissaoCriada, produtosCriados, clientesCr
   for (const clienteId of clientesCriadosNestaChamada) {
     await supabaseRest("/clientes?id=eq." + encodeURIComponent(clienteId), "DELETE", secretKey).catch(() => {});
   }
+}
+
+// ===== Sincronização automática com o Portal Corporativo (aba Empresas) =====
+// Quando uma venda é marcada como "Corporativo" com uma empresa selecionada, replica o
+// produto como uma "emissão" da empresa (tabela "emissoes", mesmo projeto Supabase, usada
+// pelo Portal Corporativo em empresas-admin.js/empresas.js) — assim a empresa já aparece
+// com a venda sem precisar cadastrar de novo à mão. Mesma extração de saída/localizador já
+// usada no backup da planilha (montarLinhaBackup), só que mapeada pras colunas da tabela
+// "emissoes" (bem diferente da "venda_emissoes_produtos": um serviço só, sem trechos/perna).
+function extrairSaidaDestino(prod, emissao) {
+  const d = prod.dados || {};
+  if (prod.tipo === "passagem") {
+    const ida = d.ida || d;
+    const seg = (ida.segmentos && ida.segmentos[0]) || ida;
+    const partes = (seg.trecho || "").split("→").map((s) => s.trim()).filter(Boolean);
+    return { saida: partes[0] || null, destino: partes[1] || emissao.destino || null };
+  }
+  if (prod.tipo === "hospedagem") return { saida: null, destino: d.hotel || emissao.destino || null };
+  return { saida: null, destino: emissao.destino || null };
+}
+
+function extrairLocalizador(prod) {
+  const d = prod.dados || {};
+  return (prod.tipo === "passagem" ? (d.ida || d).localizador : d.localizador) || null;
+}
+
+async function sincronizarEmissaoCorporativa(ctx, secretKey) {
+  const { emissao, prod, dataVenda, valorVenda, nomesPaxProduto } = ctx;
+  const d = prod.dados || {};
+  const { saida, destino } = extrairSaidaDestino(prod, emissao);
+
+  await supabaseRest("/emissoes", "POST", secretKey, {
+    empresa_id: d.empresa_id,
+    data_emissao: dataVenda,
+    servico: TIPO_LABEL[prod.tipo] || prod.tipo,
+    passageiro: nomesPaxProduto || "—",
+    data_ida: prod.tipo === "hospedagem" ? (d.checkin || null) : (emissao.data_ida || null),
+    data_volta: prod.tipo === "hospedagem" ? (d.checkout || null) : (emissao.data_volta || null),
+    saida,
+    destino,
+    localizador: extrairLocalizador(prod),
+    valor: valorVenda,
+    data_pagamento: null,
+    status_pagamento: "aguardando",
+    nota_fiscal_status: "nao_solicitada",
+  });
 }
 
 // ===== Backup automático na planilha antiga do Drive (Apps Script) =====
