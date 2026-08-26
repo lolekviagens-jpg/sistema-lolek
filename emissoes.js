@@ -254,7 +254,8 @@
   const FORMAS_PAGAMENTO = [
     { v: "pix", l: "Pix" }, { v: "sumup", l: "Sumup" }, { v: "valepay", l: "Valepay" }, { v: "faturado", l: "Faturado (cobrar depois)" },
   ];
-  const ORIGENS_LEAD = ["Shalom", "Orgânico", "Corporativo", "Convenção", "Indicação", "Outro"];
+  // "Indicação" e "Outro" saíram — a funcionária considera as duas a mesma coisa que Orgânico.
+  const ORIGENS_LEAD = ["Shalom", "Orgânico", "Corporativo", "Convenção"];
 
   // ===== Estado =====
   let clientesCache = [];
