@@ -284,16 +284,6 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "listar_empresas_nomes":
       return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
 
-    // Temporária, só pra validar o teste ponta a ponta da sincronização automática com o
-    // Portal Corporativo — remover depois de confirmar.
-    case "_debug_listar_emissoes_empresa":
-      if (!data.empresa_id) throw new Error("empresa_id é obrigatório");
-      return supabaseRest("/emissoes?select=*&empresa_id=eq." + encodeURIComponent(data.empresa_id) + "&order=criado_em.desc", "GET", secretKey);
-    case "_debug_excluir_emissao_empresa":
-      if (!data.id) throw new Error("id é obrigatório");
-      await supabaseRest("/emissoes?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
-      return { ok: true };
-
     default:
       throw new Error("Ação desconhecida: " + action);
   }
