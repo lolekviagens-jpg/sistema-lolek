@@ -439,18 +439,33 @@
   });
 
   // ===== Início =====
+  // carregarDados() busca a EMPRESA INTEIRA (todo o histórico de emissões + todos os
+  // clientes) — pesado demais pra rodar sozinho toda vez que a página abre ou a cada
+  // poucos minutos, não importa qual aba a pessoa está olhando (foi exatamente isso que
+  // estourou a cota de egress do Supabase: todo computador com o sistema aberto o dia
+  // inteiro baixava tudo de novo a cada 5min e a cada troca de aba do navegador, mesmo
+  // parado no Dashboard). Só busca quando a aba Check-in é a que está realmente visível.
+  function checkinAtivo() {
+    const painel = document.querySelector('[data-panel="checkin"]');
+    return !!painel && painel.classList.contains("is-active");
+  }
+
   const now  = new Date();
   calYear    = now.getFullYear();
   calMonth   = now.getMonth();
   renderCalendar(); // renderiza calendário vazio enquanto carrega
-  carregarDados();
-  setInterval(pollConfirms, CONFIRMS_POLL_MS);
+  if (checkinAtivo()) carregarDados();
+  document.addEventListener("aba:ativada", (e) => {
+    if (e.detail.tab === "checkin") carregarDados();
+  });
+  setInterval(() => { if (checkinAtivo()) pollConfirms(); }, CONFIRMS_POLL_MS);
   // A lista de passageiros/datas era carregada só uma vez, na abertura da página — se a aba
   // ficasse aberta de um dia pro outro (comum numa aba fixa do trabalho), "hoje"/"amanhã"
   // nunca se atualizavam sozinhos e viagens novas/relevantes não apareciam até dar F5. Agora
-  // recarrega sozinho de tempos em tempos e sempre que a aba volta a ficar visível.
-  setInterval(carregarDados, DADOS_POLL_MS);
+  // recarrega sozinho de tempos em tempos e sempre que a aba volta a ficar visível — mas só
+  // enquanto for a aba Check-in que está sendo exibida.
+  setInterval(() => { if (checkinAtivo()) carregarDados(); }, DADOS_POLL_MS);
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) carregarDados();
+    if (!document.hidden && checkinAtivo()) carregarDados();
   });
 })();
