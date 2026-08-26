@@ -266,25 +266,6 @@ async function executarAcao(action, data, secretKey, sessao) {
       );
     }
 
-    // Limpeza pontual: "Indicação"/"Outro" deixaram de existir como opção (viraram
-    // "Orgânico", já que a funcionária tratava as duas como a mesma coisa) — aproveita
-    // pra também unificar variações de grafia de "Orgânico" que ficaram gravadas erradas
-    // (sem acento, ou com encoding corrompido) por causa de imports/edições antigas.
-    // Rodar uma vez só e remover esta ação depois (mesmo padrão já usado em
-    // importar-planilha-antiga.js).
-    case "normalizar_origem_lead_organico": {
-      const valoresAntigos = ["Indicação", "Outro", "Organico", "Org��nico"];
-      const resultados = {};
-      for (const valor of valoresAntigos) {
-        const alterados = await supabaseRest(
-          "/venda_emissoes_produtos?origem_lead=eq." + encodeURIComponent(valor),
-          "PATCH", secretKey, { origem_lead: "Orgânico" }
-        );
-        resultados[valor] = (alterados || []).length;
-      }
-      return resultados;
-    }
-
     // ===== Fornecedores (mesma tabela do Financeiro, sem exigir a senha do Financeiro
     // pra só escolher/cadastrar um milheiro/site/operadora na hora de registrar uma venda) =====
     case "listar_fornecedores":
