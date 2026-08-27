@@ -93,6 +93,8 @@
         { id: "companhia",        label: "Companhia",          type: "text",   placeholder: "Ex: SNCF, Trenitalia, Eurostar", cols: 1 },
         { id: "data_viagem",      label: "Data",               type: "date",   placeholder: "",           cols: 1 },
         { id: "horario_partida",  label: "Horário de partida", type: "text",   placeholder: "Ex: 09:15",  cols: 1 },
+        { id: "horario_chegada", label: "Horário de chegada", type: "text",   placeholder: "Ex: 13:45 (+1)", cols: 1 },
+        { id: "conexoes",        label: "Conexões / troca de trem", type: "text", placeholder: "Ex: Direto, ou Troca em Lyon", cols: 1 },
         { id: "custo",            label: "Custo (R$)",         type: "number", placeholder: "0", cols: 1, step: "0.01" },
         { id: "markup",           label: "Markup (R$)",        type: "number", placeholder: "0", cols: 1, step: "0.01" },
       ],
@@ -1073,7 +1075,8 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
           } else if (p.tipo === "trem") {
             const t = gV(dest.id + "-" + p.pid + "-trecho");
             if (t) nomeItem = t;
-            desc = [gV(dest.id + "-" + p.pid + "-companhia"), fData(gV(dest.id + "-" + p.pid + "-data_viagem")), gV(dest.id + "-" + p.pid + "-horario_partida")].filter(Boolean).join(" · ");
+            const horario = [gV(dest.id + "-" + p.pid + "-horario_partida"), gV(dest.id + "-" + p.pid + "-horario_chegada")].filter(Boolean).join(" – ");
+            desc = [gV(dest.id + "-" + p.pid + "-companhia"), fData(gV(dest.id + "-" + p.pid + "-data_viagem")), horario, gV(dest.id + "-" + p.pid + "-conexoes")].filter(Boolean).join(" · ");
           }
           itens.push({ nomeItem, desc, venda, fotos: (fotoStore[p.pid] || []).map((f) => f.src), tipo: p.tipo });
         }
