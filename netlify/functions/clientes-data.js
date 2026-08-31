@@ -76,6 +76,78 @@ exports.handler = async (event) => {
         }
       }
 
+      // Limpeza pontual de clientes duplicados (mesmo nome, sem CPFs conflitantes) — mescla
+      // cada grupo num único registro (o mais completo, preenchido com o que faltar dos
+      // outros), reaponta as vendas (venda_emissoes_passageiros.cliente_id) pro sobrevivente
+      // e apaga os duplicados. Processa em lotes — chamar repetidas vezes até
+      // "processadosNestaChamada" vir 0. Rodar uma vez e remover esta ação depois (mesmo
+      // padrão já usado em importar-planilha-antiga.js).
+      if (action === "_debug_mesclar_duplicados") {
+        const limit = Math.min(parseInt(data?.limit, 10) || 40, 100);
+        const todos = await supabaseRestPaginado("/clientes?select=*", secretKey);
+
+        const normNome = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+        const normCpf  = (s) => (s || "").replace(/\D/g, "");
+
+        const grupos = new Map();
+        todos.forEach((c) => {
+          const key = normNome(c.nome);
+          if (!key) return;
+          if (!grupos.has(key)) grupos.set(key, []);
+          grupos.get(key).push(c);
+        });
+
+        const elegiveis = [...grupos.values()].filter((regs) => {
+          if (regs.length < 2) return false;
+          const cpfs = new Set(regs.map((r) => normCpf(r.cpf)).filter(Boolean));
+          return cpfs.size <= 1;
+        });
+        const lote = elegiveis.slice(0, limit);
+
+        const completude = (r) => CAMPOS.filter((c) => (r[c] || "").toString().trim()).length;
+        const detalhes = [];
+
+        for (const regs of lote) {
+          const ordenados = [...regs].sort((a, b) => {
+            const d = completude(b) - completude(a);
+            return d !== 0 ? d : new Date(a.criado_em) - new Date(b.criado_em);
+          });
+          const principal = ordenados[0];
+          const outros = ordenados.slice(1);
+
+          const merged = {};
+          CAMPOS.forEach((c) => {
+            let v = (principal[c] || "").toString().trim();
+            if (!v) {
+              for (const o of outros) {
+                const ov = (o[c] || "").toString().trim();
+                if (ov) { v = ov; break; }
+              }
+            }
+            merged[c] = v || null;
+          });
+
+          await supabaseRest("/clientes?id=eq." + encodeURIComponent(principal.id), "PATCH", secretKey, merged, { "Prefer": "return=minimal" });
+
+          const idsOutros = outros.map((o) => o.id);
+          if (idsOutros.length > 0) {
+            await supabaseRest(
+              "/venda_emissoes_passageiros?cliente_id=in.(" + idsOutros.join(",") + ")",
+              "PATCH", secretKey, { cliente_id: principal.id }, { "Prefer": "return=minimal" }
+            );
+            await supabaseRest("/clientes?id=in.(" + idsOutros.join(",") + ")", "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+          }
+
+          detalhes.push({ nome: principal.nome, principalId: principal.id, removidos: idsOutros.length });
+        }
+
+        return { statusCode: 200, body: JSON.stringify({
+          processadosNestaChamada: lote.length,
+          totalElegiveisAntesDesteLote: elegiveis.length,
+          detalhes,
+        }) };
+      }
+
       // Importação em lote — usada só na migração inicial do localStorage.
       if (action === "importar") {
         const lista = Array.isArray(data) ? data : [];
