@@ -1757,6 +1757,11 @@
   <style>
     body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-body, Montserrat, sans-serif); }
     .orc-prev-wrap { box-shadow: none; border: 1px solid #e3e6ec; max-width: 800px; margin: 0 auto; }
+    /* Por padrão o navegador some com cores de fundo (ex: a caixa azul do localizador) ao
+       imprimir/salvar como PDF, pra economizar tinta — isso é o que fazia o comprovante
+       impresso ficar sem cor, diferente do "baixar" (que tira um print da tela, sem passar
+       por essa limpeza). Força manter as cores de fundo também aqui. */
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     @media print {
       body { padding: 0; }
       .orc-prev-wrap { border: none; max-width: 100%; }
