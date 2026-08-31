@@ -1757,14 +1757,19 @@
   <style>
     body { margin: 0; padding: 20px; background: #fff; font-family: var(--font-body, Montserrat, sans-serif); }
     .orc-prev-wrap { box-shadow: none; border: 1px solid #e3e6ec; max-width: 800px; margin: 0 auto; }
-    /* Por padrão o navegador some com cores de fundo (ex: a caixa azul do localizador) ao
-       imprimir/salvar como PDF, pra economizar tinta — isso é o que fazia o comprovante
-       impresso ficar sem cor, diferente do "baixar" (que tira um print da tela, sem passar
-       por essa limpeza). Força manter as cores de fundo também aqui. */
+    /* "Salvar como PDF" e imprimir passam pelo mesmo diálogo nativo do navegador — a
+       diferença de cor entre os dois vinha da opção "Gráficos em segundo plano" do
+       diálogo, que o navegador às vezes desmarca sozinho dependendo do destino escolhido
+       (PDF x impressora). Força manter as cores de fundo (ex: a caixa azul do localizador)
+       nos dois casos, sem depender dessa opção. */
     * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
     @media print {
       body { padding: 0; }
-      .orc-prev-wrap { border: none; max-width: 100%; }
+      .orc-prev-wrap { border: none; max-width: 100%; padding: 20px; }
+      /* Reduz o tamanho de tudo (as fontes do comprovante são em rem, relativas a esse
+         valor) só nessa janela de impressão/PDF — a pré-visualização normal na tela
+         continua do tamanho de sempre. Ajuda um bilhete de ida e volta a caber numa página. */
+      html { font-size: 85%; }
     }
   </style>
 </head>
