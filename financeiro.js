@@ -715,6 +715,72 @@
     }
   }
 
+  // ===== Lançamento rápido por texto livre (IA) =====
+  // Modelo Haiku (mais rápido/barato) — extrai só 1 lançamento de uma frase curta, então
+  // não precisa da precisão do Sonnet usado no extrato (que lê várias transações de uma vez).
+  function contextoDataAtualFin() {
+    const hoje = new Date();
+    return `Hoje é ${String(hoje.getDate()).padStart(2, "0")}/${String(hoje.getMonth() + 1).padStart(2, "0")}/${hoje.getFullYear()}.`;
+  }
+
+  function montarPromptLancamentoRapido(texto) {
+    return `${contextoDataAtualFin()} Extraia um único lançamento financeiro do texto abaixo, escrito livremente por uma funcionária de uma agência de viagens (ex: "paguei 150 de internet hoje", "gastei 80 no mercado no pix", "recebi 300 de comissão da Fulana").
+
+Retorne SOMENTE um JSON válido, sem texto adicional, no formato:
+{
+  "tipo": "entrada" ou "saida" (entrada = recebimento/receita; saida = pagamento/despesa — a maioria dos casos é saida),
+  "descricao": "resumo curto do que foi pago/recebido",
+  "categoria": uma destas opções, a mais parecida com o gasto (ou "" se nenhuma encaixar bem): ${CATEGORIAS_EXTRATO.join(", ")},
+  "valor": número positivo, sem sinal,
+  "data": "DD/MM/AAAA" — use hoje se nenhuma data for mencionada, calcule "ontem"/"anteontem" etc. a partir de hoje,
+  "origem": "forma de pagamento ou conta/cartão mencionada (ex: Pix, Cartão, Dinheiro, BTG), ou "" se não for mencionada"
+}
+
+Texto: "${texto}"`;
+  }
+
+  async function analisarLancamentoTexto() {
+    const texto = gel("fin-ia-texto").value.trim();
+    if (!texto) return;
+    const btn = gel("fin-ia-lancar-btn");
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    btn.textContent = "⏳ Analisando...";
+    try {
+      const resp = await fetch("/.netlify/functions/anthropic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 512,
+          messages: [{ role: "user", content: montarPromptLancamentoRapido(texto) }],
+        }),
+      });
+      if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.error?.message || "Erro HTTP " + resp.status); }
+      const data = await resp.json();
+      const jsonStr = extractJson(data.content?.[0]?.text || "");
+      if (!jsonStr) throw new Error("Resposta inesperada da IA");
+      const ex = JSON.parse(jsonStr);
+
+      // Abre o modal normal de "Novo lançamento" (editando=null, então salvar cria um
+      // registro novo) só pré-preenchido — nunca salva sozinho, sempre passa por revisão.
+      abrirForm(null);
+      gel("fin-f-tipo").value       = ex.tipo === "entrada" ? "entrada" : "saida";
+      gel("fin-f-status").value     = "pago"; // "paguei/gastei hoje" já aconteceu — ajustável no modal
+      gel("fin-f-descricao").value  = ex.descricao || texto;
+      gel("fin-f-categoria").value  = ex.categoria || "";
+      gel("fin-f-origem").value     = ex.origem || "";
+      gel("fin-f-valor").value      = ex.valor || "";
+      gel("fin-f-vencimento").value = ex.data || "";
+      gel("fin-ia-texto").value = "";
+    } catch (err) {
+      alert("Erro ao analisar: " + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  }
+
   // ===== Importar extrato (IA) =====
   function abrirImportar() {
     gel("fin-imp-origem").value = "";
@@ -1023,6 +1089,8 @@ ${texto}`;
     });
 
     gel("fin-novo-btn").addEventListener("click", () => abrirForm(null));
+    gel("fin-ia-lancar-btn").addEventListener("click", analisarLancamentoTexto);
+    gel("fin-ia-texto").addEventListener("keydown", e => { if (e.key === "Enter") analisarLancamentoTexto(); });
     gel("fin-modal-fechar").addEventListener("click", fecharForm);
     gel("fin-f-cancelar").addEventListener("click", fecharForm);
     gel("fin-f-salvar").addEventListener("click", salvarForm);
