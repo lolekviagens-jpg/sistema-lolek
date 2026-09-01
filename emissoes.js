@@ -1439,6 +1439,7 @@
       if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
       if (!p.origem_lead) { alert("Selecione a origem do lead em todos os produtos."); return; }
       if (p.origem_lead === "Corporativo" && !p.dados?.empresa_id) { alert("Selecione a empresa em todo produto marcado como Corporativo."); return; }
+      if (p.pagamentos.some((pg) => pg.forma === "faturado" && !pg.data_faturamento)) { alert("Informe a data prevista de pagamento em toda forma de pagamento Faturado."); return; }
     }
 
     const editando = !!emissaoEmEdicaoId;
