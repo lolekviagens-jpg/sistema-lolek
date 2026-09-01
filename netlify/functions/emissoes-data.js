@@ -284,6 +284,17 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "listar_empresas_nomes":
       return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
 
+    // Temporária, só pra migrar os produtos de agosto sem origem do lead pra "Orgânico"
+    // (a opção "—"/não informado deixou de existir, o campo agora é obrigatório) — remover
+    // depois de usada.
+    case "_debug_definir_origem_lead":
+      if (!Array.isArray(data.ids) || !data.valor) throw new Error("ids e valor são obrigatórios");
+      await supabaseRest(
+        "/venda_emissoes_produtos?id=in.(" + data.ids.join(",") + ")",
+        "PATCH", secretKey, { origem_lead: data.valor }, { "Prefer": "return=minimal" }
+      );
+      return { ok: true, atualizados: data.ids.length };
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }

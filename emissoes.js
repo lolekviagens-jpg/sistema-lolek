@@ -899,9 +899,9 @@
                 <div id="emi-prod-${prod.id}-pagamentos-list"></div>
                 <button type="button" class="btn btn--ghost" id="emi-prod-${prod.id}-add-pagamento" style="margin-top:6px;font-size:0.78rem">+ Adicionar forma de pagamento</button>
               </div>
-              <label class="field"><span class="field__label">Origem do lead</span>
+              <label class="field"><span class="field__label">Origem do lead ★</span>
                 <select class="input" id="emi-prod-${prod.id}-origem_lead">
-                  <option value="">—</option>
+                  <option value="">Selecione...</option>
                   ${ORIGENS_LEAD.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}
                 </select>
               </label>
@@ -1414,6 +1414,7 @@
     for (const p of payload.produtos) {
       if (!p.valor_venda) { alert("Informe o valor de pelo menos uma forma de pagamento em todos os produtos."); return; }
       if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
+      if (!p.origem_lead) { alert("Selecione a origem do lead em todos os produtos."); return; }
     }
 
     const editando = !!emissaoEmEdicaoId;
