@@ -63,6 +63,26 @@
 //     criado_em timestamptz not null default now()
 //   );
 //   alter table fornecedor_pagamentos enable row level security;
+//
+//   create table financeiro_contas_fixas (
+//     id uuid primary key default gen_random_uuid(),
+//     nome text not null,
+//     valor numeric(12,2), -- fica em branco até a funcionária confirmar (varia mês a mês em contas como energia)
+//     dia_vencimento int check (dia_vencimento between 1 and 31),
+//     banco_cartao text,
+//     categoria text,
+//     recorrencia text not null default 'mensal' check (recorrencia in ('mensal','parcela')),
+//     parcelas_restantes int, -- só relevante quando recorrencia = 'parcela'
+//     ativo boolean not null default true,
+//     ultimo_valor_pago numeric(12,2),
+//     ultima_vez_paga_em date,
+//     criado_em timestamptz not null default now()
+//   );
+//   alter table financeiro_contas_fixas enable row level security;
+//
+//   -- Liga um lançamento à conta fixa que o gerou, pra "marcar como paga este mês" saber
+//   -- de onde veio e pra tela de contas fixas listar o histórico de pagamentos de cada uma.
+//   alter table financeiro_lancamentos add column if not exists conta_fixa_id uuid references financeiro_contas_fixas(id) on delete set null;
 
 const https  = require("https");
 const crypto = require("crypto");
@@ -191,6 +211,72 @@ async function executarAcao(action, data, secretKey, usuarioNome) {
         "/financeiro_lancamentos?on_conflict=dedupe_key", "POST", secretKey, lista,
         { "Prefer": "resolution=merge-duplicates,return=representation" }
       );
+    }
+
+    // ===== Contas fixas (aluguel, folha, assinaturas, parcelas...) =====
+    case "listar_contas_fixas":
+      return supabaseRest("/financeiro_contas_fixas?select=*&ativo=eq.true&order=dia_vencimento.asc.nullslast,nome.asc", "GET", secretKey);
+
+    case "criar_conta_fixa": {
+      if (!data.nome) throw new Error("Nome é obrigatório");
+      const resultado = await supabaseRest("/financeiro_contas_fixas", "POST", secretKey, {
+        nome: data.nome,
+        valor: data.valor || null,
+        dia_vencimento: data.dia_vencimento || null,
+        banco_cartao: data.banco_cartao || null,
+        categoria: data.categoria || null,
+        recorrencia: data.recorrencia || "mensal",
+        parcelas_restantes: data.parcelas_restantes || null,
+      });
+      const criado = Array.isArray(resultado) ? resultado[0] : resultado;
+      await registrarAtividade(secretKey, { usuarioNome, acao: "criar", area: "financeiro_conta_fixa", descricao: data.nome, registroId: criado && criado.id });
+      return resultado;
+    }
+
+    case "atualizar_conta_fixa": {
+      if (!data.id) throw new Error("id é obrigatório");
+      const { id, ...campos } = data;
+      const resultado = await supabaseRest("/financeiro_contas_fixas?id=eq." + encodeURIComponent(id), "PATCH", secretKey, campos);
+      await registrarAtividade(secretKey, { usuarioNome, acao: "editar", area: "financeiro_conta_fixa", descricao: data.nome || null, registroId: id });
+      return resultado;
+    }
+
+    case "excluir_conta_fixa": {
+      if (!data.id) throw new Error("id é obrigatório");
+      // Desativa em vez de apagar — mantém o histórico de lançamentos já ligados a ela.
+      const resultado = await supabaseRest("/financeiro_contas_fixas?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey, { ativo: false });
+      await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "financeiro_conta_fixa", descricao: "Conta fixa desativada", registroId: data.id });
+      return resultado;
+    }
+
+    // Confirma o pagamento do mês de uma conta fixa: cria o lançamento (saída/pago) ligado
+    // a ela, atualiza "último valor pago" pra conferência do próximo mês, e — se for parcela
+    // — desconta 1 das parcelas restantes automaticamente.
+    case "marcar_conta_paga": {
+      if (!data.id || !data.valor) throw new Error("id e valor são obrigatórios");
+      const [conta] = await supabaseRest("/financeiro_contas_fixas?id=eq." + encodeURIComponent(data.id) + "&select=*", "GET", secretKey);
+      if (!conta) throw new Error("Conta fixa não encontrada");
+
+      const dataPagamento = data.data_pagamento || new Date().toISOString().slice(0, 10);
+      const [lancamento] = await supabaseRest("/financeiro_lancamentos", "POST", secretKey, {
+        tipo: "saida", status: "pago",
+        descricao: conta.nome,
+        categoria: conta.categoria || null,
+        origem: conta.banco_cartao || null,
+        valor: data.valor,
+        vencimento: dataPagamento,
+        fonte: "manual",
+        conta_fixa_id: conta.id,
+      });
+
+      const camposConta = { ultimo_valor_pago: data.valor, ultima_vez_paga_em: dataPagamento };
+      if (conta.recorrencia === "parcela" && conta.parcelas_restantes != null) {
+        camposConta.parcelas_restantes = Math.max(0, conta.parcelas_restantes - 1);
+      }
+      await supabaseRest("/financeiro_contas_fixas?id=eq." + encodeURIComponent(conta.id), "PATCH", secretKey, camposConta);
+
+      await registrarAtividade(secretKey, { usuarioNome, acao: "pagar", area: "financeiro_conta_fixa", descricao: conta.nome, registroId: conta.id });
+      return { lancamento, conta: { ...conta, ...camposConta } };
     }
 
     // ===== Fornecedores de milhas =====

@@ -499,8 +499,10 @@ ${listaTexto}`,
     gel("fin-subtab-fornecedores").addEventListener("click", () => {
       gel("fin-subtab-fornecedores").classList.add("is-active");
       gel("fin-subtab-lancamentos").classList.remove("is-active");
+      gel("fin-subtab-contas-fixas").classList.remove("is-active");
       gel("fin-sub-fornecedores").hidden = false;
       gel("fin-sub-lancamentos").hidden = true;
+      gel("fin-sub-contas-fixas").hidden = true;
     });
 
     gel("forn-novo-btn").addEventListener("click", () => abrirForm(null));

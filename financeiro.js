@@ -284,10 +284,12 @@
     try {
       await migrarLocalStorageAntigo();
       await carregarLancamentos();
+      await carregarContasFixas();
     } catch (err) {
       alert("Erro ao carregar lançamentos: " + err.message);
     }
     render();
+    renderVencimentosProximos();
     puxarPlanilha();
   }
 
@@ -781,6 +783,206 @@ Texto: "${texto}"`;
     }
   }
 
+  // ===== Contas fixas =====
+  let contasFixas   = [];
+  let editandoConta = null;
+  let pagandoConta  = null;
+
+  async function carregarContasFixas() {
+    contasFixas = await chamar("listar_contas_fixas");
+  }
+
+  // Quantos dias faltam pro próximo vencimento (hoje mesmo conta como 0) — sempre olha pra
+  // frente: se o dia já passou nesse mês, é o dia desse número no mês que vem.
+  function diasAteProximoVencimento(diaVencimento) {
+    if (!diaVencimento) return null;
+    const hoje = new Date();
+    const hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    let proximo = new Date(hoje.getFullYear(), hoje.getMonth(), diaVencimento);
+    if (proximo < hojeSemHora) proximo = new Date(hoje.getFullYear(), hoje.getMonth() + 1, diaVencimento);
+    return Math.round((proximo - hojeSemHora) / 86400000);
+  }
+
+  function labelDiasRestantes(dias) {
+    if (dias === 0) return "vence hoje";
+    if (dias === 1) return "vence amanhã";
+    return "em " + dias + " dias";
+  }
+
+  const DIAS_AVISO_VENCIMENTO = 5;
+
+  function renderVencimentosProximos() {
+    const wrap = gel("fin-cf-vencimentos-wrap");
+    if (!wrap) return;
+    const proximos = contasFixas
+      .map(c => ({ ...c, diasRestantes: diasAteProximoVencimento(c.dia_vencimento) }))
+      .filter(c => c.diasRestantes != null && c.diasRestantes <= DIAS_AVISO_VENCIMENTO)
+      .sort((a, b) => a.diasRestantes - b.diasRestantes);
+
+    if (proximos.length === 0) { wrap.hidden = true; wrap.innerHTML = ""; return; }
+    wrap.hidden = false;
+    wrap.innerHTML = `
+      <div class="card" style="padding:14px 16px;border-left:4px solid var(--gold)">
+        <div style="font-weight:600;margin-bottom:8px">⏰ Vencimentos próximos</div>
+        ${proximos.map(c => `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.85rem">
+            <span>${escHtml(c.nome)}${c.valor ? " — " + fBRL(c.valor) : ""}</span>
+            <span style="color:${c.diasRestantes === 0 ? "#c0392b" : "var(--text-muted)"}">${labelDiasRestantes(c.diasRestantes)}</span>
+          </div>`).join("")}
+      </div>`;
+  }
+
+  function ordenarContasFixas() {
+    contasFixas.sort((a, b) => (a.dia_vencimento || 99) - (b.dia_vencimento || 99) || a.nome.localeCompare(b.nome, "pt-BR"));
+  }
+
+  function badgeRecorrenciaConta(c) {
+    if (c.recorrencia === "parcela") {
+      const n = c.parcelas_restantes;
+      return "Parcela — " + (n != null ? n + " restante" + (n === 1 ? "" : "s") : "?");
+    }
+    return "Mensal";
+  }
+
+  function renderContasFixas() {
+    const body  = gel("fin-cf-tabela-body");
+    const vazio = gel("fin-cf-vazio");
+    if (!body) return;
+
+    if (contasFixas.length === 0) {
+      body.innerHTML = "";
+      vazio.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhuma conta fixa cadastrada</p></div>';
+      return;
+    }
+    vazio.innerHTML = "";
+
+    body.innerHTML = contasFixas.map(c => `
+      <tr data-id="${escHtml(c.id)}">
+        <td>${c.dia_vencimento ? "Dia " + c.dia_vencimento : "—"}</td>
+        <td class="table__client">${escHtml(c.nome)}</td>
+        <td class="table__muted">${badgeRecorrenciaConta(c)}</td>
+        <td class="table__muted">${escHtml(c.banco_cartao || "—")}</td>
+        <td>${c.valor ? fBRL(c.valor) : "—"}</td>
+        <td class="table__muted">${c.ultima_vez_paga_em ? fBRL(c.ultimo_valor_pago) + " em " + paraBR(c.ultima_vez_paga_em) : "—"}</td>
+        <td class="table__actions-col">
+          <div class="table__actions">
+            <button class="btn btn--ghost btn--icon fin-cf-pagar" title="Marcar como paga">✓</button>
+            <button class="btn btn--ghost btn--icon fin-cf-editar" title="Editar">✏</button>
+          </div>
+        </td>
+      </tr>`).join("");
+
+    body.querySelectorAll(".fin-cf-pagar").forEach(btn => {
+      btn.addEventListener("click", () => abrirPagarConta(contasFixas.find(c => c.id === btn.closest("tr").dataset.id)));
+    });
+    body.querySelectorAll(".fin-cf-editar").forEach(btn => {
+      btn.addEventListener("click", () => abrirFormConta(contasFixas.find(c => c.id === btn.closest("tr").dataset.id)));
+    });
+  }
+
+  function abrirFormConta(c) {
+    editandoConta = c || null;
+    gel("fin-cf-modal-titulo").textContent = c ? "Editar conta fixa" : "Nova conta fixa";
+    gel("fin-cf-nome").value        = c ? c.nome : "";
+    gel("fin-cf-valor").value       = c && c.valor != null ? c.valor : "";
+    gel("fin-cf-dia").value         = c && c.dia_vencimento != null ? c.dia_vencimento : "";
+    gel("fin-cf-banco").value       = c ? (c.banco_cartao || "") : "";
+    gel("fin-cf-categoria").value   = c ? (c.categoria || "") : "";
+    gel("fin-cf-recorrencia").value = c ? c.recorrencia : "mensal";
+    gel("fin-cf-parcelas").value    = c && c.parcelas_restantes != null ? c.parcelas_restantes : "";
+    gel("fin-cf-parcelas-wrap").hidden = gel("fin-cf-recorrencia").value !== "parcela";
+    gel("fin-cf-excluir").hidden    = !c;
+    gel("fin-modal-cf").hidden = false;
+    gel("fin-cf-nome").focus();
+  }
+
+  function fecharFormConta() { gel("fin-modal-cf").hidden = true; editandoConta = null; }
+
+  async function salvarFormConta() {
+    const recorrencia = gel("fin-cf-recorrencia").value;
+    const dados = {
+      nome:               gel("fin-cf-nome").value.trim(),
+      valor:              parseFloat(gel("fin-cf-valor").value) || null,
+      dia_vencimento:     parseInt(gel("fin-cf-dia").value, 10) || null,
+      banco_cartao:       gel("fin-cf-banco").value.trim() || null,
+      categoria:          gel("fin-cf-categoria").value.trim() || null,
+      recorrencia,
+      parcelas_restantes: recorrencia === "parcela" ? (parseInt(gel("fin-cf-parcelas").value, 10) ?? null) : null,
+    };
+    if (!dados.nome) { alert("Nome é obrigatório."); return; }
+
+    const btn = gel("fin-cf-salvar");
+    btn.disabled = true;
+    try {
+      if (editandoConta) {
+        await chamar("atualizar_conta_fixa", { id: editandoConta.id, ...dados });
+        Object.assign(editandoConta, dados);
+      } else {
+        const [criada] = await chamar("criar_conta_fixa", dados);
+        contasFixas.push(criada);
+      }
+      fecharFormConta();
+      ordenarContasFixas();
+      renderContasFixas();
+      renderVencimentosProximos();
+    } catch (err) {
+      alert("Erro ao salvar conta fixa: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function excluirContaFixa() {
+    if (!editandoConta) return;
+    if (!confirm('Remover "' + editandoConta.nome + '" das contas fixas?')) return;
+    try {
+      await chamar("excluir_conta_fixa", { id: editandoConta.id });
+      contasFixas = contasFixas.filter(c => c.id !== editandoConta.id);
+      fecharFormConta();
+      renderContasFixas();
+      renderVencimentosProximos();
+    } catch (err) {
+      alert("Erro ao excluir conta fixa: " + err.message);
+    }
+  }
+
+  // ===== Marcar conta fixa como paga (gera o lançamento automaticamente) =====
+  function abrirPagarConta(c) {
+    pagandoConta = c;
+    gel("fin-cf-pagar-titulo").textContent = 'Marcar "' + c.nome + '" como paga';
+    gel("fin-cf-pagar-valor").value = c.valor != null ? c.valor : (c.ultimo_valor_pago != null ? c.ultimo_valor_pago : "");
+    const hoje = new Date();
+    gel("fin-cf-pagar-data").value = String(hoje.getDate()).padStart(2, "0") + "/" + String(hoje.getMonth() + 1).padStart(2, "0") + "/" + hoje.getFullYear();
+    gel("fin-modal-cf-pagar").hidden = false;
+    gel("fin-cf-pagar-valor").focus();
+  }
+
+  function fecharPagarConta() { gel("fin-modal-cf-pagar").hidden = true; pagandoConta = null; }
+
+  async function confirmarPagarConta() {
+    if (!pagandoConta) return;
+    const valor = parseFloat(gel("fin-cf-pagar-valor").value) || 0;
+    if (!valor) { alert("Informe o valor pago."); return; }
+    const dataPagamento = paraISO(gel("fin-cf-pagar-data").value.trim()) || new Date().toISOString().slice(0, 10);
+
+    const btn = gel("fin-cf-pagar-confirmar");
+    btn.disabled = true;
+    try {
+      const resultado = await chamar("marcar_conta_paga", { id: pagandoConta.id, valor, data_pagamento: dataPagamento });
+      const idx = contasFixas.findIndex(c => c.id === pagandoConta.id);
+      if (idx !== -1) Object.assign(contasFixas[idx], resultado.conta);
+      lancamentos.push(resultado.lancamento);
+      fecharPagarConta();
+      renderContasFixas();
+      renderVencimentosProximos();
+      render(); // atualiza também os totais/tabela da aba Lançamentos
+    } catch (err) {
+      alert("Erro ao confirmar pagamento: " + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   // ===== Importar extrato (IA) =====
   function abrirImportar() {
     gel("fin-imp-origem").value = "";
@@ -1084,8 +1286,20 @@ ${texto}`;
     gel("fin-subtab-lancamentos").addEventListener("click", () => {
       gel("fin-subtab-lancamentos").classList.add("is-active");
       gel("fin-subtab-fornecedores").classList.remove("is-active");
+      gel("fin-subtab-contas-fixas").classList.remove("is-active");
       gel("fin-sub-lancamentos").hidden = false;
       gel("fin-sub-fornecedores").hidden = true;
+      gel("fin-sub-contas-fixas").hidden = true;
+    });
+
+    gel("fin-subtab-contas-fixas").addEventListener("click", () => {
+      gel("fin-subtab-contas-fixas").classList.add("is-active");
+      gel("fin-subtab-lancamentos").classList.remove("is-active");
+      gel("fin-subtab-fornecedores").classList.remove("is-active");
+      gel("fin-sub-contas-fixas").hidden = false;
+      gel("fin-sub-lancamentos").hidden = true;
+      gel("fin-sub-fornecedores").hidden = true;
+      renderContasFixas();
     });
 
     gel("fin-novo-btn").addEventListener("click", () => abrirForm(null));
@@ -1096,6 +1310,21 @@ ${texto}`;
     gel("fin-f-salvar").addEventListener("click", salvarForm);
     gel("fin-f-excluir").addEventListener("click", excluirLancamento);
     gel("fin-modal-lanc").addEventListener("click", e => { if (e.target === gel("fin-modal-lanc")) fecharForm(); });
+
+    gel("fin-cf-novo-btn").addEventListener("click", () => abrirFormConta(null));
+    gel("fin-cf-modal-fechar").addEventListener("click", fecharFormConta);
+    gel("fin-cf-cancelar").addEventListener("click", fecharFormConta);
+    gel("fin-cf-salvar").addEventListener("click", salvarFormConta);
+    gel("fin-cf-excluir").addEventListener("click", excluirContaFixa);
+    gel("fin-cf-recorrencia").addEventListener("change", () => {
+      gel("fin-cf-parcelas-wrap").hidden = gel("fin-cf-recorrencia").value !== "parcela";
+    });
+    gel("fin-modal-cf").addEventListener("click", e => { if (e.target === gel("fin-modal-cf")) fecharFormConta(); });
+
+    gel("fin-cf-pagar-fechar").addEventListener("click", fecharPagarConta);
+    gel("fin-cf-pagar-cancelar").addEventListener("click", fecharPagarConta);
+    gel("fin-cf-pagar-confirmar").addEventListener("click", confirmarPagarConta);
+    gel("fin-modal-cf-pagar").addEventListener("click", e => { if (e.target === gel("fin-modal-cf-pagar")) fecharPagarConta(); });
 
     gel("fin-importar-btn").addEventListener("click", abrirImportar);
     gel("fin-imp-fechar").addEventListener("click", fecharImportar);

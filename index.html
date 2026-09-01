@@ -746,6 +746,7 @@
           <div class="fin-filtros" style="margin-bottom:20px">
             <button class="fin-subtab is-active" id="fin-subtab-lancamentos" data-subtab="lancamentos" type="button">📋 Lançamentos</button>
             <button class="fin-subtab" id="fin-subtab-fornecedores" data-subtab="fornecedores" type="button">🤝 Fornecedores</button>
+            <button class="fin-subtab" id="fin-subtab-contas-fixas" data-subtab="contas-fixas" type="button">📌 Contas fixas</button>
           </div>
 
           <div id="fin-sub-lancamentos">
@@ -766,6 +767,9 @@
                 placeholder="Ex: paguei 150 de internet hoje, ou gastei 80 no mercado no pix" />
               <button class="btn btn--gold" id="fin-ia-lancar-btn" type="button">Lançar</button>
             </div>
+
+            <!-- Vencimentos próximos das contas fixas -->
+            <div id="fin-cf-vencimentos-wrap" hidden style="margin-bottom:16px"></div>
 
             <!-- Dashboard: receita/custo/lucro + crescimento -->
             <div class="stats">
@@ -897,6 +901,35 @@
 
           </div><!-- /fin-sub-fornecedores -->
 
+          <div id="fin-sub-contas-fixas" hidden>
+
+            <div class="toolbar">
+              <span class="toolbar__info">Aluguel, folha, assinaturas, parcelas — tudo que se repete todo mês</span>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn--gold" id="fin-cf-novo-btn" type="button">+ Nova conta fixa</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Vencimento</th>
+                    <th>Nome</th>
+                    <th>Recorrência</th>
+                    <th>Banco/Cartão</th>
+                    <th>Valor</th>
+                    <th>Último pago</th>
+                    <th class="table__actions-col"></th>
+                  </tr>
+                </thead>
+                <tbody id="fin-cf-tabela-body"></tbody>
+              </table>
+            </div>
+            <div id="fin-cf-vazio"></div>
+
+          </div><!-- /fin-sub-contas-fixas -->
+
         </div><!-- /fin-conteudo -->
 
         <!-- Modal novo/editar lançamento -->
@@ -961,6 +994,88 @@
           <option value="Cartão 2">
           <option value="Cartão 3">
         </datalist>
+
+        <!-- Modal: conta fixa (criar/editar) -->
+        <div class="modal" id="fin-modal-cf" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:520px">
+            <div class="modal__header">
+              <span class="modal__title" id="fin-cf-modal-titulo">Nova conta fixa</span>
+              <button class="modal__close" id="fin-cf-modal-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Nome *</span>
+                  <input type="text" id="fin-cf-nome" class="input" placeholder="Ex: Aluguel, Internet, Emily" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Valor (R$)</span>
+                  <input type="number" id="fin-cf-valor" class="input" step="0.01" min="0" placeholder="Deixe em branco se variar" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Dia do vencimento</span>
+                  <input type="number" id="fin-cf-dia" class="input" min="1" max="31" placeholder="Ex: 10" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Banco/Cartão</span>
+                  <input type="text" id="fin-cf-banco" class="input" list="fin-origens-opcoes" placeholder="Ex: BTG" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Categoria</span>
+                  <input type="text" id="fin-cf-categoria" class="input" placeholder="Ex: Aluguel, Salário/Comissão" />
+                </label>
+                <label class="field">
+                  <span class="field__label">Recorrência</span>
+                  <select id="fin-cf-recorrencia" class="input">
+                    <option value="mensal">Mensal</option>
+                    <option value="parcela">Parcela (tem fim)</option>
+                  </select>
+                </label>
+                <label class="field" id="fin-cf-parcelas-wrap" hidden>
+                  <span class="field__label">Parcelas restantes</span>
+                  <input type="number" id="fin-cf-parcelas" class="input" min="0" placeholder="Ex: 2" />
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <button class="btn btn--ghost btn--danger" id="fin-cf-excluir" hidden>Excluir</button>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="fin-cf-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="fin-cf-salvar">Salvar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal: marcar conta fixa como paga -->
+        <div class="modal" id="fin-modal-cf-pagar" hidden>
+          <div class="modal__backdrop"></div>
+          <div class="modal__dialog" style="max-width:420px">
+            <div class="modal__header">
+              <span class="modal__title" id="fin-cf-pagar-titulo">Marcar como paga</span>
+              <button class="modal__close" id="fin-cf-pagar-fechar">✕</button>
+            </div>
+            <div style="padding:0 24px 20px">
+              <div class="form__grid">
+                <label class="field field--full">
+                  <span class="field__label">Valor pago (R$) *</span>
+                  <input type="number" id="fin-cf-pagar-valor" class="input" step="0.01" min="0" />
+                </label>
+                <label class="field field--full">
+                  <span class="field__label">Data do pagamento</span>
+                  <input type="text" id="fin-cf-pagar-data" class="input" placeholder="DD/MM/AAAA" />
+                </label>
+              </div>
+            </div>
+            <div class="modal__footer">
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn btn--ghost" id="fin-cf-pagar-cancelar">Cancelar</button>
+                <button class="btn btn--gold" id="fin-cf-pagar-confirmar">Confirmar pagamento</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- Modal: importar extrato -->
         <div class="modal" id="fin-modal-importar" hidden>
