@@ -536,6 +536,12 @@
       '<option value="__novo__">+ Novo fornecedor...</option>';
   }
 
+  function montarOptionsEmpresa(selectedId) {
+    return '<option value="">Selecione...</option>' +
+      empresasCache.map((e) => `<option value="${escHtml(e.id)}" ${e.id === selectedId ? "selected" : ""}>${escHtml(e.nome)}</option>`).join("") +
+      '<option value="__novo__">+ Nova empresa...</option>';
+  }
+
   // "showIf" deixa um campo (ex: cidade/horário da parada) só aparecer quando outro campo
   // do mesmo produto (ex: "Parada") tiver um valor específico — genérico, não é só pro Trem.
   function campoDados(prodId, f, prefixo) {
@@ -906,11 +912,8 @@
                 </select>
               </label>
               <label class="field" id="emi-prod-${prod.id}-empresa-wrap" hidden>
-                <span class="field__label">Empresa</span>
-                <select class="input" id="emi-prod-${prod.id}-empresa_id">
-                  <option value="">—</option>
-                  ${empresasCache.map((e) => `<option value="${escHtml(e.id)}">${escHtml(e.nome)}</option>`).join("")}
-                </select>
+                <span class="field__label">Empresa ★</span>
+                <select class="input emi-sel-empresa" id="emi-prod-${prod.id}-empresa_id">${montarOptionsEmpresa(null)}</select>
               </label>
             </div>
 
@@ -1027,6 +1030,26 @@
           } catch (err) {
             alert("Erro ao criar fornecedor: " + err.message);
             fornecedorEl.value = "";
+          }
+        });
+      }
+
+      const empresaEl = gel(`emi-prod-${prod.id}-empresa_id`);
+      if (empresaEl) {
+        empresaEl.addEventListener("change", async () => {
+          if (empresaEl.value !== "__novo__") return;
+          const nome = prompt("Nome da nova empresa:");
+          if (!nome || !nome.trim()) { empresaEl.value = ""; return; }
+          try {
+            const [criada] = await chamarEmissoes("criar_empresa", { nome: nome.trim() });
+            empresasCache.push(criada);
+            document.querySelectorAll(".emi-sel-empresa").forEach((sel) => {
+              const valorAtual = sel === empresaEl ? criada.id : sel.value;
+              sel.innerHTML = montarOptionsEmpresa(valorAtual);
+            });
+          } catch (err) {
+            alert("Erro ao criar empresa: " + err.message);
+            empresaEl.value = "";
           }
         });
       }
@@ -1350,7 +1373,7 @@
       const origemLeadValor = gel(`emi-prod-${prod.id}-origem_lead`)?.value || null;
       if (origemLeadValor === "Corporativo") {
         const empresaIdValor = gel(`emi-prod-${prod.id}-empresa_id`)?.value || "";
-        if (empresaIdValor) dados.empresa_id = empresaIdValor;
+        if (empresaIdValor && empresaIdValor !== "__novo__") dados.empresa_id = empresaIdValor;
       }
 
       let indices = passageiros.filter((p) => (paxSelecionados[prod.id] || new Set()).has(p.id)).map((p) => idxPorPaxId.get(p.id));
@@ -1415,6 +1438,7 @@
       if (!p.valor_venda) { alert("Informe o valor de pelo menos uma forma de pagamento em todos os produtos."); return; }
       if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
       if (!p.origem_lead) { alert("Selecione a origem do lead em todos os produtos."); return; }
+      if (p.origem_lead === "Corporativo" && !p.dados?.empresa_id) { alert("Selecione a empresa em todo produto marcado como Corporativo."); return; }
     }
 
     const editando = !!emissaoEmEdicaoId;

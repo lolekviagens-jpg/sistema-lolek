@@ -284,6 +284,16 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "listar_empresas_nomes":
       return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
 
+    // Cria uma empresa a partir do "+ Nova empresa..." no seletor de uma venda Corporativo —
+    // mesma tabela "empresas" do Portal Corporativo (empresas-admin.js), sem exigir a senha
+    // de lá, igual já acontece com "criar_fornecedor" acima.
+    case "criar_empresa": {
+      if (!data.nome) throw new Error("Nome da empresa é obrigatório");
+      const resultado = await supabaseRest("/empresas", "POST", secretKey, { nome: data.nome });
+      await registrarAtividade(secretKey, { usuarioNome, acao: "criar", area: "empresa", descricao: data.nome, registroId: resultado && resultado[0] && resultado[0].id });
+      return resultado;
+    }
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }
