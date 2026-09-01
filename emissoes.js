@@ -214,6 +214,10 @@
       { id: "companhia", label: "Companhia", placeholder: "Ex: SNCF, Trenitalia, Eurostar" },
       { id: "data_viagem", label: "Data", type: "date" },
       { id: "horario_partida", label: "Horário de partida" },
+      { id: "horario_chegada", label: "Horário de chegada" },
+      { id: "tem_parada", label: "Parada", type: "select", options: ["Direto", "Com parada"] },
+      { id: "cidade_parada", label: "Cidade da parada", showIf: { field: "tem_parada", equals: "Com parada" } },
+      { id: "horario_parada", label: "Horário da parada", showIf: { field: "tem_parada", equals: "Com parada" } },
       { id: "localizador", label: "Localizador / código da reserva" },
     ],
     passeio: [
@@ -532,16 +536,35 @@
       '<option value="__novo__">+ Novo fornecedor...</option>';
   }
 
+  // "showIf" deixa um campo (ex: cidade/horário da parada) só aparecer quando outro campo
+  // do mesmo produto (ex: "Parada") tiver um valor específico — genérico, não é só pro Trem.
   function campoDados(prodId, f, prefixo) {
     const idAttr = `emi-prod-${prodId}-dados-${prefixo ? prefixo + "-" : ""}${f.id}`;
+    const hiddenAttr = f.showIf ? "hidden" : "";
     if (f.type === "select") {
-      return `<label class="field"><span class="field__label">${f.label}</span>
+      return `<label class="field" ${hiddenAttr}><span class="field__label">${f.label}</span>
         <select class="input" id="${idAttr}"><option value="">—</option>${f.options.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}</select>
       </label>`;
     }
-    return `<label class="field"><span class="field__label">${f.label}</span>
+    return `<label class="field" ${hiddenAttr}><span class="field__label">${f.label}</span>
       <input type="${f.type || "text"}" class="input" id="${idAttr}" ${f.step ? `step="${f.step}"` : ""} placeholder="${f.placeholder || ""}" />
     </label>`;
+  }
+
+  // Liga os campos com "showIf" às mudanças do campo que eles dependem, escondendo/
+  // mostrando o próprio <label class="field"> (mesmo padrão de .field[hidden] já usado no
+  // resto do formulário) — chamar depois de renderizar os campos de um produto (dados-
+  // driven, fora de passagem).
+  function ligarCamposCondicionais(prodId, tipo) {
+    (DADOS_CFG[tipo] || []).forEach((f) => {
+      if (!f.showIf) return;
+      const controleEl = gel(`emi-prod-${prodId}-dados-${f.showIf.field}`);
+      const campoEl = gel(`emi-prod-${prodId}-dados-${f.id}`)?.closest(".field");
+      if (!controleEl || !campoEl) return;
+      const atualizar = () => { campoEl.hidden = controleEl.value !== f.showIf.equals; };
+      controleEl.addEventListener("change", atualizar);
+      atualizar();
+    });
   }
 
   // Passagem tem seu próprio layout: um card só, com um bloco de campos pra "Ida" e,
@@ -1025,6 +1048,8 @@
         origemLeadEl.addEventListener("change", atualizarVisibilidadeEmpresa);
         atualizarVisibilidadeEmpresa();
       }
+
+      if (prod.tipo !== "passagem") ligarCamposCondicionais(prod.id, prod.tipo);
     });
   }
 
@@ -1512,6 +1537,13 @@
         (DADOS_CFG[p.tipo] || []).forEach((f) => {
           const el = gel(`emi-prod-${novoProdId}-dados-${f.id}`);
           if (el && p.dados && p.dados[f.id] != null) el.value = p.dados[f.id];
+        });
+        // Campos com showIf (ex: cidade/horário da parada do Trem) dependem do valor de
+        // outro campo do mesmo produto — dispara o "change" dele pra mostrar/esconder certo
+        // com o valor que acabou de ser restaurado.
+        (DADOS_CFG[p.tipo] || []).forEach((f) => {
+          if (!f.showIf) return;
+          gel(`emi-prod-${novoProdId}-dados-${f.showIf.field}`)?.dispatchEvent(new Event("change"));
         });
 
         const fornecedorEl = gel(`emi-prod-${novoProdId}-fornecedor`);
