@@ -872,8 +872,8 @@
 
           ${dadosSecaoHtml}
 
-          ${prod.tipo === "hospedagem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
-            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo da reserva do hotel pra IA ler os dados</div>
+          ${prod.tipo === "hospedagem" || prod.tipo === "trem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
+            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo ${prod.tipo === "hospedagem" ? "da reserva do hotel" : "do bilhete de trem"} pra IA ler os dados</div>
             <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
           </div>
           <div style="display:flex;justify-content:center;margin:6px 0 10px">
@@ -1031,12 +1031,12 @@
         });
       }
 
-      if (prod.tipo === "hospedagem") {
+      if (prod.tipo === "hospedagem" || prod.tipo === "trem") {
         wireFotoZone(
           gel(`emi-prod-${prod.id}-fotozone`),
           gel(`emi-prod-${prod.id}-arquivo-input`),
           gel(`emi-prod-${prod.id}-btn-arquivo`),
-          (imageSrc, zone) => analisarDocumento(prod.id, "hospedagem", imageSrc, zone)
+          (imageSrc, zone) => analisarDocumento(prod.id, prod.tipo, imageSrc, zone)
         );
       }
 
@@ -1181,6 +1181,8 @@
 
     const prompt = tipo === "passagem"
       ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
+      : tipo === "trem"
+      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem de trem. Se houver troca de trem/baldeação no meio do trajeto (mais de um trecho), preencha "tem_parada" e os campos da parada com o PRIMEIRO ponto de troca. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "CIDADE_ORIGEM → CIDADE_DESTINO (origem e destino finais da viagem)",\n  "companhia": "nome da companhia ferroviária (ex: SNCF, Trenitalia, Eurostar), ou null",\n  "data_viagem": "AAAA-MM-DD ou null",\n  "horario_partida": "HH:MM ou null",\n  "horario_chegada": "HH:MM ou null",\n  "tem_parada": true se o trajeto tiver alguma parada/baldeação/troca de trem no meio, false se for direto, ou null se não for possível saber,\n  "cidade_parada": "cidade onde troca de trem, se tem_parada for true, ou null",\n  "horario_parada": "horário da parada/conexão, se tem_parada for true, ou null",\n  "localizador": "código/localizador da reserva, ou null"\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "localizador": "código/localizador/número de confirmação da reserva, ou null se não aparecer",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
 
     const content = mime === "application/pdf"
@@ -1230,6 +1232,21 @@
           const taxaEl = gel(`emi-prod-${prodId}-dados-taxa_embarque`);
           if (taxaEl && ex.taxa_embarque != null) taxaEl.value = ex.taxa_embarque;
         }
+      } else if (tipo === "trem") {
+        const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
+        fill("trecho", ex.trecho);
+        fill("companhia", ex.companhia);
+        fill("data_viagem", ex.data_viagem);
+        fill("horario_partida", ex.horario_partida);
+        fill("horario_chegada", ex.horario_chegada);
+        const temParadaEl = gel(`emi-prod-${prodId}-dados-tem_parada`);
+        if (temParadaEl && ex.tem_parada != null) {
+          temParadaEl.value = ex.tem_parada ? "Com parada" : "Direto";
+          temParadaEl.dispatchEvent(new Event("change"));
+        }
+        fill("cidade_parada", ex.cidade_parada);
+        fill("horario_parada", ex.horario_parada);
+        fill("localizador", ex.localizador);
       } else {
         const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
         fill("hotel", ex.hotel);
