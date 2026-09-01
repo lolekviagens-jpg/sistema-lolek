@@ -284,6 +284,16 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "listar_empresas_nomes":
       return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
 
+    // Temporária, só pra corrigir os produtos gravados com a data errada pelo bug de fuso
+    // (ver commit "Corrige data da venda ficando um dia à frente à noite") — remover depois.
+    case "_debug_corrigir_data_venda":
+      if (!Array.isArray(data.ids) || !data.novaData) throw new Error("ids e novaData são obrigatórios");
+      await supabaseRest(
+        "/venda_emissoes_produtos?id=in.(" + data.ids.join(",") + ")",
+        "PATCH", secretKey, { data_venda: data.novaData }, { "Prefer": "return=minimal" }
+      );
+      return { ok: true, corrigidos: data.ids.length };
+
     default:
       throw new Error("Ação desconhecida: " + action);
   }
