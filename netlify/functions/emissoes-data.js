@@ -660,7 +660,7 @@ function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
     milheiro: "", // fornecedor vira nome só via join — não vale o custo extra aqui, fica em branco
     reserva,
     forma: FORMA_PAG_LABEL[primeiraForma] || primeiraForma || "",
-    taxaEmbarque: prod.tipo === "passagem" ? (d.taxa_embarque || "") : "",
+    taxaEmbarque: prod.tipo === "passagem" ? ((prod.dados || {}).taxa_embarque || "") : "",
     valorTotal: produtoCriado.valor_venda || "",
     lucro: produtoCriado.lucro || "",
     valorMilha: produtoCriado.valor_milha || "",
