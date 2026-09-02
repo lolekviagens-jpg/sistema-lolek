@@ -193,14 +193,22 @@ async function executarAcao(action, data, secretKey, sessao) {
         "GET", secretKey
       );
 
+      // Remove da planilha de backup as linhas da versão que vai ser substituída (pelo
+      // "excluir_correspondente" do Apps Script — casa por nome+reserva+valor) ANTES de
+      // criar a versão corrigida, pra ela não ficar esquecida lá com dado desatualizado
+      // (foi o que aconteceu quando corrigimos a data de umas vendas direto no banco e a
+      // planilha nunca soube da correção).
+      await removerVersaoAntigaDaPlanilha(data.id, secretKey);
+
       // Cria a versão nova primeiro; só apaga a antiga depois de confirmar sucesso — se a
       // criação falhar no meio do caminho (criarEmissao já reverte o que criou), a emissão
-      // antiga continua intacta em vez de a usuária perder os dados.
-      // pularBackupPlanilha: uma edição não é uma venda nova — sem isso, cada correção
-      // mandaria mais uma linha pra planilha do Drive, duplicando o que já tá lá.
+      // antiga continua intacta em vez de a usuária perder os dados. Manda pra planilha
+      // normalmente (a linha antiga já foi removida acima, então isso não duplica) —
+      // pularSyncCorporativo continua pulando só o Portal Corporativo, que não deve
+      // receber um segundo registro numa edição (o da venda original já está lá).
       const resultado = await criarEmissao(data, secretKey, {
         criadoEm: antiga && antiga.criado_em,
-        pularBackupPlanilha: true,
+        pularSyncCorporativo: true,
       });
       await registrarAtividade(secretKey, {
         usuarioNome, acao: "editar", area: "emissao",
@@ -425,26 +433,25 @@ async function criarEmissao(data, secretKey, opcoes) {
       // garantir que o envio realmente saia antes da function encerrar (em ambiente
       // serverless, sem esperar, a chamada pode ser cortada antes de completar). Falha
       // no backup nunca derruba a emissão (enviarParaPlanilhaBackup nunca lança erro).
-      // Mesma condição usada abaixo pro Portal Corporativo: uma edição (pularBackupPlanilha)
-      // é só a correção de uma venda que já existe, não uma venda nova de novo — sincronizar
-      // de novo criaria um registro duplicado no portal da empresa.
-      if (!opcoes.pularBackupPlanilha) {
-        const nomesPaxProduto = passageiroIds.map((id) => {
-          const pax = passageirosCriados.find((p) => p.id === id);
-          return pax && clienteNomePorId.get(pax.cliente_id);
-        }).filter(Boolean).join(" / ");
-        await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
+      // Roda sempre, inclusive em edição — editar_emissao já removeu a linha antiga da
+      // planilha antes de chegar aqui (removerVersaoAntigaDaPlanilha), então isso não
+      // duplica, só substitui.
+      const nomesPaxProduto = passageiroIds.map((id) => {
+        const pax = passageirosCriados.find((p) => p.id === id);
+        return pax && clienteNomePorId.get(pax.cliente_id);
+      }).filter(Boolean).join(" / ");
+      await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, produtoCriado, nomesPaxProduto));
 
-        // Venda corporativa com empresa selecionada: cria automaticamente o registro
-        // correspondente no Portal Corporativo (aba Empresas), pra não precisar cadastrar
-        // duas vezes. Nunca pode derrubar a venda em si — qualquer erro aqui só fica
-        // registrado no log da function.
-        if (prod.origem_lead === "Corporativo" && prod.dados && prod.dados.empresa_id) {
-          try {
-            await sincronizarEmissaoCorporativa({ emissao, prod, dataVenda, valorVenda, nomesPaxProduto }, secretKey);
-          } catch (err) {
-            console.error("[emissoes-data] falha ao sincronizar venda corporativa com o Portal Corporativo (produto " + produtoCriado.id + "):", err.message);
-          }
+      // Venda corporativa com empresa selecionada: cria automaticamente o registro
+      // correspondente no Portal Corporativo (aba Empresas), pra não precisar cadastrar
+      // duas vezes. Só na criação — numa edição (pularSyncCorporativo) o registro já existe
+      // lá desde a venda original, sincronizar de novo criaria um duplicado. Nunca pode
+      // derrubar a venda em si — qualquer erro aqui só fica registrado no log da function.
+      if (!opcoes.pularSyncCorporativo && prod.origem_lead === "Corporativo" && prod.dados && prod.dados.empresa_id) {
+        try {
+          await sincronizarEmissaoCorporativa({ emissao, prod, dataVenda, valorVenda, nomesPaxProduto }, secretKey);
+        } catch (err) {
+          console.error("[emissoes-data] falha ao sincronizar venda corporativa com o Portal Corporativo (produto " + produtoCriado.id + "):", err.message);
         }
       }
 
@@ -574,7 +581,9 @@ function fmtDataBR(iso) {
   return partes.length === 3 ? `${partes[2]}/${partes[1]}/${partes[0]}` : iso;
 }
 
-function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
+// Reserva/localizador de um produto, por tipo — mesma regra usada pra montar a linha de
+// backup e pra identificar qual linha apagar quando uma edição substitui a antiga.
+function extrairReservaCompanhia(prod) {
   const d = prod.dados || {};
   let saida = "", companhia = "", reserva = "";
 
@@ -600,7 +609,11 @@ function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
   } else {
     reserva = d.localizador || "";
   }
+  return { saida, companhia, reserva };
+}
 
+function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
+  const { saida, companhia, reserva } = extrairReservaCompanhia(prod);
   const primeiraForma = (prod.pagamentos && prod.pagamentos[0] && prod.pagamentos[0].forma) || prod.forma_pagamento;
 
   return {
@@ -638,6 +651,58 @@ async function enviarParaPlanilhaBackup(linha) {
     await getSeguindoRedirect(urlComDados.toString());
   } catch (err) {
     console.error("[emissoes-data] falha ao espelhar na planilha de backup:", err.message);
+  }
+}
+
+// Pede pro Apps Script apagar a linha cuja nome+reserva+valorTotal batam com os enviados
+// (ação "excluir_correspondente", já existente no script — apaga só a PRIMEIRA que bater).
+async function excluirLinhaBackup(chave) {
+  const url = process.env.PLANILHA_BACKUP_URL;
+  if (!url) return;
+  try {
+    const urlComDados = new URL(url);
+    urlComDados.searchParams.set("acao", "excluir_correspondente");
+    urlComDados.searchParams.set("dados", JSON.stringify(chave));
+    await getSeguindoRedirect(urlComDados.toString());
+  } catch (err) {
+    console.error("[emissoes-data] falha ao remover linha antiga da planilha de backup:", err.message);
+  }
+}
+
+// Antes de uma edição recriar a emissão do zero, remove da planilha de backup a linha de
+// cada produto da versão que vai deixar de existir — senão a planilha fica com o dado
+// antigo (errado) pra sempre, já que a edição não sabe "atualizar" uma linha, só apagar e
+// criar de novo. Nunca lança erro: falha aqui não pode impedir a edição de ser salva.
+async function removerVersaoAntigaDaPlanilha(emissaoId, secretKey) {
+  if (!process.env.PLANILHA_BACKUP_URL) return;
+  try {
+    const [antiga] = await supabaseRest(
+      "/venda_emissoes?id=eq." + encodeURIComponent(emissaoId) +
+        "&select=venda_emissoes_passageiros(*),venda_emissoes_produtos(*)",
+      "GET", secretKey
+    );
+    if (!antiga) return;
+
+    const idsClientesUnicos = [...new Set((antiga.venda_emissoes_passageiros || []).map((p) => p.cliente_id).filter(Boolean))];
+    const clienteNomePorId = new Map();
+    if (idsClientesUnicos.length > 0) {
+      const clientesRows = await supabaseRest("/clientes?id=in.(" + idsClientesUnicos.join(",") + ")&select=id,nome", "GET", secretKey);
+      (clientesRows || []).forEach((c) => clienteNomePorId.set(c.id, c.nome));
+    }
+
+    for (const prod of antiga.venda_emissoes_produtos || []) {
+      const nomesPax = (prod.passageiro_ids || [])
+        .map((paxId) => {
+          const pax = (antiga.venda_emissoes_passageiros || []).find((p) => p.id === paxId);
+          return pax && clienteNomePorId.get(pax.cliente_id);
+        })
+        .filter(Boolean)
+        .join(" / ");
+      const { reserva } = extrairReservaCompanhia(prod);
+      await excluirLinhaBackup({ nome: nomesPax || "", reserva: reserva || "", valorTotal: prod.valor_venda || "" });
+    }
+  } catch (err) {
+    console.error("[emissoes-data] falha ao limpar versão antiga na planilha de backup (emissão " + emissaoId + "):", err.message);
   }
 }
 
