@@ -292,36 +292,6 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "listar_empresas_nomes":
       return supabaseRest("/empresas?select=id,nome&order=nome.asc", "GET", secretKey);
 
-    // Temporária: re-sincroniza a planilha de backup pra produtos específicos, sem recriar
-    // a emissão — usada só pra corrigir as 6 linhas que ficaram com a data errada na
-    // planilha (01/09) de antes do fix de sincronização existir (a correção de data_venda
-    // nessas 6 já tinha sido feita direto no banco, então nome/reserva/valor não mudaram —
-    // só remove a linha velha da planilha e manda a linha certa de novo). Remover depois.
-    case "_debug_resync_planilha": {
-      const ids = Array.isArray(data.produtoIds) ? data.produtoIds : [];
-      const resultados = [];
-      for (const produtoId of ids) {
-        const [prod] = await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(produtoId) + "&select=*", "GET", secretKey);
-        if (!prod) { resultados.push({ produtoId, erro: "não encontrado" }); continue; }
-        const [emissao] = await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(prod.emissao_id) + "&select=*,venda_emissoes_passageiros(*)", "GET", secretKey);
-        const idsClientesUnicos = [...new Set((emissao.venda_emissoes_passageiros || []).map((p) => p.cliente_id).filter(Boolean))];
-        const clienteNomePorId = new Map();
-        if (idsClientesUnicos.length > 0) {
-          const clientesRows = await supabaseRest("/clientes?id=in.(" + idsClientesUnicos.join(",") + ")&select=id,nome", "GET", secretKey);
-          (clientesRows || []).forEach((c) => clienteNomePorId.set(c.id, c.nome));
-        }
-        const nomesPax = (prod.passageiro_ids || [])
-          .map((paxId) => { const pax = (emissao.venda_emissoes_passageiros || []).find((p) => p.id === paxId); return pax && clienteNomePorId.get(pax.cliente_id); })
-          .filter(Boolean).join(" / ");
-        const { reserva } = extrairReservaCompanhia(prod);
-
-        await excluirLinhaBackup({ nome: nomesPax || "", reserva: reserva || "", valorTotal: prod.valor_venda || "" });
-        await enviarParaPlanilhaBackup(montarLinhaBackup(emissao, prod, prod, nomesPax));
-        resultados.push({ produtoId, nomesPax, reserva, valorTotal: prod.valor_venda, dataVenda: prod.data_venda });
-      }
-      return { resultados };
-    }
-
     // Cria uma empresa a partir do "+ Nova empresa..." no seletor de uma venda Corporativo —
     // mesma tabela "empresas" do Portal Corporativo (empresas-admin.js), sem exigir a senha
     // de lá, igual já acontece com "criar_fornecedor" acima.
