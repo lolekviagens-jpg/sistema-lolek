@@ -705,6 +705,15 @@ textarea.input {
   border-collapse: collapse;
 }
 
+/* Lançamentos do Financeiro: poucas colunas com conteúdo curto (datas, "Pago", valores),
+   mas dentro de um .card com overflow-x:auto o min-width:max-content acima faz o Chrome
+   calcular uma largura absurda pra tabela (milhares de px pro card de ~1000px), esticando
+   cada coluna e deixando os itens de uma mesma linha bem longe um do outro. Sem
+   min-width:max-content a tabela volta a caber certinho no card. */
+.table--fluido {
+  min-width: 0;
+}
+
 /* Tabela do Check-in: larguras de coluna fixas (ver <colgroup> em checkin.js) — sem isso,
    o navegador decide sozinho quanto dar pra cada coluna e às vezes exagera numa só,
    empurrando as outras pra fora da tela sem necessidade nenhuma. */
