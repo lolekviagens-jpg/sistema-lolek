@@ -838,8 +838,15 @@ Texto: "${texto}"`;
 
   function badgeRecorrenciaConta(c) {
     if (c.recorrencia === "parcela") {
-      const n = c.parcelas_restantes;
-      return "Parcela — " + (n != null ? n + " restante" + (n === 1 ? "" : "s") : "?");
+      const restantes = c.parcelas_restantes;
+      const total = c.parcelas_total;
+      // Com o total salvo dá pra mostrar "3/12" (parcela atual/total); contas antigas, criadas
+      // antes desse campo existir, só têm o "restantes" mesmo — cai pro formato antigo.
+      if (total != null && restantes != null) {
+        const atual = Math.min(total, Math.max(1, total - restantes + 1));
+        return "Parcela " + atual + "/" + total;
+      }
+      return "Parcela — " + (restantes != null ? restantes + " restante" + (restantes === 1 ? "" : "s") : "?");
     }
     return "Mensal";
   }
@@ -887,10 +894,19 @@ Texto: "${texto}"`;
     gel("fin-cf-valor").value       = c && c.valor != null ? c.valor : "";
     gel("fin-cf-dia").value         = c && c.dia_vencimento != null ? c.dia_vencimento : "";
     gel("fin-cf-banco").value       = c ? (c.banco_cartao || "") : "";
-    gel("fin-cf-categoria").value   = c ? (c.categoria || "") : "";
+
+    const categoria = c ? (c.categoria || "") : "";
+    const categoriaEhPreset = !categoria || CATEGORIAS_CONTA_FIXA.includes(categoria);
+    gel("fin-cf-categoria").value = categoriaEhPreset ? categoria : "__outro__";
+    gel("fin-cf-categoria-outro").value = categoriaEhPreset ? "" : categoria;
+    gel("fin-cf-categoria-outro-wrap").hidden = categoriaEhPreset;
+
     gel("fin-cf-recorrencia").value = c ? c.recorrencia : "mensal";
+    gel("fin-cf-parcelas-total").value = c && c.parcelas_total != null ? c.parcelas_total : "";
     gel("fin-cf-parcelas").value    = c && c.parcelas_restantes != null ? c.parcelas_restantes : "";
-    gel("fin-cf-parcelas-wrap").hidden = gel("fin-cf-recorrencia").value !== "parcela";
+    const ehParcela = gel("fin-cf-recorrencia").value === "parcela";
+    gel("fin-cf-parcelas-total-wrap").hidden = !ehParcela;
+    gel("fin-cf-parcelas-wrap").hidden = !ehParcela;
     gel("fin-cf-excluir").hidden    = !c;
     gel("fin-modal-cf").hidden = false;
     gel("fin-cf-nome").focus();
@@ -900,13 +916,16 @@ Texto: "${texto}"`;
 
   async function salvarFormConta() {
     const recorrencia = gel("fin-cf-recorrencia").value;
+    const categoriaSel = gel("fin-cf-categoria").value;
+    const categoria = categoriaSel === "__outro__" ? gel("fin-cf-categoria-outro").value.trim() : categoriaSel;
     const dados = {
       nome:               gel("fin-cf-nome").value.trim(),
       valor:              parseFloat(gel("fin-cf-valor").value) || null,
       dia_vencimento:     parseInt(gel("fin-cf-dia").value, 10) || null,
       banco_cartao:       gel("fin-cf-banco").value.trim() || null,
-      categoria:          gel("fin-cf-categoria").value.trim() || null,
+      categoria:          categoria || null,
       recorrencia,
+      parcelas_total:     recorrencia === "parcela" ? (parseInt(gel("fin-cf-parcelas-total").value, 10) || null) : null,
       parcelas_restantes: recorrencia === "parcela" ? (parseInt(gel("fin-cf-parcelas").value, 10) ?? null) : null,
     };
     if (!dados.nome) { alert("Nome é obrigatório."); return; }
@@ -1006,6 +1025,10 @@ Texto: "${texto}"`;
     "Adiantamento de cartão", "Marketing", "Ferramentas/Sistemas", "Imposto", "Transporte", "Utilidades/Energia",
     "Tarifa bancária", "Alimentação", "Interno/Estorno", "Outros",
   ];
+
+  // Mesma lista do extrato — mantém a categoria de uma conta fixa comparável com a de um
+  // lançamento importado/manual no gráfico "Custo por categoria".
+  const CATEGORIAS_CONTA_FIXA = CATEGORIAS_EXTRATO;
 
   function montarPromptExtrato(texto) {
     return `Extraia todas as transações do extrato bancário ou fatura de cartão de crédito abaixo. Ignore linhas de saldo, resumo, limite ou totalizadores — só transações individuais.
@@ -1311,13 +1334,23 @@ ${texto}`;
     gel("fin-f-excluir").addEventListener("click", excluirLancamento);
     gel("fin-modal-lanc").addEventListener("click", e => { if (e.target === gel("fin-modal-lanc")) fecharForm(); });
 
+    gel("fin-cf-categoria").innerHTML =
+      '<option value="">Selecione...</option>' +
+      CATEGORIAS_CONTA_FIXA.map(cat => `<option value="${escHtml(cat)}">${escHtml(cat)}</option>`).join("") +
+      '<option value="__outro__">Outra (digitar)...</option>';
+
     gel("fin-cf-novo-btn").addEventListener("click", () => abrirFormConta(null));
     gel("fin-cf-modal-fechar").addEventListener("click", fecharFormConta);
     gel("fin-cf-cancelar").addEventListener("click", fecharFormConta);
     gel("fin-cf-salvar").addEventListener("click", salvarFormConta);
     gel("fin-cf-excluir").addEventListener("click", excluirContaFixa);
     gel("fin-cf-recorrencia").addEventListener("change", () => {
-      gel("fin-cf-parcelas-wrap").hidden = gel("fin-cf-recorrencia").value !== "parcela";
+      const ehParcela = gel("fin-cf-recorrencia").value === "parcela";
+      gel("fin-cf-parcelas-total-wrap").hidden = !ehParcela;
+      gel("fin-cf-parcelas-wrap").hidden = !ehParcela;
+    });
+    gel("fin-cf-categoria").addEventListener("change", () => {
+      gel("fin-cf-categoria-outro-wrap").hidden = gel("fin-cf-categoria").value !== "__outro__";
     });
     gel("fin-modal-cf").addEventListener("click", e => { if (e.target === gel("fin-modal-cf")) fecharFormConta(); });
 

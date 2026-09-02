@@ -885,7 +885,7 @@
             <div id="forn-pendentes-aviso"></div>
 
             <div class="card">
-              <table class="table">
+              <table class="table table--fluido">
                 <thead>
                   <tr>
                     <th>Nome</th>
@@ -911,7 +911,7 @@
             </div>
 
             <div class="card">
-              <table class="table">
+              <table class="table table--fluido">
                 <thead>
                   <tr>
                     <th>Vencimento</th>
@@ -1023,7 +1023,11 @@
                 </label>
                 <label class="field">
                   <span class="field__label">Categoria</span>
-                  <input type="text" id="fin-cf-categoria" class="input" placeholder="Ex: Aluguel, Salário/Comissão" />
+                  <select id="fin-cf-categoria" class="input"></select>
+                </label>
+                <label class="field" id="fin-cf-categoria-outro-wrap" hidden>
+                  <span class="field__label">Qual categoria?</span>
+                  <input type="text" id="fin-cf-categoria-outro" class="input" placeholder="Digite a categoria" />
                 </label>
                 <label class="field">
                   <span class="field__label">Recorrência</span>
@@ -1032,9 +1036,13 @@
                     <option value="parcela">Parcela (tem fim)</option>
                   </select>
                 </label>
+                <label class="field" id="fin-cf-parcelas-total-wrap" hidden>
+                  <span class="field__label">Total de parcelas</span>
+                  <input type="number" id="fin-cf-parcelas-total" class="input" min="1" placeholder="Ex: 12" />
+                </label>
                 <label class="field" id="fin-cf-parcelas-wrap" hidden>
-                  <span class="field__label">Parcelas restantes</span>
-                  <input type="number" id="fin-cf-parcelas" class="input" min="0" placeholder="Ex: 2" />
+                  <span class="field__label">Parcelas restantes (a partir de agora)</span>
+                  <input type="number" id="fin-cf-parcelas" class="input" min="0" placeholder="Ex: 12" />
                 </label>
               </div>
             </div>

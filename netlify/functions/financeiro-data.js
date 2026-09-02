@@ -72,7 +72,8 @@
 //     banco_cartao text,
 //     categoria text,
 //     recorrencia text not null default 'mensal' check (recorrencia in ('mensal','parcela')),
-//     parcelas_restantes int, -- só relevante quando recorrencia = 'parcela'
+//     parcelas_total int, -- total de parcelas combinado (só quando recorrencia = 'parcela')
+//     parcelas_restantes int, -- quantas ainda faltam pagar, a partir de agora (idem)
 //     ativo boolean not null default true,
 //     ultimo_valor_pago numeric(12,2),
 //     ultima_vez_paga_em date,
@@ -226,6 +227,7 @@ async function executarAcao(action, data, secretKey, usuarioNome) {
         banco_cartao: data.banco_cartao || null,
         categoria: data.categoria || null,
         recorrencia: data.recorrencia || "mensal",
+        parcelas_total: data.parcelas_total || null,
         parcelas_restantes: data.parcelas_restantes || null,
       });
       const criado = Array.isArray(resultado) ? resultado[0] : resultado;
