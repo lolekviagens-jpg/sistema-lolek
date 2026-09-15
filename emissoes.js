@@ -197,6 +197,13 @@
       { id: "checkin", label: "Check-in", type: "date" },
       { id: "checkout", label: "Check-out", type: "date" },
       { id: "localizador", label: "Localizador / número da reserva" },
+      // Obrigatórios — sempre precisam sair no comprovante pro cliente (linhaProdutoComprovante
+      // e copiarComprovanteTexto já listam automaticamente todo campo de DADOS_CFG preenchido,
+      // então não precisa mexer no comprovante pra esses aparecerem).
+      { id: "endereco", label: "Endereço do hotel", required: true },
+      { id: "horario_checkin", label: "Orientação de horário de check-in", placeholder: "Ex: A partir das 14h", required: true },
+      { id: "horario_checkout", label: "Orientação de horário de check-out", placeholder: "Ex: Até 12h", required: true },
+      { id: "reembolsavel", label: "Reembolsável", type: "select", options: ["Sim", "Não"], required: true },
     ],
     seguro: [
       { id: "seguradora", label: "Seguradora" },
@@ -547,12 +554,13 @@
   function campoDados(prodId, f, prefixo) {
     const idAttr = `emi-prod-${prodId}-dados-${prefixo ? prefixo + "-" : ""}${f.id}`;
     const hiddenAttr = f.showIf ? "hidden" : "";
+    const label = f.label + (f.required ? ' <span style="color:var(--gold)">*</span>' : "");
     if (f.type === "select") {
-      return `<label class="field" ${hiddenAttr}><span class="field__label">${f.label}</span>
+      return `<label class="field" ${hiddenAttr}><span class="field__label">${label}</span>
         <select class="input" id="${idAttr}"><option value="">—</option>${f.options.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}</select>
       </label>`;
     }
-    return `<label class="field" ${hiddenAttr}><span class="field__label">${f.label}</span>
+    return `<label class="field" ${hiddenAttr}><span class="field__label">${label}</span>
       <input type="${f.type || "text"}" class="input" id="${idAttr}" ${f.step ? `step="${f.step}"` : ""} placeholder="${f.placeholder || ""}" />
     </label>`;
   }
@@ -1443,6 +1451,12 @@
       if (!p.origem_lead) { alert("Selecione a origem do lead em todos os produtos."); return; }
       if (p.origem_lead === "Corporativo" && !p.dados?.empresa_id) { alert("Selecione a empresa em todo produto marcado como Corporativo."); return; }
       if (p.pagamentos.some((pg) => pg.forma === "faturado" && !pg.data_faturamento)) { alert("Informe a data prevista de pagamento em toda forma de pagamento Faturado."); return; }
+      for (const f of (DADOS_CFG[p.tipo] || [])) {
+        if (f.required && !(p.dados && p.dados[f.id])) {
+          alert(`Preencha o campo "${f.label}" em todo produto de ${PROD_LABEL[p.tipo] || p.tipo} — essa informação sai no comprovante do cliente.`);
+          return;
+        }
+      }
     }
 
     const editando = !!emissaoEmEdicaoId;
