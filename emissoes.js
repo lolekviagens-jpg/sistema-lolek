@@ -204,6 +204,10 @@
       { id: "horario_checkin", label: "Orientação de horário de check-in", placeholder: "Ex: A partir das 14h", required: true },
       { id: "horario_checkout", label: "Orientação de horário de check-out", placeholder: "Ex: Até 12h", required: true },
       { id: "reembolsavel", label: "Reembolsável", type: "select", options: ["Sim", "Não"], required: true },
+      // Só aparecem e só viram obrigatórios quando "Reembolsável" = Sim (ver showIf em
+      // ligarCamposCondicionais e a checagem de obrigatório em salvarEmissao).
+      { id: "reembolso_prazo", label: "Reembolsável até", type: "date", showIf: { field: "reembolsavel", equals: "Sim" }, required: true },
+      { id: "reembolso_percentual", label: "Percentual de reembolso", placeholder: "Ex: 80%", showIf: { field: "reembolsavel", equals: "Sim" }, required: true },
       { id: "observacoes", label: "Observações do hotel", type: "textarea", placeholder: "Ex: vista mar, quarto no térreo, aceita pet..." },
     ],
     seguro: [
@@ -1458,7 +1462,9 @@
       if (p.origem_lead === "Corporativo" && !p.dados?.empresa_id) { alert("Selecione a empresa em todo produto marcado como Corporativo."); return; }
       if (p.pagamentos.some((pg) => pg.forma === "faturado" && !pg.data_faturamento)) { alert("Informe a data prevista de pagamento em toda forma de pagamento Faturado."); return; }
       for (const f of (DADOS_CFG[p.tipo] || [])) {
-        if (f.required && !(p.dados && p.dados[f.id])) {
+        if (!f.required) continue;
+        if (f.showIf && (p.dados || {})[f.showIf.field] !== f.showIf.equals) continue; // campo escondido — não exige
+        if (!(p.dados && p.dados[f.id])) {
           alert(`Preencha o campo "${f.label}" em todo produto de ${PROD_LABEL[p.tipo] || p.tipo} — essa informação sai no comprovante do cliente.`);
           return;
         }
