@@ -1412,6 +1412,9 @@
         pagamentos,
         funcionaria: [...(funcSelecionadas[prod.id] || [])].join("/"),
         origem_lead: origemLeadValor,
+        // Só existe quando o produto veio de uma edição (ver editarEmissao) — numa venda
+        // nova fica undefined e o backend usa a data de hoje, como sempre.
+        data_venda: prod.data_venda || undefined,
       };
     });
 
@@ -1512,7 +1515,10 @@
     Object.keys(paxSelecionados).forEach((k) => delete paxSelecionados[k]);
     Object.keys(funcSelecionadas).forEach((k) => delete funcSelecionadas[k]);
     const prodsOriginais = e.venda_emissoes_produtos || [];
-    produtos = prodsOriginais.map((p) => ({ id: novoId("prod"), tipo: p.tipo }));
+    // Preserva a data_venda original de cada produto — sem isso, salvar a edição (ex: uma
+    // remarcação) recriava o produto sem mandar data_venda, e o backend caía no fallback de
+    // "hoje" (ver criarEmissao em emissoes-data.js), fazendo a venda parecer feita agora.
+    produtos = prodsOriginais.map((p) => ({ id: novoId("prod"), tipo: p.tipo, data_venda: p.data_venda }));
 
     renderPassageiros();
     paxOriginais.forEach((pax, i) => {
