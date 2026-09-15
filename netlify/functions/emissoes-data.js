@@ -639,6 +639,23 @@ function montarLinhaBackup(emissao, prod, produtoCriado, nomesPax) {
   };
 }
 
+// Desiste de ESPERAR uma promessa depois de "ms" (a promessa original continua rodando em
+// segundo plano, só paramos de bloquear a function por causa dela) — usado só nas chamadas
+// de backup pra planilha. O Apps Script do Google às vezes demora demais pra responder, e
+// sozinho já estourava o limite de execução da Netlify Function: a emissão tinha sido criada
+// com sucesso no Supabase, mas a funcionária via um 502 porque a function inteira foi morta
+// esperando o backup. Perder uma linha do backup ocasionalmente é aceitável (o Supabase
+// continua sendo a fonte de verdade); travar a venda por causa de uma planilha não é.
+function comLimiteDeTempo(promessa, ms, contexto) {
+  const cronometro = new Promise((resolve) => {
+    setTimeout(() => {
+      console.error("[emissoes-data] " + contexto + " passou de " + ms + "ms — seguindo sem esperar.");
+      resolve();
+    }, ms);
+  });
+  return Promise.race([promessa, cronometro]);
+}
+
 async function enviarParaPlanilhaBackup(linha) {
   const url = process.env.PLANILHA_BACKUP_URL;
   if (!url) return; // backup não configurado — segue normalmente
@@ -648,7 +665,7 @@ async function enviarParaPlanilhaBackup(linha) {
     // confirmado testando manualmente) — os dados vão como parâmetro "dados" na URL.
     const urlComDados = new URL(url);
     urlComDados.searchParams.set("dados", JSON.stringify(linha));
-    await getSeguindoRedirect(urlComDados.toString());
+    await comLimiteDeTempo(getSeguindoRedirect(urlComDados.toString()), 6000, "envio pra planilha de backup");
   } catch (err) {
     console.error("[emissoes-data] falha ao espelhar na planilha de backup:", err.message);
   }
@@ -663,7 +680,7 @@ async function excluirLinhaBackup(chave) {
     const urlComDados = new URL(url);
     urlComDados.searchParams.set("acao", "excluir_correspondente");
     urlComDados.searchParams.set("dados", JSON.stringify(chave));
-    await getSeguindoRedirect(urlComDados.toString());
+    await comLimiteDeTempo(getSeguindoRedirect(urlComDados.toString()), 6000, "remoção de linha antiga na planilha de backup");
   } catch (err) {
     console.error("[emissoes-data] falha ao remover linha antiga da planilha de backup:", err.message);
   }
@@ -690,7 +707,10 @@ async function removerVersaoAntigaDaPlanilha(emissaoId, secretKey) {
       (clientesRows || []).forEach((c) => clienteNomePorId.set(c.id, c.nome));
     }
 
-    for (const prod of antiga.venda_emissoes_produtos || []) {
+    // Em paralelo (não um await por produto) — cada remoção já tem seu próprio limite de
+    // tempo (comLimiteDeTempo dentro de excluirLinhaBackup), então rodar em sequência só
+    // multiplicaria essa espera por produto sem necessidade (são remoções independentes).
+    await Promise.all((antiga.venda_emissoes_produtos || []).map((prod) => {
       const nomesPax = (prod.passageiro_ids || [])
         .map((paxId) => {
           const pax = (antiga.venda_emissoes_passageiros || []).find((p) => p.id === paxId);
@@ -699,8 +719,8 @@ async function removerVersaoAntigaDaPlanilha(emissaoId, secretKey) {
         .filter(Boolean)
         .join(" / ");
       const { reserva } = extrairReservaCompanhia(prod);
-      await excluirLinhaBackup({ nome: nomesPax || "", reserva: reserva || "", valorTotal: prod.valor_venda || "" });
-    }
+      return excluirLinhaBackup({ nome: nomesPax || "", reserva: reserva || "", valorTotal: prod.valor_venda || "" });
+    }));
   } catch (err) {
     console.error("[emissoes-data] falha ao limpar versão antiga na planilha de backup (emissão " + emissaoId + "):", err.message);
   }
@@ -728,15 +748,33 @@ function getSeguindoRedirect(urlStr, redirectsRestantes) {
 // ===== Chamada genérica para a REST API do Supabase (PostgREST) =====
 // Busca todas as páginas de um GET, usando o header Range do PostgREST — necessário
 // porque o Supabase corta em 1000 linhas por página por padrão.
+//
+// As páginas são pedidas TODAS DE UMA VEZ (Promise.all), não uma depois da outra — buscar
+// em sequência significava repetir a mesma query pesada (join com passageiros/produtos) do
+// zero a cada página, e a soma dos round-trips passou a estourar o limite de execução da
+// Netlify Function conforme "venda_emissoes" cresceu (22s+ pra listar tudo — a function é
+// morta no meio e o Netlify devolve 502 em vez do erro tratado normal, inclusive em telas
+// que nem tinham nada a ver, tipo Check-in). Em paralelo, o tempo total passa a ser só o da
+// página mais lenta, não a soma de todas.
 async function supabaseRestPaginado(path, secretKey) {
   const PAGE = 1000;
-  let offset = 0;
+  const TETO_PAGINAS = 50; // 50 mil linhas de teto — bem acima do tamanho atual da tabela
+  const pedidos = Array.from({ length: TETO_PAGINAS }, (_, i) =>
+    supabaseRest(path, "GET", secretKey, null, { Range: `${i * PAGE}-${i * PAGE + PAGE - 1}` })
+  );
+  const paginas = await Promise.all(pedidos);
   let todas = [];
-  while (true) {
+  paginas.forEach((pagina) => { if (pagina && pagina.length > 0) todas = todas.concat(pagina); });
+
+  // Segurança: se a ÚLTIMA página do teto ainda veio cheia, a tabela passou do teto —
+  // continua buscando em sequência a partir daí pra não perder dado nenhum (caso raro).
+  let offset = TETO_PAGINAS * PAGE;
+  let ultimaPaginaCheia = paginas[TETO_PAGINAS - 1] && paginas[TETO_PAGINAS - 1].length === PAGE;
+  while (ultimaPaginaCheia) {
     const pagina = await supabaseRest(path, "GET", secretKey, null, { Range: `${offset}-${offset + PAGE - 1}` });
     if (!pagina || pagina.length === 0) break;
     todas = todas.concat(pagina);
-    if (pagina.length < PAGE) break;
+    ultimaPaginaCheia = pagina.length === PAGE;
     offset += PAGE;
   }
   return todas;
