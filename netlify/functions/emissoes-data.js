@@ -749,32 +749,22 @@ function getSeguindoRedirect(urlStr, redirectsRestantes) {
 // Busca todas as páginas de um GET, usando o header Range do PostgREST — necessário
 // porque o Supabase corta em 1000 linhas por página por padrão.
 //
-// As páginas são pedidas TODAS DE UMA VEZ (Promise.all), não uma depois da outra — buscar
-// em sequência significava repetir a mesma query pesada (join com passageiros/produtos) do
-// zero a cada página, e a soma dos round-trips passou a estourar o limite de execução da
-// Netlify Function conforme "venda_emissoes" cresceu (22s+ pra listar tudo — a function é
-// morta no meio e o Netlify devolve 502 em vez do erro tratado normal, inclusive em telas
-// que nem tinham nada a ver, tipo Check-in). Em paralelo, o tempo total passa a ser só o da
-// página mais lenta, não a soma de todas.
+// IMPORTANTE: já tentamos pedir todas as páginas em paralelo (Promise.all) aqui — piorou
+// tudo. A query tem embed de passageiros/produtos (join), e com "venda_emissoes" já em ~4 mil
+// linhas, disparar várias de uma vez sobrecarrega o Postgres o suficiente pra ele cancelar
+// por "statement timeout" (erro 57014), derrubando TODA leitura em vez de só demorar. Voltou
+// pra sequencial — lento, mas correto. A causa raiz provável é falta de índice nas colunas
+// "emissao_id" de venda_emissoes_produtos/venda_emissoes_passageiros (FK não cria índice
+// sozinha no Postgres); ver aviso no final do arquivo.
 async function supabaseRestPaginado(path, secretKey) {
   const PAGE = 1000;
-  const TETO_PAGINAS = 50; // 50 mil linhas de teto — bem acima do tamanho atual da tabela
-  const pedidos = Array.from({ length: TETO_PAGINAS }, (_, i) =>
-    supabaseRest(path, "GET", secretKey, null, { Range: `${i * PAGE}-${i * PAGE + PAGE - 1}` })
-  );
-  const paginas = await Promise.all(pedidos);
+  let offset = 0;
   let todas = [];
-  paginas.forEach((pagina) => { if (pagina && pagina.length > 0) todas = todas.concat(pagina); });
-
-  // Segurança: se a ÚLTIMA página do teto ainda veio cheia, a tabela passou do teto —
-  // continua buscando em sequência a partir daí pra não perder dado nenhum (caso raro).
-  let offset = TETO_PAGINAS * PAGE;
-  let ultimaPaginaCheia = paginas[TETO_PAGINAS - 1] && paginas[TETO_PAGINAS - 1].length === PAGE;
-  while (ultimaPaginaCheia) {
+  while (true) {
     const pagina = await supabaseRest(path, "GET", secretKey, null, { Range: `${offset}-${offset + PAGE - 1}` });
     if (!pagina || pagina.length === 0) break;
     todas = todas.concat(pagina);
-    ultimaPaginaCheia = pagina.length === PAGE;
+    if (pagina.length < PAGE) break;
     offset += PAGE;
   }
   return todas;
