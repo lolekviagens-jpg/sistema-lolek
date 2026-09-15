@@ -204,6 +204,7 @@
       { id: "horario_checkin", label: "Orientação de horário de check-in", placeholder: "Ex: A partir das 14h", required: true },
       { id: "horario_checkout", label: "Orientação de horário de check-out", placeholder: "Ex: Até 12h", required: true },
       { id: "reembolsavel", label: "Reembolsável", type: "select", options: ["Sim", "Não"], required: true },
+      { id: "observacoes", label: "Observações do hotel", type: "textarea", placeholder: "Ex: vista mar, quarto no térreo, aceita pet..." },
     ],
     seguro: [
       { id: "seguradora", label: "Seguradora" },
@@ -558,6 +559,11 @@
     if (f.type === "select") {
       return `<label class="field" ${hiddenAttr}><span class="field__label">${label}</span>
         <select class="input" id="${idAttr}"><option value="">—</option>${f.options.map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`).join("")}</select>
+      </label>`;
+    }
+    if (f.type === "textarea") {
+      return `<label class="field" ${hiddenAttr}><span class="field__label">${label}</span>
+        <textarea class="input" rows="2" id="${idAttr}" placeholder="${f.placeholder || ""}"></textarea>
       </label>`;
     }
     return `<label class="field" ${hiddenAttr}><span class="field__label">${label}</span>
