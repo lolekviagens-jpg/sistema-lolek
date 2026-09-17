@@ -1460,6 +1460,7 @@
     Object.keys(trechosPorProduto).forEach((k) => delete trechosPorProduto[k]);
     Object.keys(segmentosPorProduto).forEach((k) => delete segmentosPorProduto[k]);
     ["emi-destino", "emi-data-ida", "emi-data-volta", "emi-tipo-viagem", "emi-obs-gerais"].forEach((id) => { const el = gel(id); if (el) el.value = ""; });
+    gel("emi-ajuste-card").hidden = true;
     renderPassageiros(); renderProdutos();
   }
 
@@ -1484,6 +1485,37 @@
     }
 
     const editando = !!emissaoEmEdicaoId;
+
+    // Comprovante mostrado pro cliente reflete só o que ele comprou — captura ANTES de
+    // injetar o ajuste abaixo, que é lucro interno da agência, não um item vendido.
+    const produtosParaComprovante = payload.produtos.slice();
+
+    // Lucro adicional da edição (ex: taxa cobrada numa remarcação) — só existe quando
+    // editando (emi-ajuste-card só aparece nesse caso) e só se algum valor foi preenchido.
+    // Vira mais um produto (tipo "outro"), mas de propósito NÃO passa pela validação acima
+    // (fornecedor/origem do lead não fazem sentido pra um ajuste interno) e de propósito
+    // NÃO manda "data_venda" — o backend cai no fallback de "hoje" (ver criarEmissao em
+    // emissoes-data.js), diferente dos produtos editados acima, que preservam a data
+    // original da venda.
+    if (editando) {
+      const valorAjuste = parseFloat(gel("emi-ajuste-valor").value) || 0;
+      if (valorAjuste > 0) {
+        payload.produtos.push({
+          tipo: "outro",
+          passageiro_indices: [],
+          dados: { descricao: gel("emi-ajuste-obs").value.trim() || "Lucro adicional (remarcação)" },
+          fornecedor_id: null,
+          valor_milha: null,
+          qtd_milhas: null,
+          custo: 0,
+          valor_venda: valorAjuste,
+          pagamentos: [{ forma: "pix", valor: valorAjuste, data_faturamento: null }],
+          funcionaria: gel("emi-ajuste-funcionaria").value || "",
+          origem_lead: "Orgânico",
+        });
+      }
+    }
+
     const btn = gel("emi-salvar-btn");
     btn.disabled = true; btn.textContent = editando ? "⏳ Salvando edição..." : "⏳ Salvando...";
     gel("emi-status").innerHTML = "";
@@ -1496,7 +1528,7 @@
       // porque passageiros novos só têm o nome no input, não no array de estado.
       const nomesPorIndice = passageiros.map((p, i) =>
         p.cliente_id ? p.nome : ((payload.passageiros[i].dados_novos && payload.passageiros[i].dados_novos.nome) || "Passageiro"));
-      const produtosInfo = payload.produtos.map((p) => ({
+      const produtosInfo = produtosParaComprovante.map((p) => ({
         tipo: p.tipo,
         dados: p.dados,
         valor_venda: p.valor_venda,
@@ -1660,6 +1692,16 @@
     gel("emi-status").innerHTML = "";
     gel("emi-form-wrap").hidden = false;
     gel("emi-comprovante-wrap").hidden = true;
+
+    // Lucro adicional da remarcação — só aparece durante uma edição, sempre em branco (não
+    // carrega valor salvo: é um ajuste novo a cada edição em que a funcionária decidir usar).
+    gel("emi-ajuste-card").hidden = false;
+    gel("emi-ajuste-valor").value = "";
+    gel("emi-ajuste-obs").value = "";
+    const ajusteFuncSel = gel("emi-ajuste-funcionaria");
+    if (ajusteFuncSel) {
+      ajusteFuncSel.innerHTML = '<option value="">—</option>' + vendedoresCache.map((f) => `<option value="${escHtml(f.nome)}">${escHtml(f.nome)}</option>`).join("");
+    }
 
     document.querySelector('[data-tab="nova-emissao"]')?.click();
     window.scrollTo(0, 0);

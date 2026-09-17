@@ -446,6 +446,20 @@
             </div>
           </div>
 
+          <div id="emi-ajuste-card" class="orc-card" hidden>
+            <div class="orc-card__header">
+              <span>💰 Lucro adicional desta edição</span>
+              <span class="orc-header-hint">Opcional — ex: taxa cobrada numa remarcação. Sai lançado com a data de HOJE, sem mexer na data da venda original acima.</span>
+            </div>
+            <div class="orc-card__body">
+              <div class="form__grid">
+                <label class="field"><span class="field__label">Valor adicional (R$)</span><input type="number" step="0.01" id="emi-ajuste-valor" class="input" placeholder="Ex: 80" /></label>
+                <label class="field"><span class="field__label">Funcionária</span><select id="emi-ajuste-funcionaria" class="input"><option value="">—</option></select></label>
+                <label class="field field--full"><span class="field__label">Observação</span><input type="text" id="emi-ajuste-obs" class="input" placeholder="Ex: Taxa de remarcação" /></label>
+              </div>
+            </div>
+          </div>
+
           <div id="emi-status"></div>
           <button type="button" id="emi-salvar-btn" class="btn btn--gold orc-gerar-btn">💾 Salvar emissão</button>
         </div><!-- /emi-form-wrap -->
