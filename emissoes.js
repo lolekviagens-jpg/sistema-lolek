@@ -599,7 +599,25 @@
   // aeroporto e horário próprios, igual a companhia aérea mostra, em vez de resumir numa
   // frase.
   function novoSegmento() {
-    return { id: novoId("seg"), trecho: "", companhia: "", voo: "", horario_partida: "", horario_chegada: "" };
+    return { id: novoId("seg"), trecho: "", companhia: "", voo: "", data: "", horario_partida: "", horario_chegada: "" };
+  }
+
+  // Duração entre a chegada de um trecho e a partida do próximo (tempo de conexão) — só
+  // calcula com as duas DATAS preenchidas (não tenta adivinhar por sufixos tipo "(+1)" no
+  // horário, que é ambíguo). Ignora qualquer texto extra depois do horário (ex: "22:15 (+1)")
+  // pra pegar só o HH:MM — quem manda no dia certo agora é o campo Data de cada trecho.
+  function calcularDuracao(data1, hora1, data2, hora2) {
+    const soHora = (h) => (String(h || "").match(/(\d{1,2}):(\d{2})/) || [])[0];
+    const h1 = soHora(hora1), h2 = soHora(hora2);
+    if (!data1 || !data2 || !h1 || !h2) return null;
+    const t1 = new Date(`${data1}T${h1}:00`);
+    const t2 = new Date(`${data2}T${h2}:00`);
+    const diffMin = Math.round((t2 - t1) / 60000);
+    if (!isFinite(diffMin) || diffMin < 0) return null;
+    const hh = Math.floor(diffMin / 60), mm = diffMin % 60;
+    if (hh > 0 && mm > 0) return hh + "h" + String(mm).padStart(2, "0");
+    if (hh > 0) return hh + "h";
+    return mm + "min";
   }
 
   function renderSegmentos(prodId, perna) {
@@ -607,8 +625,19 @@
     if (!wrap) return;
     if (!segmentosPorProduto[prodId]) segmentosPorProduto[prodId] = {};
     const lista = segmentosPorProduto[prodId][perna] || (segmentosPorProduto[prodId][perna] = [novoSegmento()]);
+    const temConexao = lista.length > 1;
 
-    wrap.innerHTML = lista.map((seg, i) => `
+    wrap.innerHTML = lista.map((seg, i) => {
+      const conexaoDepois = i < lista.length - 1 ? (() => {
+        const prox = lista[i + 1];
+        const duracao = calcularDuracao(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+        const { destino } = parseTrecho(seg.trecho);
+        return `<div class="table__muted" style="text-align:center;font-size:0.76rem;margin:2px 0 10px">
+          ✈ Conexão em ${escHtml(destino || "—")}${duracao ? " — " + duracao + " de espera" : " — preencha a Data pra calcular o tempo de espera"}
+        </div>`;
+      })() : "";
+
+      return `
       <div class="orc-produto-item" style="margin-bottom:8px">
         <div class="orc-produto-header" style="padding:7px 12px">
           <span style="font-size:0.8rem;font-weight:600">Trecho ${i + 1}</span>
@@ -625,21 +654,31 @@
             <label class="field"><span class="field__label">Nº do voo</span>
               <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="voo" value="${escHtml(seg.voo)}" />
             </label>
-            <label class="field"><span class="field__label">Horário de partida</span>
+            <label class="field"><span class="field__label">Data ${temConexao ? '<span style="color:var(--gold)">*</span>' : "(opcional)"}</span>
+              <input type="date" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="data" value="${escHtml(seg.data)}" />
+            </label>
+            <label class="field"><span class="field__label">Horário de partida ${temConexao ? '<span style="color:var(--gold)">*</span>' : ""}</span>
               <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="horario_partida" value="${escHtml(seg.horario_partida)}" />
             </label>
-            <label class="field"><span class="field__label">Horário de chegada</span>
+            <label class="field"><span class="field__label">Horário de chegada ${temConexao ? '<span style="color:var(--gold)">*</span>' : ""}</span>
               <input type="text" class="input emi-seg-campo" data-seg="${seg.id}" data-campo="horario_chegada" value="${escHtml(seg.horario_chegada)}" />
             </label>
           </div>
         </div>
-      </div>`).join("");
+      </div>${conexaoDepois}`;
+    }).join("");
 
+    // Atualiza o estado a cada tecla (input), mas só RE-renderiza (pra recalcular o tempo de
+    // conexão exibido) no "change" (perde o foco) — re-renderizar a cada tecla reconstrói o
+    // <input> e derruba o foco/cursor no meio da digitação.
     wrap.querySelectorAll(".emi-seg-campo").forEach((inp) => {
       inp.addEventListener("input", () => {
         const seg = lista.find((s) => s.id === inp.dataset.seg);
         if (seg) seg[inp.dataset.campo] = inp.value;
       });
+      if (["data", "horario_partida", "horario_chegada"].includes(inp.dataset.campo)) {
+        inp.addEventListener("change", () => renderSegmentos(prodId, perna));
+      }
     });
     wrap.querySelectorAll(".emi-seg-remover").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1191,7 +1230,7 @@
     const segs = (Array.isArray(ex.segmentos) && ex.segmentos.length > 0)
       ? ex.segmentos.map((s) => ({
           id: novoId("seg"),
-          trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+          trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "", data: s.data || "",
           horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
         }))
       : [novoSegmento()];
@@ -1221,7 +1260,7 @@
     if (hintEl) hintEl.textContent = "⏳ Analisando...";
 
     const prompt = tipo === "passagem"
-      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
+      ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe. IMPORTANTE: preencha "data" (AAAA-MM-DD) em TODO segmento sempre que o documento mostrar ou permitir deduzir a data daquele voo especificamente — é o campo que permite calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; nunca deixe null só porque "parece" ser o mesmo dia da perna, INFIRA a partir do horário de chegada do trecho anterior + duração do voo quando o documento não disser explicitamente.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "data": "AAAA-MM-DD ou null", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "data": "AAAA-MM-DD ou null", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
       : tipo === "trem"
       ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem de trem. Se houver troca de trem/baldeação no meio do trajeto (mais de um trecho), preencha "tem_parada" e os campos da parada com o PRIMEIRO ponto de troca. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "CIDADE_ORIGEM → CIDADE_DESTINO (origem e destino finais da viagem)",\n  "companhia": "nome da companhia ferroviária (ex: SNCF, Trenitalia, Eurostar), ou null",\n  "data_viagem": "AAAA-MM-DD ou null",\n  "horario_partida": "HH:MM ou null",\n  "horario_chegada": "HH:MM ou null",\n  "tem_parada": true se o trajeto tiver alguma parada/baldeação/troca de trem no meio, false se for direto, ou null se não for possível saber,\n  "cidade_parada": "cidade onde troca de trem, se tem_parada for true, ou null",\n  "horario_parada": "horário da parada/conexão, se tem_parada for true, ou null",\n  "localizador": "código/localizador da reserva, ou null"\n}`
       : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "localizador": "código/localizador/número de confirmação da reserva, ou null se não aparecer",\n  "endereco": "endereço completo do hotel/pousada, ou null se não aparecer",\n  "horario_checkin": "horário de check-in informado na reserva (ex: \"A partir das 14h\"), ou null",\n  "horario_checkout": "horário de check-out informado na reserva (ex: \"Até 12h\"), ou null",\n  "reembolsavel": "\"Sim\" ou \"Não\", se a reserva mencionar política de cancelamento/reembolso, ou null se não estiver claro",\n  "reembolso_prazo": "AAAA-MM-DD do prazo limite pra reembolso (cancelamento gratuito), se houver, ou null",\n  "reembolso_percentual": "percentual reembolsável dentro do prazo, como texto (ex: \"80%\"), ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
@@ -1372,8 +1411,8 @@
             label: t.label,
             localizador: (gel(`emi-prod-${prod.id}-loc-${t.id}`) || {}).value || "",
             segmentos: ((segmentosPorProduto[prod.id] || {})[t.id] || [])
-              .filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada)
-              .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
+              .filter((s) => s.trecho || s.companhia || s.voo || s.data || s.horario_partida || s.horario_chegada)
+              .map((s) => ({ trecho: s.trecho, companhia: s.companhia, voo: s.voo, data: s.data, horario_partida: s.horario_partida, horario_chegada: s.horario_chegada })),
             bagagem: (gel(`emi-prod-${prod.id}-${t.id}-bagagem`) || {}).value || "",
             observacoes: (gel(`emi-prod-${prod.id}-${t.id}-observacoes`) || {}).value || "",
             financeiro,
@@ -1480,6 +1519,24 @@
         if (!(p.dados && p.dados[f.id])) {
           alert(`Preencha o campo "${f.label}" em todo produto de ${PROD_LABEL[p.tipo] || p.tipo} — essa informação sai no comprovante do cliente.`);
           return;
+        }
+      }
+      // Passagem com conexão (2+ trechos numa mesma perna): pede (não trava) data/horário
+      // de cada trecho — é o que permite mostrar "onde para" e "quanto tempo de conexão"
+      // pro cliente. Confirmação em vez de bloqueio: emissões antigas com conexão foram
+      // salvas antes desse campo existir, e travar o salvamento impediria corrigir
+      // qualquer outra coisa nelas até alguém voltar e preencher a data retroativamente.
+      // Voo direto (1 trecho só) continua sem pedir nada disso.
+      if (p.tipo === "passagem") {
+        for (const perna of (p.dados?.trechos || [])) {
+          if ((perna.segmentos || []).length < 2) continue;
+          for (const seg of perna.segmentos) {
+            if (!seg.data || !seg.horario_partida || !seg.horario_chegada) {
+              const confirmar = confirm(`A perna "${perna.label}" tem conexão, mas falta data e/ou horário em algum trecho — sem isso não dá pra mostrar o tempo de espera da conexão pro cliente. Salvar assim mesmo?`);
+              if (!confirmar) return;
+              break;
+            }
+          }
         }
       }
     }
@@ -1611,7 +1668,7 @@
         segmentosPorProduto[novoProdId][t.id] = (Array.isArray(t.segmentos) && t.segmentos.length > 0)
           ? t.segmentos.map((s) => ({
               id: novoId("seg"),
-              trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+              trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "", data: s.data || "",
               horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
             }))
           : [novoSegmento()];
@@ -1749,6 +1806,7 @@
             <span class="orc-prev-dash-seg"></span>
           </div>
           ${seg.companhia || seg.voo ? `<div class="orc-prev-direto">${escHtml([seg.companhia, seg.voo].filter(Boolean).join(" · "))}</div>` : ""}
+          ${seg.data ? `<div class="table__muted" style="font-size:0.68rem;margin-top:2px">${escHtml(fData(seg.data))}</div>` : ""}
         </div>
         <div class="orc-prev-airport orc-prev-airport--right">
           <div class="orc-prev-iata">${escHtml(destino || "—")}</div>
@@ -1764,8 +1822,10 @@
     const segmentosHtml = segmentos.map((seg, i) => {
       let html = segmentoComprovanteHtml(seg);
       if (i < segmentos.length - 1) {
+        const prox = segmentos[i + 1];
+        const duracao = calcularDuracao(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
         const { destino } = parseTrecho(seg.trecho);
-        html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escHtml(destino || "—")}</div>`;
+        html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escHtml(destino || "—")}${duracao ? " — " + escHtml(duracao) + " de espera" : ""}</div>`;
       }
       return html;
     }).join("");
@@ -1958,8 +2018,14 @@
           if (!info) return;
           if (info.localizador) txt += `  ${label} — localizador: ${info.localizador}\n`;
           const segmentos = (info.segmentos && info.segmentos.length) ? info.segmentos : [info];
-          segmentos.forEach((seg) => {
-            txt += `  ${label}: ${seg.trecho || "—"}${seg.horario_partida ? " · saída " + seg.horario_partida : ""}${seg.companhia ? " · " + seg.companhia : ""}\n`;
+          segmentos.forEach((seg, i) => {
+            txt += `  ${label}: ${seg.trecho || "—"}${seg.data ? " · " + fData(seg.data) : ""}${seg.horario_partida ? " · saída " + seg.horario_partida : ""}${seg.horario_chegada ? " · chegada " + seg.horario_chegada : ""}${seg.companhia ? " · " + seg.companhia : ""}\n`;
+            if (i < segmentos.length - 1) {
+              const prox = segmentos[i + 1];
+              const duracao = calcularDuracao(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+              const { destino } = parseTrecho(seg.trecho);
+              txt += `    ✈ Conexão em ${destino || "—"}${duracao ? " — " + duracao + " de espera" : ""}\n`;
+            }
           });
         };
         if (d.ida_volta && d.volta) { escrevePerna("Ida", d.ida); escrevePerna("Volta", d.volta); }

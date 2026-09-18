@@ -22,14 +22,11 @@
   const PROD_CFG = {
     passagem: {
       label: "Passagem aérea", icon: "✈️",
+      // Trecho/companhia/voo/data/horários NÃO estão mais aqui — viraram a lista
+      // estruturada de trechos (segmentosStore, ver renderSegmentosOrc), porque um voo com
+      // conexão precisa de data/horário POR trecho pra mostrar onde para e quanto tempo de
+      // espera na conexão, coisa que um campo de texto único não sustentava.
       fields: [
-        { id: "trecho",          label: "Trecho",               type: "text",   placeholder: "Ex: FOR → LIS",    cols: 2 },
-        { id: "companhia",       label: "Companhia aérea",      type: "text",   placeholder: "Ex: LATAM",         cols: 1 },
-        { id: "voo",             label: "Nº do voo",            type: "text",   placeholder: "Ex: LA3504",        cols: 1 },
-        { id: "horario_partida", label: "Horário de partida",   type: "text",   placeholder: "Ex: 14:30",         cols: 1 },
-        { id: "horario_chegada", label: "Horário de chegada",   type: "text",   placeholder: "Ex: 22:15 (+1)",    cols: 1 },
-        { id: "conexoes",        label: "Paradas / escalas",    type: "text",   placeholder: "Ex: Voo direto",    cols: 1 },
-        { id: "duracao",         label: "Duração total",        type: "text",   placeholder: "Ex: 9h30",          cols: 1 },
         { id: "cidade_orig",     label: "Cidade de origem",     type: "text",   placeholder: "Ex: Fortaleza",     cols: 1 },
         { id: "cidade_dest",     label: "Cidade de destino",    type: "text",   placeholder: "Ex: Lisboa",        cols: 1 },
         { id: "_div",            label: "Valores internos — não aparecem para o cliente", type: "divider", cols: 4 },
@@ -105,6 +102,9 @@
   let destinos = [], destCounter = 0;
   const fotoStore = {};       // fotos que aparecem para o cliente (preview/PDF)
   const fotoStorePrint = {};  // print de reserva usado só para a IA extrair dados (hospedagem)
+  // Trechos de cada card de passagem: pid -> [{id, trecho, companhia, voo, data, horario_partida, horario_chegada}].
+  // 1 item = voo direto; 2+ = conexão (mesmo modelo de "segmentos" da Emissão).
+  const segmentosStore = {};
   let orcamentoRecenteId = null;  // id do orçamento recente atual (null = ainda não salvo/novo)
   let orcamentosRecentesCache = [];
 
@@ -239,6 +239,103 @@
     ids.forEach((id) => document.getElementById(id)?.addEventListener("input", calc));
   }
 
+  // ===== Trechos de uma passagem (voo direto = 1 trecho; conexão = 2+) =====
+  // Mesmo modelo da aba Emissões: cada trecho tem seu próprio trecho/companhia/voo/data/
+  // horários, pra dar pra mostrar onde a conexão para e quanto tempo de espera tem —
+  // informação que um campo de texto único ("1 escala em GRU") não sustentava.
+  function novoSegmentoOrc() {
+    return { id: "seg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), trecho: "", companhia: "", voo: "", data: "", horario_partida: "", horario_chegada: "" };
+  }
+
+  // Duração entre a chegada de um trecho e a partida do próximo — só calcula com as duas
+  // DATAS preenchidas (evita adivinhar por sufixos tipo "(+1)" no horário, que é ambíguo).
+  function calcularDuracaoOrc(data1, hora1, data2, hora2) {
+    const soHora = (h) => (String(h || "").match(/(\d{1,2}):(\d{2})/) || [])[0];
+    const h1 = soHora(hora1), h2 = soHora(hora2);
+    if (!data1 || !data2 || !h1 || !h2) return null;
+    const t1 = new Date(`${data1}T${h1}:00`);
+    const t2 = new Date(`${data2}T${h2}:00`);
+    const diffMin = Math.round((t2 - t1) / 60000);
+    if (!isFinite(diffMin) || diffMin < 0) return null;
+    const hh = Math.floor(diffMin / 60), mm = diffMin % 60;
+    if (hh > 0 && mm > 0) return hh + "h" + String(mm).padStart(2, "0");
+    if (hh > 0) return hh + "h";
+    return mm + "min";
+  }
+
+  function renderSegmentosOrc(destId, pid) {
+    const wrap = document.getElementById(`orc-segs-${destId}-${pid}`);
+    if (!wrap) return;
+    const lista = segmentosStore[pid] || (segmentosStore[pid] = [novoSegmentoOrc()]);
+    const temConexao = lista.length > 1;
+
+    wrap.innerHTML = lista.map((seg, i) => {
+      let conexaoDepois = "";
+      if (i < lista.length - 1) {
+        const prox = lista[i + 1];
+        const duracao = calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+        const { dest: destinoIata } = parseTrecho(seg.trecho);
+        conexaoDepois = `<div class="table__muted" style="text-align:center;font-size:0.76rem;margin:2px 0 10px">
+          ✈ Conexão em ${escapeHtml(destinoIata || "—")}${duracao ? " — " + duracao + " de espera" : " — preencha a Data pra calcular o tempo de espera"}
+        </div>`;
+      }
+      return `
+        <div class="orc-produto-item" style="margin-bottom:8px">
+          <div class="orc-produto-header" style="padding:7px 12px">
+            <span style="font-size:0.8rem;font-weight:600">Trecho ${i + 1}</span>
+            ${lista.length > 1 ? `<button type="button" class="orc-produto-remove orc-seg-remover" data-seg="${seg.id}" style="margin-left:auto">✕</button>` : ""}
+          </div>
+          <div class="orc-produto-body" style="padding:10px 12px">
+            <div class="form__grid">
+              <label class="field field--full"><span class="field__label">Trecho</span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="trecho" placeholder="Ex: FOR → GRU" value="${escapeHtml(seg.trecho)}" />
+              </label>
+              <label class="field"><span class="field__label">Companhia aérea</span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="companhia" value="${escapeHtml(seg.companhia)}" />
+              </label>
+              <label class="field"><span class="field__label">Nº do voo</span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="voo" value="${escapeHtml(seg.voo)}" />
+              </label>
+              <label class="field"><span class="field__label">Data ${temConexao ? '<span style="color:var(--gold)">*</span>' : "(opcional)"}</span>
+                <input type="date" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="data" value="${escapeHtml(seg.data)}" />
+              </label>
+              <label class="field"><span class="field__label">Horário de partida ${temConexao ? '<span style="color:var(--gold)">*</span>' : ""}</span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="horario_partida" placeholder="Ex: 14:30" value="${escapeHtml(seg.horario_partida)}" />
+              </label>
+              <label class="field"><span class="field__label">Horário de chegada ${temConexao ? '<span style="color:var(--gold)">*</span>' : ""}</span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="horario_chegada" placeholder="Ex: 22:15 (+1)" value="${escapeHtml(seg.horario_chegada)}" />
+              </label>
+            </div>
+          </div>
+        </div>${conexaoDepois}`;
+    }).join("") + `<button type="button" class="btn btn--ghost btn--sm orc-seg-add" data-dest="${destId}" data-pid="${pid}" style="margin:2px 0 10px">+ Adicionar conexão/escala</button>`;
+
+    // Atualiza o estado a cada tecla (input), mas só RE-renderiza (pra recalcular o tempo de
+    // conexão exibido) no "change" (perde o foco) — re-renderizar a cada tecla reconstrói o
+    // <input> e derruba o foco/cursor no meio da digitação.
+    wrap.querySelectorAll(".orc-seg-campo").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const seg = lista.find((s) => s.id === inp.dataset.seg);
+        if (seg) seg[inp.dataset.campo] = inp.value;
+      });
+      if (["data", "horario_partida", "horario_chegada"].includes(inp.dataset.campo)) {
+        inp.addEventListener("change", () => renderSegmentosOrc(destId, pid));
+      }
+    });
+    wrap.querySelectorAll(".orc-seg-remover").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        segmentosStore[pid] = lista.filter((s) => s.id !== btn.dataset.seg);
+        renderSegmentosOrc(destId, pid);
+      });
+    });
+    wrap.querySelectorAll(".orc-seg-add").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        lista.push(novoSegmentoOrc());
+        renderSegmentosOrc(destId, pid);
+      });
+    });
+  }
+
   // ===== Destinos =====
   function addDestino() {
     destCounter++;
@@ -261,6 +358,7 @@
     orcamentoRecenteId = null;
     Object.keys(fotoStore).forEach((k) => delete fotoStore[k]);
     Object.keys(fotoStorePrint).forEach((k) => delete fotoStorePrint[k]);
+    Object.keys(segmentosStore).forEach((k) => delete segmentosStore[k]);
 
     document.getElementById("o-nome").value     = "";
     document.getElementById("o-adultos").value  = "1";
@@ -294,6 +392,7 @@
       destCounter,
       campos,
       fotos: JSON.parse(JSON.stringify(fotoStore)),
+      segmentos: JSON.parse(JSON.stringify(segmentosStore)),
     };
   }
 
@@ -391,7 +490,14 @@
 
     Object.keys(fotoStore).forEach((k) => delete fotoStore[k]);
     Object.keys(fotoStorePrint).forEach((k) => delete fotoStorePrint[k]);
+    Object.keys(segmentosStore).forEach((k) => delete segmentosStore[k]);
     Object.assign(fotoStore, d.fotos || {});
+    Object.assign(segmentosStore, d.segmentos || {});
+    // Orçamento recente salvo antes deste recurso existir: card de passagem sem entrada
+    // em segmentosStore — começa com 1 trecho em branco em vez de ficar quebrado.
+    destinos.forEach((dest) => (dest.produtos || []).forEach((p) => {
+      if (p.tipo === "passagem" && !segmentosStore[p.pid]) segmentosStore[p.pid] = [novoSegmentoOrc()];
+    }));
 
     if (destinos.length === 0) addDestino(); else renderDestinos();
     Object.entries(d.campos || {}).forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
@@ -420,6 +526,7 @@
     dest.produtos.push({ pid, tipo, extras: tipo === "passagem" ? [] : undefined });
     fotoStore[pid] = [];
     fotoStorePrint[pid] = [];
+    if (tipo === "passagem") segmentosStore[pid] = [novoSegmentoOrc()];
     renderDestinos();
   }
 
@@ -429,6 +536,7 @@
     dest.produtos = dest.produtos.filter((p) => p.pid !== pid);
     delete fotoStore[pid];
     delete fotoStorePrint[pid];
+    delete segmentosStore[pid];
     renderDestinos();
   }
 
@@ -531,6 +639,7 @@
               <button type="button" class="orc-produto-remove" data-dest="${dest.id}" data-pid="${p.pid}">✕</button>
             </div>
             <div class="orc-produto-body">
+              ${isPassagem ? `<div id="orc-segs-${dest.id}-${p.pid}"></div>` : ""}
               <div class="form__grid orc-produto-fields">
                 ${fieldsHtml}
               </div>
@@ -599,7 +708,7 @@
         const zoneId = "fotozone-" + p.pid;
         setupFotoZone(p.pid, zoneId, p.tipo, dest.id);
         renderFotos(p.pid, zoneId, p.tipo, dest.id);
-        if (p.tipo === "passagem") bindMilhasCalc(dest.id, p.pid);
+        if (p.tipo === "passagem") { bindMilhasCalc(dest.id, p.pid); renderSegmentosOrc(dest.id, p.pid); }
         if (p.tipo === "hospedagem") {
           const printZoneId = "fotozone-print-" + p.pid;
           setupFotoZonePrintHotel(p.pid, printZoneId, dest.id);
@@ -641,20 +750,26 @@
       if (el) el.value = val;
     };
 
-    fill("trecho",          ex.trecho);
-    fill("cidade_orig",     ex.cidade_orig);
-    fill("cidade_dest",     ex.cidade_dest);
-    fill("companhia",       ex.companhia);
-    fill("voo",             ex.voo);
-    fill("horario_partida", ex.horario_partida);
-    fill("horario_chegada", ex.horario_chegada);
-    fill("conexoes",        ex.conexoes);
-    fill("duracao",         ex.duracao);
-    fill("milhas",          ex.milhas);
+    fill("cidade_orig", ex.cidade_orig);
+    fill("cidade_dest", ex.cidade_dest);
+    fill("milhas",      ex.milhas);
 
-    // Data do voo não tem campo próprio no card — vai para "Data de ida/volta" do
-    // destino (só se ainda estiver vazio, pra não sobrescrever o que já foi digitado).
-    const dataIso = paraDataISO(ex.data);
+    // Trechos (voo direto = 1 item; conexão = 2+) — cada um com sua própria data, pra dar
+    // pra calcular o tempo de espera quando a conexão vira a noite.
+    const segsExtraidos = Array.isArray(ex.segmentos) ? ex.segmentos : [];
+    segmentosStore[cardPid] = segsExtraidos.length > 0
+      ? segsExtraidos.map((s) => ({
+          id: "seg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+          trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
+          data: paraDataISO(s.data) || "",
+          horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
+        }))
+      : [novoSegmentoOrc()];
+    renderSegmentosOrc(destId, cardPid);
+
+    // Data do 1º trecho também alimenta "Data de ida/volta" do destino (só se ainda estiver
+    // vazio, pra não sobrescrever o que já foi digitado).
+    const dataIso = segmentosStore[cardPid][0]?.data;
     if (dataIso) {
       const isVolta = forcarVolta === null ? passagemIndex(destId, cardPid) % 2 === 1 : forcarVolta;
       const fieldId = isVolta ? "o-co-" + destId : "o-ci-" + destId;
@@ -706,30 +821,28 @@
               { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
               { type: "text", text: `${contextoDataAtual()}
 
-Analise este print de passagem/reserva aérea. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
+Analise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — agrupe as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:
+
+- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo: "GRU → LIS" seguida de "LIS → ROM" são 2 trechos da MESMA ida (escala em Lisboa) — NÃO é ida e volta.
+- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA. Na dúvida se é conexão ou volta, trate como conexão — é pior assumir uma volta que não existe.
+
+Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
 {
-  "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO",
   "cidade_orig": "nome da cidade de origem (ex: Fortaleza)",
   "cidade_dest": "nome da cidade de destino (ex: Lisboa)",
-  "companhia": "nome da companhia aérea",
-  "voo": "número do voo",
-  "data": "DD/MM/AAAA da data do voo, ou null se não estiver visível",
-  "horario_partida": "HH:MM",
-  "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte",
-  "conexoes": "Voo direto OU ex: 1 escala em GRU",
-  "duracao": "Xh Ymin",
+  "segmentos": [
+    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "data": "DD/MM/AAAA da data deste voo, ou null se não estiver visível", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte" }
+  ],
   "milhas": número_inteiro_ou_null,
   "taxa_embarque": valor_numerico_em_reais_ou_null,
   "volta": {
-    "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO (invertido em relação à ida)",
     "cidade_orig": "...", "cidade_dest": "...",
-    "companhia": "...", "voo": "...",
-    "data": "DD/MM/AAAA ou null",
-    "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)",
-    "conexoes": "...", "duracao": "...",
+    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "data": "DD/MM/AAAA ou null", "horario_partida": "...", "horario_chegada": "..." } ],
     "milhas": número_inteiro_ou_null,
     "taxa_embarque": valor_numerico_em_reais_ou_null
-  } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho, "volta" deve ser null.
+  } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho (ainda que com escala), "volta" deve ser null e "segmentos" da ida tem mais de um item.
+
+IMPORTANTE: preencha "data" em TODO segmento sempre que o documento permitir — é o que dá pra calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; quando o documento não disser explicitamente, INFIRA a partir da data + horário de chegada do trecho anterior.
 }` },
             ],
           }],
@@ -1022,10 +1135,29 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
           const totalPassagem = valorPax * adultos;
           const totalTaxa     = taxaEmbarque * adultos;
           venda    = totalPassagem + totalTaxa;
-          nomeItem = gV(dest.id + "-" + p.pid + "-trecho") || "Passagem aérea";
+
+          // Trechos reais (voo direto = 1 trecho; conexão = 2+) — vem de segmentosStore, não
+          // mais de um campo de texto único (ver renderSegmentosOrc/novoSegmentoOrc).
+          const segmentos = (segmentosStore[p.pid] || []).filter((s) => s.trecho || s.companhia || s.voo || s.horario_partida || s.horario_chegada);
+          const primeiroSeg = segmentos[0] || {};
+          const ultimoSeg   = segmentos[segmentos.length - 1] || primeiroSeg;
+          const { orig: origIata } = parseTrecho(primeiroSeg.trecho);
+          const { dest: destIata } = parseTrecho(ultimoSeg.trecho);
+          nomeItem = (origIata && destIata) ? (origIata + " → " + destIata) : "Passagem aérea";
+
+          // Resumo textual das conexões + duração total — usados nos exports em texto puro
+          // (copiarTexto), que continuam mostrando 1 linha por perna. O cartão visual
+          // (renderFlightCard) usa "segmentos" direto pra mostrar cada trecho separado.
+          const conexoesTexto = segmentos.length <= 1 ? "Voo direto" : segmentos.slice(0, -1).map((s, i) => {
+            const prox = segmentos[i + 1];
+            const dur = calcularDuracaoOrc(s.data, s.horario_chegada, prox.data, prox.horario_partida);
+            const { dest: escalaIata } = parseTrecho(s.trecho);
+            return "Escala em " + (escalaIata || "—") + (dur ? " (" + dur + ")" : "");
+          }).join(", ");
+          const duracaoTotal = calcularDuracaoOrc(primeiroSeg.data, primeiroSeg.horario_partida, ultimoSeg.data, ultimoSeg.horario_chegada);
 
           const flightLabel = FLIGHT_LABELS[passagemIdx] || ("TRECHO " + (passagemIdx + 1));
-          const flightDate  = passagemIdx === 0 ? fData(ciVal) : (fData(coVal) || fData(ciVal));
+          const flightDate  = primeiroSeg.data ? fData(primeiroSeg.data) : (passagemIdx === 0 ? fData(ciVal) : (fData(coVal) || fData(ciVal)));
           passagemIdx++;
 
           itens.push({
@@ -1033,12 +1165,13 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
             fotos: [],
             valorPax, adultos, taxaEmbarque, totalPassagem, totalTaxa,
             flightLabel, flightDate,
-            companhia:    gV(dest.id + "-" + p.pid + "-companhia"),
-            voo:          gV(dest.id + "-" + p.pid + "-voo"),
-            partida:      gV(dest.id + "-" + p.pid + "-horario_partida"),
-            chegada:      gV(dest.id + "-" + p.pid + "-horario_chegada"),
-            conexoes:     gV(dest.id + "-" + p.pid + "-conexoes"),
-            duracao:      gV(dest.id + "-" + p.pid + "-duracao"),
+            segmentos,
+            companhia:    primeiroSeg.companhia || "",
+            voo:          primeiroSeg.voo || "",
+            partida:      primeiroSeg.horario_partida || "",
+            chegada:      ultimoSeg.horario_chegada || "",
+            conexoes:     conexoesTexto,
+            duracao:      duracaoTotal || "",
             cidadeOrigem: gV(dest.id + "-" + p.pid + "-cidade_orig"),
             cidadeDestino:gV(dest.id + "-" + p.pid + "-cidade_dest"),
           });
@@ -1093,42 +1226,96 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
   }
 
   // ===== Cartão visual de voo =====
+  // Um trecho isolado dentro do cartão de voo — usado quando há conexão (2+ trechos), pra
+  // mostrar cada perna com seu próprio aeroporto/horário, igual a companhia mostra.
+  function segmentoFlightHtml(seg, cidadeOrig, cidadeDest) {
+    const iata = parseTrecho(seg.trecho);
+    return `
+      <div class="orc-prev-flight-card-body">
+        <div class="orc-prev-airport">
+          <div class="orc-prev-iata">${escapeHtml(iata.orig || "—")}</div>
+          ${seg.horario_partida ? `<div class="orc-prev-time">${escapeHtml(seg.horario_partida)}</div>` : ""}
+          ${cidadeOrig ? `<div class="orc-prev-city">${escapeHtml(cidadeOrig)}</div>` : ""}
+        </div>
+        <div class="orc-prev-flight-middle">
+          <div class="orc-prev-dash-line">
+            <span class="orc-prev-dash-seg"></span>
+            <span class="orc-prev-plane-icon">✈</span>
+            <span class="orc-prev-dash-seg"></span>
+          </div>
+          ${seg.companhia || seg.voo ? `<div class="orc-prev-direto">${escapeHtml([seg.companhia, seg.voo].filter(Boolean).join(" · "))}</div>` : ""}
+        </div>
+        <div class="orc-prev-airport orc-prev-airport--right">
+          <div class="orc-prev-iata">${escapeHtml(iata.dest || "—")}</div>
+          ${seg.horario_chegada ? `<div class="orc-prev-time">${escapeHtml(seg.horario_chegada)}</div>` : ""}
+          ${cidadeDest ? `<div class="orc-prev-city">${escapeHtml(cidadeDest)}</div>` : ""}
+        </div>
+      </div>`;
+  }
+
   function renderFlightCard(it) {
-    const iata    = parseTrecho(it.nomeItem);
-    const origCity = it.cidadeOrigem  || "";
-    const destCity = it.cidadeDestino || "";
-    const vooInfo  = [it.companhia, it.voo].filter(Boolean).join(" · ");
-    const isDireto = it.conexoes && /direto/i.test(it.conexoes);
-    const stops    = isDireto ? "Voo direto" : (it.conexoes || "");
+    const segmentos = (it.segmentos && it.segmentos.length) ? it.segmentos : [];
+
+    // Voo direto (1 trecho só, ou orçamento antigo sem segmentos salvos): layout de sempre.
+    if (segmentos.length <= 1) {
+      const iata    = parseTrecho(it.nomeItem);
+      const origCity = it.cidadeOrigem  || "";
+      const destCity = it.cidadeDestino || "";
+      const vooInfo  = [it.companhia, it.voo].filter(Boolean).join(" · ");
+
+      return `
+        <div class="orc-prev-flight-card">
+          <div class="orc-prev-flight-card-header">
+            <span class="orc-prev-flight-label">${escapeHtml(it.flightLabel || "VOO")}</span>
+            ${it.flightDate ? `<span class="orc-prev-flight-card-date">${escapeHtml(it.flightDate)}</span>` : ""}
+            ${vooInfo ? `<span class="orc-prev-flight-card-voo">${escapeHtml(vooInfo)}</span>` : ""}
+          </div>
+          <div class="orc-prev-flight-card-body">
+            <div class="orc-prev-airport">
+              <div class="orc-prev-iata">${escapeHtml(iata.orig || "—")}</div>
+              ${it.partida  ? `<div class="orc-prev-time">${escapeHtml(it.partida)}</div>`  : ""}
+              ${origCity    ? `<div class="orc-prev-city">${escapeHtml(origCity)}</div>`    : ""}
+            </div>
+            <div class="orc-prev-flight-middle">
+              ${it.duracao  ? `<div class="orc-prev-duration">${escapeHtml(it.duracao)}</div>` : ""}
+              <div class="orc-prev-dash-line">
+                <span class="orc-prev-dash-seg"></span>
+                <span class="orc-prev-plane-icon">✈</span>
+                <span class="orc-prev-dash-seg"></span>
+              </div>
+              <div class="orc-prev-direto">Voo direto</div>
+            </div>
+            <div class="orc-prev-airport orc-prev-airport--right">
+              <div class="orc-prev-iata">${escapeHtml(iata.dest || "—")}</div>
+              ${it.chegada  ? `<div class="orc-prev-time">${escapeHtml(it.chegada)}</div>`  : ""}
+              ${destCity    ? `<div class="orc-prev-city">${escapeHtml(destCity)}</div>`    : ""}
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Com conexão: um bloco por trecho, com "Conexão em X — Yh de espera" entre eles.
+    const corpoHtml = segmentos.map((seg, i) => {
+      const cidadeOrig = i === 0 ? (it.cidadeOrigem || "") : "";
+      const cidadeDest = i === segmentos.length - 1 ? (it.cidadeDestino || "") : "";
+      let html = segmentoFlightHtml(seg, cidadeOrig, cidadeDest);
+      if (i < segmentos.length - 1) {
+        const prox = segmentos[i + 1];
+        const duracao = calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+        const { dest } = parseTrecho(seg.trecho);
+        html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escapeHtml(dest || "—")}${duracao ? " — " + escapeHtml(duracao) + " de espera" : ""}</div>`;
+      }
+      return html;
+    }).join("");
 
     return `
       <div class="orc-prev-flight-card">
         <div class="orc-prev-flight-card-header">
           <span class="orc-prev-flight-label">${escapeHtml(it.flightLabel || "VOO")}</span>
           ${it.flightDate ? `<span class="orc-prev-flight-card-date">${escapeHtml(it.flightDate)}</span>` : ""}
-          ${vooInfo ? `<span class="orc-prev-flight-card-voo">${escapeHtml(vooInfo)}</span>` : ""}
+          ${it.duracao ? `<span class="orc-prev-flight-card-voo">Duração total: ${escapeHtml(it.duracao)}</span>` : ""}
         </div>
-        <div class="orc-prev-flight-card-body">
-          <div class="orc-prev-airport">
-            <div class="orc-prev-iata">${escapeHtml(iata.orig || "—")}</div>
-            ${it.partida  ? `<div class="orc-prev-time">${escapeHtml(it.partida)}</div>`  : ""}
-            ${origCity    ? `<div class="orc-prev-city">${escapeHtml(origCity)}</div>`    : ""}
-          </div>
-          <div class="orc-prev-flight-middle">
-            ${it.duracao  ? `<div class="orc-prev-duration">${escapeHtml(it.duracao)}</div>` : ""}
-            <div class="orc-prev-dash-line">
-              <span class="orc-prev-dash-seg"></span>
-              <span class="orc-prev-plane-icon">✈</span>
-              <span class="orc-prev-dash-seg"></span>
-            </div>
-            ${stops ? `<div class="orc-prev-direto">${escapeHtml(stops)}</div>` : ""}
-          </div>
-          <div class="orc-prev-airport orc-prev-airport--right">
-            <div class="orc-prev-iata">${escapeHtml(iata.dest || "—")}</div>
-            ${it.chegada  ? `<div class="orc-prev-time">${escapeHtml(it.chegada)}</div>`  : ""}
-            ${destCity    ? `<div class="orc-prev-city">${escapeHtml(destCity)}</div>`    : ""}
-          </div>
-        </div>
+        <div style="padding:14px 0 2px">${corpoHtml}</div>
       </div>`;
   }
 
