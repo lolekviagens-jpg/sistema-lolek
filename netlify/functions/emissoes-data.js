@@ -85,6 +85,7 @@
 //     check (forma_pagamento in ('pix','sumup','valepay','faturado','pix_valepay','pix_sumup','wise','boleto','mittu','maquina_c6','stone','mercado_pago','dinheiro','infinity','inter_pj','btg','outro_pagamento'));
 
 const https = require("https");
+const zlib = require("zlib");
 const { validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
@@ -127,7 +128,20 @@ exports.handler = async (event) => {
         "/venda_emissoes?select=*,venda_emissoes_passageiros(*),venda_emissoes_produtos(*)&order=criado_em.desc",
         secretKey
       );
-      return { statusCode: 200, headers: { "Content-Type": "application/json" }, body: JSON.stringify(rows || []) };
+      // A resposta sem compressão já passou do teto de 6MB do Netlify Functions (a function
+      // é interrompida e devolve "Function.ResponseSizeTooLarge" — 502 pro navegador, mesmo
+      // com os dados certinhos no Supabase) — "venda_emissoes" só tende a crescer, então
+      // comprime aqui. JSON repetitivo como este costuma cair bastante (a mesma estrutura de
+      // chaves se repete em cada linha), o que deve segurar por bastante tempo — mas o teto
+      // ainda existe comprimido, então algum dia listar TUDO de uma vez vai precisar virar
+      // paginação/filtro por período de verdade (ver listar_produtos_periodo, que já é assim).
+      const corpo = zlib.gzipSync(Buffer.from(JSON.stringify(rows || []), "utf8"));
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json", "Content-Encoding": "gzip" },
+        isBase64Encoded: true,
+        body: corpo.toString("base64"),
+      };
     }
 
     if (event.httpMethod === "POST") {
