@@ -223,7 +223,9 @@
     ],
     trem: [
       { id: "trecho", label: "Trecho", placeholder: "Ex: Paris → Lyon" },
-      { id: "companhia", label: "Companhia", placeholder: "Ex: SNCF, Trenitalia, Eurostar" },
+      // Obrigatório — é o que aparece na coluna "Companhia" do Check-in (mesmo papel do nome
+      // do hotel pra hospedagem), então não pode ficar em branco.
+      { id: "companhia", label: "Companhia", placeholder: "Ex: SNCF, Trenitalia, Eurostar", required: true },
       { id: "data_viagem", label: "Data", type: "date" },
       { id: "horario_partida", label: "Horário de partida" },
       { id: "horario_chegada", label: "Horário de chegada" },
@@ -2178,6 +2180,7 @@
       if (!d.checkin && !d.checkout) return "—";
       return `${fData(d.checkin)} – ${fData(d.checkout)}`;
     }
+    if (l.tipo === "trem" && d.data_viagem) return fData(d.data_viagem);
     if (l.tipo === "passeio" && d.data_passeio) return fData(d.data_passeio);
     if (l.tipo === "visto_americano" && d.data_entrevista) return fData(d.data_entrevista);
     return "—";
