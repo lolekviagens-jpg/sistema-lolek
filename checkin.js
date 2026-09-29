@@ -176,6 +176,17 @@
               dataIda: d.checkin || null, dataVolta: d.checkout || null,
             });
           });
+        } else if (prod.tipo === "trem") {
+          // Trem não tem "perna" ida/volta como passagem — é 1 data de viagem só
+          // (dados.data_viagem, cadastrado em Nova Emissão), guardada em dataIda pra
+          // reaproveitar a mesma lógica de seções (hoje/amanhã) das outras linhas.
+          nomes.forEach((nome) => {
+            linhas.push({
+              nome, tipo: "Trem",
+              saida: "", destino: e.destino || "", companhia: d.companhia || "", localizador: d.localizador || "",
+              dataIda: d.data_viagem || null, dataVolta: null,
+            });
+          });
         }
       });
     });
@@ -249,7 +260,8 @@
       sectionsEl.appendChild(renderSection("🔴", "Embarques — ida", ida, "ida", selectedDate));
       sectionsEl.appendChild(renderSection("🟣", "Chegadas — volta", volta, "volta", selectedDate));
     } else {
-      // Visão padrão: hoje + amanhã (check-in é só de passagem aérea)
+      // Visão padrão: hoje + amanhã — passagem aérea, hospedagem (check-in/checkout) e trem
+      // (data_viagem), cada um confirmável no dia anterior igual já era só pra passagem.
       const hoje    = todayYmd();
       const amanha  = tomorrowYmd();
       const aereos  = lastPassengers.filter((p) => p.tipo === "Passagem aérea");
@@ -262,19 +274,33 @@
       sectionsEl.appendChild(renderSection("✅", "Check-in de ida — fazer hoje (voo amanhã)",      groups.idaAmanha,   "ida",   amanha));
       sectionsEl.appendChild(renderSection("✅", "Check-in de volta — fazer hoje (retorno amanhã)", groups.voltaAmanha, "volta", amanha));
 
-      // Conferência de hospedagem — não é check-in, só garantir que está tudo certo antes do hóspede chegar
-      const hospedagemAmanha = lastPassengers.filter((p) => p.tipo === "Hospedagem" && p.dataIda === amanha);
+      // Conferência de hospedagem — não é check-in, só garantir que está tudo certo antes do
+      // hóspede chegar. "leg" continua "ida" (não mexer: já existem confirmações antigas
+      // gravadas com essa chave — trocar quebraria o histórico já confirmado).
+      const hospedagem = lastPassengers.filter((p) => p.tipo === "Hospedagem");
+      const hospedagemAmanha = hospedagem.filter((p) => p.dataIda === amanha);
+      const hospedagemHoje   = hospedagem.filter((p) => p.dataIda === hoje);
       if (hospedagemAmanha.length > 0) {
         sectionsEl.appendChild(renderSection("🏨", "Conferir hospedagem — check-in amanhã", hospedagemAmanha, "ida", amanha, false, "Conferido ✅"));
       }
 
-      if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0) {
+      // Confirmação de trem — mesmo espírito da hospedagem, um dia antes da viagem.
+      const trens = lastPassengers.filter((p) => p.tipo === "Trem");
+      const trensAmanha = trens.filter((p) => p.dataIda === amanha);
+      const trensHoje    = trens.filter((p) => p.dataIda === hoje);
+      if (trensAmanha.length > 0) {
+        sectionsEl.appendChild(renderSection("🚆", "Confirmar trem — viagem amanhã", trensAmanha, "trem", amanha, false, "Confirmado ✅"));
+      }
+
+      if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0 || hospedagemHoje.length > 0 || trensHoje.length > 0) {
         const divEl = document.createElement("div");
         divEl.className = "ci-divider";
         divEl.innerHTML = "<span>Embarques e chegadas de hoje</span>";
         sectionsEl.appendChild(divEl);
         sectionsEl.appendChild(renderSection("🛫", "Embarcam hoje", groups.idaHoje,   "ida",   hoje, true));
         sectionsEl.appendChild(renderSection("🛬", "Retornam hoje", groups.voltaHoje, "volta", hoje, true));
+        if (hospedagemHoje.length > 0) sectionsEl.appendChild(renderSection("🏨", "Check-in de hospedagem hoje", hospedagemHoje, "ida",  hoje, true, "Conferido ✅"));
+        if (trensHoje.length > 0)      sectionsEl.appendChild(renderSection("🚆", "Viajam de trem hoje",         trensHoje,      "trem", hoje, true, "Confirmado ✅"));
       }
     }
   }
@@ -330,9 +356,12 @@
     sorted.forEach((p) => {
       const key         = confirmKey(p, leg, legDate);
       const confirmedAt = confirms[key];
-      const rota        = leg === "ida"
-        ? `${escapeHtml(p.saida) || "—"} → ${escapeHtml(p.destino) || "—"}`
-        : `${escapeHtml(p.destino) || "—"} → ${escapeHtml(p.saida) || "—"}`;
+      // "volta" é a única perna que inverte (chegando de volta em casa) — ida, hospedagem
+      // e trem seguem todas o sentido "saída → destino" (saida fica "—" quando não existe,
+      // caso de hospedagem/trem).
+      const rota        = leg === "volta"
+        ? `${escapeHtml(p.destino) || "—"} → ${escapeHtml(p.saida) || "—"}`
+        : `${escapeHtml(p.saida) || "—"} → ${escapeHtml(p.destino) || "—"}`;
 
       const tr = document.createElement("tr");
       if (confirmedAt) tr.classList.add("ci-row--done");
