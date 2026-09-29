@@ -215,11 +215,15 @@
       { id: "plano", label: "Plano" },
       { id: "cobertura", label: "Cobertura" },
       { id: "localizador", label: "Localizador / número da reserva" },
+      { id: "data_inicio", label: "Início da vigência", type: "date" },
+      { id: "data_fim", label: "Fim da vigência", type: "date" },
     ],
     carro: [
       { id: "locadora", label: "Locadora" },
       { id: "categoria", label: "Categoria" },
       { id: "localizador", label: "Localizador / número da reserva" },
+      { id: "data_retirada", label: "Data de retirada", type: "date" },
+      { id: "data_devolucao", label: "Data de devolução", type: "date" },
     ],
     trem: [
       { id: "trecho", label: "Trecho", placeholder: "Ex: Paris → Lyon" },
@@ -2183,6 +2187,14 @@
     if (l.tipo === "trem" && d.data_viagem) return fData(d.data_viagem);
     if (l.tipo === "passeio" && d.data_passeio) return fData(d.data_passeio);
     if (l.tipo === "visto_americano" && d.data_entrevista) return fData(d.data_entrevista);
+    if (l.tipo === "seguro") {
+      if (!d.data_inicio && !d.data_fim) return "—";
+      return `${fData(d.data_inicio)} – ${fData(d.data_fim)}`;
+    }
+    if (l.tipo === "carro") {
+      if (!d.data_retirada && !d.data_devolucao) return "—";
+      return `${fData(d.data_retirada)} – ${fData(d.data_devolucao)}`;
+    }
     return "—";
   }
 

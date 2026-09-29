@@ -187,6 +187,16 @@
               dataIda: d.data_viagem || null, dataVolta: null,
             });
           });
+        } else if (prod.tipo === "carro" && d.data_retirada) {
+          // Só entra em Check-in se tiver "Data de retirada" preenchida (campo novo) — carro
+          // cadastrado antes desse campo existir simplesmente não aparece aqui, sem erro.
+          nomes.forEach((nome) => {
+            linhas.push({
+              nome, tipo: "Carro",
+              saida: "", destino: e.destino || "", companhia: d.locadora || "", localizador: d.localizador || "",
+              dataIda: d.data_retirada, dataVolta: null,
+            });
+          });
         }
       });
     });
@@ -292,15 +302,24 @@
         sectionsEl.appendChild(renderSection("🚆", "Confirmar trem — viagem amanhã", trensAmanha, "trem", amanha, false, "Confirmado ✅"));
       }
 
-      if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0 || hospedagemHoje.length > 0 || trensHoje.length > 0) {
+      // Confirmação de retirada de carro — mesmo espírito, um dia antes.
+      const carros = lastPassengers.filter((p) => p.tipo === "Carro");
+      const carrosAmanha = carros.filter((p) => p.dataIda === amanha);
+      const carrosHoje    = carros.filter((p) => p.dataIda === hoje);
+      if (carrosAmanha.length > 0) {
+        sectionsEl.appendChild(renderSection("🚗", "Confirmar retirada de carro — amanhã", carrosAmanha, "carro", amanha, false, "Confirmado ✅"));
+      }
+
+      if (groups.idaHoje.length > 0 || groups.voltaHoje.length > 0 || hospedagemHoje.length > 0 || trensHoje.length > 0 || carrosHoje.length > 0) {
         const divEl = document.createElement("div");
         divEl.className = "ci-divider";
         divEl.innerHTML = "<span>Embarques e chegadas de hoje</span>";
         sectionsEl.appendChild(divEl);
         sectionsEl.appendChild(renderSection("🛫", "Embarcam hoje", groups.idaHoje,   "ida",   hoje, true));
         sectionsEl.appendChild(renderSection("🛬", "Retornam hoje", groups.voltaHoje, "volta", hoje, true));
-        if (hospedagemHoje.length > 0) sectionsEl.appendChild(renderSection("🏨", "Check-in de hospedagem hoje", hospedagemHoje, "ida",  hoje, true, "Conferido ✅"));
-        if (trensHoje.length > 0)      sectionsEl.appendChild(renderSection("🚆", "Viajam de trem hoje",         trensHoje,      "trem", hoje, true, "Confirmado ✅"));
+        if (hospedagemHoje.length > 0) sectionsEl.appendChild(renderSection("🏨", "Check-in de hospedagem hoje", hospedagemHoje, "ida",   hoje, true, "Conferido ✅"));
+        if (trensHoje.length > 0)      sectionsEl.appendChild(renderSection("🚆", "Viajam de trem hoje",         trensHoje,      "trem",  hoje, true, "Confirmado ✅"));
+        if (carrosHoje.length > 0)     sectionsEl.appendChild(renderSection("🚗", "Retiram carro hoje",          carrosHoje,     "carro", hoje, true, "Confirmado ✅"));
       }
     }
   }
