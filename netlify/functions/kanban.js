@@ -312,7 +312,7 @@ async function atualizarCard(d, sessao, secretKey) {
   const camposPermitidos = [
     "etapa", "destino", "data_ida", "data_volta", "num_passageiros", "valor_estimado",
     "origem_lead", "segmento", "proxima_acao_texto", "proxima_acao_data", "anotacoes",
-    "momento_viagem", "prioridade", "descricao_caso", "venda_vinculada_id",
+    "motivo_suporte", "momento_viagem", "prioridade", "descricao_caso", "venda_vinculada_id",
   ];
   camposPermitidos.forEach((c) => { if (d[c] !== undefined) patch[c] = d[c]; });
 

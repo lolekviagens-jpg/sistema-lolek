@@ -313,19 +313,26 @@
     gel("kb-classificar-busca-cliente").value = "";
     gel("kb-classificar-busca-resultados").innerHTML = "";
     gel("kb-classificacao").value = "";
-    ["kb-c-destino", "kb-c-pax", "kb-c-data-ida", "kb-c-data-volta", "kb-c-valor", "kb-c-descricao", "kb-c-obs-outros"].forEach((i) => gel(i).value = "");
-    gel("kb-c-segmento").value = ""; gel("kb-c-origem").value = ""; gel("kb-c-motivo").value = "";
-    gel("kb-c-momento").value = ""; gel("kb-c-prioridade").value = "normal";
-    gel("kb-campos-vendas").hidden = true; gel("kb-campos-suporte").hidden = true; gel("kb-campos-outros").hidden = true;
+    gel("kb-c-obs-outros").value = "";
+    gel("kb-campos-outros").hidden = true;
+    gel("kb-classificar-hint").textContent = "";
     gel("kb-classificar-erro").hidden = true;
     gel("kb-modal-classificar").hidden = false;
   }
 
+  // Passo 1 é só decidir o rumo — destino, valor, motivo do suporte etc. ficam pra depois,
+  // na aba "Detalhes da negociação"/"Detalhes do caso" dentro do próprio card (aberto pelo
+  // quadro já classificado), não aqui.
+  const DICA_CLASSIFICACAO = {
+    nova_viagem: "Vai pro quadro de Vendas, em \"Em cotação\". Os detalhes (destino, valor, datas...) você preenche depois, direto no card.",
+    complemento: "Vai pro quadro de Vendas, marcado como Complemento. Os detalhes você preenche depois, direto no card.",
+    suporte: "Vai pro quadro de Suporte, em \"Em atendimento\". O motivo e os detalhes você preenche depois, direto no card.",
+    outros: "Não entra em quadro nenhum nem conta em métrica — só arquiva.",
+  };
   gel("kb-classificacao").addEventListener("change", () => {
     const v = gel("kb-classificacao").value;
-    gel("kb-campos-vendas").hidden = !(v === "nova_viagem" || v === "complemento");
-    gel("kb-campos-suporte").hidden = v !== "suporte";
     gel("kb-campos-outros").hidden = v !== "outros";
+    gel("kb-classificar-hint").textContent = DICA_CLASSIFICACAO[v] || "";
   });
 
   gel("kb-classificar-salvar").addEventListener("click", async () => {
@@ -334,22 +341,7 @@
     const classificacao = gel("kb-classificacao").value;
     if (!classificacao) { erroEl.textContent = "Selecione o tipo de atendimento."; erroEl.hidden = false; return; }
     const dados = { id: cardAtual.id, classificacao, cliente_id: clienteVinculadoId };
-    if (classificacao === "nova_viagem" || classificacao === "complemento") {
-      Object.assign(dados, {
-        destino: gel("kb-c-destino").value.trim(), num_passageiros: gel("kb-c-pax").value || null,
-        data_ida: gel("kb-c-data-ida").value || null, data_volta: gel("kb-c-data-volta").value || null,
-        valor_estimado: gel("kb-c-valor").value || null, segmento: gel("kb-c-segmento").value || null,
-        origem_lead: gel("kb-c-origem").value || null,
-      });
-    } else if (classificacao === "suporte") {
-      // Motivo é opcional aqui — dá pra preencher depois, na hora de realmente atender.
-      Object.assign(dados, {
-        motivo_suporte: gel("kb-c-motivo").value, momento_viagem: gel("kb-c-momento").value || null,
-        prioridade: gel("kb-c-prioridade").value, descricao_caso: gel("kb-c-descricao").value.trim(),
-      });
-    } else if (classificacao === "outros") {
-      dados.observacao = gel("kb-c-obs-outros").value.trim();
-    }
+    if (classificacao === "outros") dados.observacao = gel("kb-c-obs-outros").value.trim();
     try {
       await chamarKanban("classificar_card", dados);
       gel("kb-modal-classificar").hidden = true;
@@ -371,13 +363,27 @@
     const encerrado = card.etapa === "encerrado" || card.etapa === "resolvido";
     const resumoLinhas = [
       card.cliente_telefone ? "📞 " + card.cliente_telefone : "",
-      card.destino ? "📍 " + card.destino : "",
-      card.motivo_suporte ? "🛟 " + card.motivo_suporte : "",
-      card.valor_estimado ? "💰 " + fBRL(card.valor_estimado) : "",
-      card.origem_lead ? "Lead: " + card.origem_lead : "",
-      card.segmento ? "Segmento: " + card.segmento : "",
+      card.tipo === "complemento" ? "🏷 Complemento de viagem" : "",
     ].filter(Boolean);
     gel("kb-card-resumo").innerHTML = resumoLinhas.map((l) => `<div class="table__muted" style="font-size:0.85rem">${escHtml(l)}</div>`).join("");
+
+    // Detalhes da negociação/caso — campos certos só pro quadro do card.
+    gel("kb-card-detalhes-vendas").hidden = card.quadro !== "vendas";
+    gel("kb-card-detalhes-suporte").hidden = card.quadro !== "suporte";
+    if (card.quadro === "vendas") {
+      gel("kb-card-destino").value = card.destino || "";
+      gel("kb-card-pax").value = card.num_passageiros || "";
+      gel("kb-card-data-ida").value = card.data_ida || "";
+      gel("kb-card-data-volta").value = card.data_volta || "";
+      gel("kb-card-valor").value = card.valor_estimado || "";
+      gel("kb-card-segmento").value = card.segmento || "";
+      gel("kb-card-origem").value = card.origem_lead || "";
+    } else if (card.quadro === "suporte") {
+      gel("kb-card-motivo").value = card.motivo_suporte || "";
+      gel("kb-card-momento").value = card.momento_viagem || "";
+      gel("kb-card-prioridade").value = card.prioridade || "normal";
+      gel("kb-card-descricao").value = card.descricao_caso || "";
+    }
 
     const etapas = ETAPAS_QUADRO[card.quadro] || [];
     gel("kb-card-etapas").innerHTML = encerrado ? "" : etapas.map((e) => `
@@ -404,13 +410,32 @@
   }
 
   gel("kb-card-salvar-btn").addEventListener("click", async () => {
-    try {
-      await chamarKanban("atualizar_card", {
-        id: cardAtual.id,
-        proxima_acao_texto: gel("kb-card-proxima-acao").value.trim(),
-        proxima_acao_data: gel("kb-card-proxima-data").value || null,
-        anotacoes: gel("kb-card-anotacoes").value.trim(),
+    const dados = {
+      id: cardAtual.id,
+      proxima_acao_texto: gel("kb-card-proxima-acao").value.trim(),
+      proxima_acao_data: gel("kb-card-proxima-data").value || null,
+      anotacoes: gel("kb-card-anotacoes").value.trim(),
+    };
+    if (cardAtual.quadro === "vendas") {
+      Object.assign(dados, {
+        destino: gel("kb-card-destino").value.trim(),
+        num_passageiros: gel("kb-card-pax").value || null,
+        data_ida: gel("kb-card-data-ida").value || null,
+        data_volta: gel("kb-card-data-volta").value || null,
+        valor_estimado: gel("kb-card-valor").value || null,
+        segmento: gel("kb-card-segmento").value || null,
+        origem_lead: gel("kb-card-origem").value || null,
       });
+    } else if (cardAtual.quadro === "suporte") {
+      Object.assign(dados, {
+        motivo_suporte: gel("kb-card-motivo").value || null,
+        momento_viagem: gel("kb-card-momento").value || null,
+        prioridade: gel("kb-card-prioridade").value,
+        descricao_caso: gel("kb-card-descricao").value.trim(),
+      });
+    }
+    try {
+      await chamarKanban("atualizar_card", dados);
       gel("kb-modal-card").hidden = true;
       await recarregarTudo();
     } catch (err) { mostrarErro(err.message); }

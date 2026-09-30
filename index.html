@@ -808,49 +808,7 @@
               </label>
             </div>
 
-            <div id="kb-campos-vendas" hidden class="form__grid">
-              <label class="field"><span class="field__label">Destino</span><input type="text" id="kb-c-destino" class="input" /></label>
-              <label class="field"><span class="field__label">Nº de passageiros</span><input type="number" id="kb-c-pax" class="input" /></label>
-              <label class="field"><span class="field__label">Data de ida</span><input type="date" id="kb-c-data-ida" class="input" /></label>
-              <label class="field"><span class="field__label">Data de volta</span><input type="date" id="kb-c-data-volta" class="input" /></label>
-              <label class="field"><span class="field__label">Valor estimado (R$)</span><input type="number" step="0.01" id="kb-c-valor" class="input" /></label>
-              <label class="field"><span class="field__label">Segmento</span>
-                <select id="kb-c-segmento" class="input"><option value="">—</option><option value="B2C">B2C</option><option value="B2B">B2B</option><option value="Grupo">Grupo</option></select>
-              </label>
-              <label class="field field--full"><span class="field__label">Origem do lead</span>
-                <select id="kb-c-origem" class="input">
-                  <option value="">—</option>
-                  <option>Instagram</option><option>Indicação</option><option>Shalom</option>
-                  <option>Influenciadora</option><option>Corporativo</option><option>Outros</option>
-                </select>
-              </label>
-            </div>
-
-            <div id="kb-campos-suporte" hidden class="form__grid">
-              <label class="field field--full"><span class="field__label">Motivo do suporte <span class="table__muted">(opcional — pode preencher depois)</span></span>
-                <select id="kb-c-motivo" class="input">
-                  <option value="">Selecione...</option>
-                  <option>Check-in e marcação de assento</option>
-                  <option>Alteração ou remarcação</option>
-                  <option>Cancelamento e reembolso</option>
-                  <option>Voo atrasado ou cancelado</option>
-                  <option>Bagagem (extravio, dano, franquia)</option>
-                  <option>Hospedagem (confirmação ou problema)</option>
-                  <option>Documentação (visto, passaporte, vacinas)</option>
-                  <option>Seguro viagem (dúvida ou acionamento)</option>
-                  <option>Orientações pré-viagem</option>
-                  <option>Emergência durante a viagem</option>
-                  <option>Outro</option>
-                </select>
-              </label>
-              <label class="field"><span class="field__label">Momento da viagem</span>
-                <select id="kb-c-momento" class="input"><option value="">—</option><option value="antes_embarque">Antes do embarque</option><option value="em_viagem">Em viagem</option><option value="pos_viagem">Pós-viagem</option></select>
-              </label>
-              <label class="field"><span class="field__label">Prioridade</span>
-                <select id="kb-c-prioridade" class="input"><option value="normal">Normal</option><option value="urgente">Urgente</option><option value="emergencia">Emergência</option></select>
-              </label>
-              <label class="field field--full"><span class="field__label">Descrição do caso</span><textarea id="kb-c-descricao" class="input" rows="2"></textarea></label>
-            </div>
+            <div class="table__muted" id="kb-classificar-hint" style="font-size:0.82rem;margin:-4px 0 12px"></div>
 
             <div id="kb-campos-outros" hidden>
               <label class="field field--full"><span class="field__label">Observação</span><input type="text" id="kb-c-obs-outros" class="input" placeholder="Ex: fornecedor, número errado..." /></label>
@@ -882,12 +840,56 @@
               <button type="button" class="btn btn--gold btn--sm" id="kb-card-encerrar-btn">✔ Encerrar</button>
             </div>
 
+            <div class="orc-card__header">Detalhes da negociação</div>
+            <div id="kb-card-detalhes-vendas" hidden class="form__grid" style="margin-bottom:10px">
+              <label class="field"><span class="field__label">Destino</span><input type="text" id="kb-card-destino" class="input" /></label>
+              <label class="field"><span class="field__label">Nº de passageiros</span><input type="number" id="kb-card-pax" class="input" /></label>
+              <label class="field"><span class="field__label">Data de ida</span><input type="date" id="kb-card-data-ida" class="input" /></label>
+              <label class="field"><span class="field__label">Data de volta</span><input type="date" id="kb-card-data-volta" class="input" /></label>
+              <label class="field"><span class="field__label">Valor estimado (R$)</span><input type="number" step="0.01" id="kb-card-valor" class="input" /></label>
+              <label class="field"><span class="field__label">Segmento</span>
+                <select id="kb-card-segmento" class="input"><option value="">—</option><option value="B2C">B2C</option><option value="B2B">B2B</option><option value="Grupo">Grupo</option></select>
+              </label>
+              <label class="field field--full"><span class="field__label">Origem do lead</span>
+                <select id="kb-card-origem" class="input">
+                  <option value="">—</option>
+                  <option>Instagram</option><option>Indicação</option><option>Shalom</option>
+                  <option>Influenciadora</option><option>Corporativo</option><option>Outros</option>
+                </select>
+              </label>
+            </div>
+            <div id="kb-card-detalhes-suporte" hidden class="form__grid" style="margin-bottom:10px">
+              <label class="field field--full"><span class="field__label">Motivo do suporte</span>
+                <select id="kb-card-motivo" class="input">
+                  <option value="">Selecione...</option>
+                  <option>Check-in e marcação de assento</option>
+                  <option>Alteração ou remarcação</option>
+                  <option>Cancelamento e reembolso</option>
+                  <option>Voo atrasado ou cancelado</option>
+                  <option>Bagagem (extravio, dano, franquia)</option>
+                  <option>Hospedagem (confirmação ou problema)</option>
+                  <option>Documentação (visto, passaporte, vacinas)</option>
+                  <option>Seguro viagem (dúvida ou acionamento)</option>
+                  <option>Orientações pré-viagem</option>
+                  <option>Emergência durante a viagem</option>
+                  <option>Outro</option>
+                </select>
+              </label>
+              <label class="field"><span class="field__label">Momento da viagem</span>
+                <select id="kb-card-momento" class="input"><option value="">—</option><option value="antes_embarque">Antes do embarque</option><option value="em_viagem">Em viagem</option><option value="pos_viagem">Pós-viagem</option></select>
+              </label>
+              <label class="field"><span class="field__label">Prioridade</span>
+                <select id="kb-card-prioridade" class="input"><option value="normal">Normal</option><option value="urgente">Urgente</option><option value="emergencia">Emergência</option></select>
+              </label>
+              <label class="field field--full"><span class="field__label">Descrição do caso</span><textarea id="kb-card-descricao" class="input" rows="2"></textarea></label>
+            </div>
+
             <div class="form__grid" style="margin-bottom:10px">
               <label class="field"><span class="field__label">Próxima ação</span><input type="text" id="kb-card-proxima-acao" class="input" /></label>
               <label class="field"><span class="field__label">Data da próxima ação</span><input type="date" id="kb-card-proxima-data" class="input" /></label>
             </div>
             <label class="field field--full"><span class="field__label">Anotações</span><textarea id="kb-card-anotacoes" class="input" rows="3"></textarea></label>
-            <button type="button" class="btn btn--ghost btn--sm" id="kb-card-salvar-btn" style="margin-top:6px">💾 Salvar anotações/próxima ação</button>
+            <button type="button" class="btn btn--ghost btn--sm" id="kb-card-salvar-btn" style="margin-top:6px">💾 Salvar</button>
 
             <div class="orc-card__header" style="margin-top:18px">Histórico</div>
             <div id="kb-card-historico" class="table__muted" style="font-size:0.82rem"></div>
