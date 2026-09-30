@@ -156,7 +156,6 @@ exports.handler = async (event) => {
       case "encerrar_card":          return json(200, await encerrarCard(d, sessao, secretKey));
       case "obter_config":           return json(200, await obterConfig(secretKey));
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
-      case "buscar_cliente_telefone":return json(200, await buscarClientePorTelefone(d, secretKey));
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
     }
@@ -273,10 +272,12 @@ async function classificarCard(d, sessao, secretKey) {
     patch.origem_lead = d.origem_lead || null;
     patch.segmento = d.segmento || null;
   } else if (d.classificacao === "suporte") {
-    if (!d.motivo_suporte) throw new Error("Selecione o motivo do suporte.");
+    // Motivo NÃO é obrigatório aqui — o momento de classificar é só decidir "isso é
+    // suporte" (sai da fila, fica com quem assumiu); o motivo específico dá pra preencher
+    // depois, quando for realmente atender o caso.
     patch.quadro = "suporte";
     patch.etapa = "em_atendimento";
-    patch.motivo_suporte = d.motivo_suporte;
+    patch.motivo_suporte = d.motivo_suporte || null;
     patch.momento_viagem = d.momento_viagem || null;
     patch.prioridade = d.prioridade || "normal";
     patch.venda_vinculada_id = d.venda_vinculada_id || null;
@@ -449,15 +450,6 @@ async function salvarConfig(d, sessao, secretKey) {
   await supabaseRest("/kanban_config", "POST", secretKey, { chave: "alertas", valor },
     { "Prefer": "resolution=merge-duplicates,return=minimal" });
   return valor;
-}
-
-// Ajuda a vincular um card a um cliente já cadastrado, pelo telefone (mesma normalização
-// usada no envio de WhatsApp — só os dígitos).
-async function buscarClientePorTelefone(d, secretKey) {
-  const digitos = String(d.telefone || "").replace(/\D/g, "");
-  if (digitos.length < 8) return [];
-  const rows = await supabaseRest("/clientes?select=id,nome,telefone&telefone=ilike.*" + digitos.slice(-8) + "*", "GET", secretKey);
-  return rows || [];
 }
 
 // Últimos payloads recebidos do Digisac (Fase 3, descoberta dos eventos) — só admin, só

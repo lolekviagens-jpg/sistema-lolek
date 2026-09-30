@@ -15,6 +15,7 @@
   function fBRL(v) { return "R$ " + (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function fData(iso) { return iso ? new Date(iso + (iso.length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR") : "—"; }
   function fDataHora(iso) { return iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
+  function norm(s) { return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""); }
 
   const ETAPAS_QUADRO = {
     vendas:   [{ v: "em_cotacao", l: "Em cotação" }, { v: "proposta_enviada", l: "Proposta enviada" }],
@@ -45,6 +46,7 @@
   let cards = [];
   let agenda = [];
   let colegas = []; // [{id, nome}] — usuários ativos
+  let clientesCache = []; // [{id, nome, telefone}] — pra buscar por nome ao vincular um card
   let configAlertas = { dias_alerta_amarelo: 2, dias_alerta_vermelho: 5 };
   let cardAtual = null; // card aberto no modal de detalhe/classificação/encerramento
 
@@ -100,6 +102,13 @@
   // ===== Carregamentos =====
   async function carregarColegas() {
     try { colegas = await chamarAuth("listar_colegas"); } catch { colegas = []; }
+  }
+
+  async function carregarClientesCache() {
+    try {
+      const resp = await fetch("/.netlify/functions/clientes-data");
+      clientesCache = resp.ok ? await resp.json() : [];
+    } catch { clientesCache = []; }
   }
 
   async function carregarConfig() {
@@ -259,34 +268,50 @@
   }
 
   // ===== Modal: Classificar (card da fila) =====
-  let clienteVinculadoId = null; // preenchido se a busca por telefone achar um cadastro
+  // Vincular pelo NOME (digitando) em vez de pelo telefone — o telefone do WhatsApp às vezes
+  // é o mesmo pra clientes diferentes (ex: alguém cadastrado sem querer com o número de
+  // outra pessoa), então buscar por telefone trazia gente errada. Quem está atendendo sabe o
+  // nome de quem está falando — busca por nome é bem mais confiável aqui.
+  let clienteVinculadoId = null;
+  let clienteVinculadoNome = null;
 
-  async function sugerirClienteCadastrado(card) {
-    const box = gel("kb-classificar-cliente-sugestao");
-    box.innerHTML = "";
-    clienteVinculadoId = card.cliente_id || null;
-    if (clienteVinculadoId || !card.cliente_telefone) return;
-    try {
-      const achados = await chamarKanban("buscar_cliente_telefone", { telefone: card.cliente_telefone });
-      if (achados.length === 0) return;
-      box.innerHTML = achados.map((c) => `
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
-          <span>📇 Já é cliente: <strong>${escHtml(c.nome)}</strong></span>
-          <button type="button" class="btn btn--ghost btn--sm" data-kb-vincular="${c.id}">Vincular</button>
-        </div>`).join("");
-      box.querySelectorAll("[data-kb-vincular]").forEach((btn) => btn.addEventListener("click", () => {
-        clienteVinculadoId = btn.dataset.kbVincular;
-        box.innerHTML = `<span class="table__muted">Vinculado ✅</span>`;
-      }));
-    } catch { /* busca é só uma ajuda — falha silenciosa não pode travar a classificação */ }
+  function renderClienteVinculado() {
+    const box = gel("kb-classificar-cliente-vinculado");
+    box.innerHTML = clienteVinculadoId
+      ? `<span class="table__muted">📇 Vinculado a: <strong>${escHtml(clienteVinculadoNome)}</strong></span> <button type="button" class="btn btn--ghost btn--sm" id="kb-classificar-desvincular">Desfazer</button>`
+      : "";
+    const btn = gel("kb-classificar-desvincular");
+    if (btn) btn.addEventListener("click", () => { clienteVinculadoId = null; clienteVinculadoNome = null; renderClienteVinculado(); });
   }
+
+  function renderBuscaClienteResultados() {
+    const termo = norm(gel("kb-classificar-busca-cliente").value.trim());
+    const box = gel("kb-classificar-busca-resultados");
+    if (!termo) { box.innerHTML = ""; return; }
+    const encontrados = clientesCache.filter((c) => norm(c.nome).includes(termo)).slice(0, 15);
+    box.innerHTML = encontrados.length
+      ? encontrados.map((c) => `<button type="button" class="emi-busca-item" data-id="${escHtml(c.id)}">${escHtml(c.nome)}</button>`).join("")
+      : '<div class="emi-busca-item" style="cursor:default;color:var(--text-muted)">Nenhum cliente encontrado</div>';
+    box.querySelectorAll(".emi-busca-item[data-id]").forEach((btn) => btn.addEventListener("click", () => {
+      clienteVinculadoId = btn.dataset.id;
+      clienteVinculadoNome = (clientesCache.find((c) => c.id === btn.dataset.id) || {}).nome;
+      gel("kb-classificar-busca-cliente").value = "";
+      box.innerHTML = "";
+      renderClienteVinculado();
+    }));
+  }
+  gel("kb-classificar-busca-cliente").addEventListener("input", renderBuscaClienteResultados);
 
   function abrirClassificar(id) {
     const card = fila.find((c) => c.id === id);
     if (!card) return;
     cardAtual = card;
     gel("kb-classificar-cliente").textContent = (card.cliente_nome || "Sem nome") + (card.cliente_telefone ? " · " + card.cliente_telefone : "");
-    sugerirClienteCadastrado(card);
+    clienteVinculadoId = card.cliente_id || null;
+    clienteVinculadoNome = card.cliente_nome || null;
+    renderClienteVinculado();
+    gel("kb-classificar-busca-cliente").value = "";
+    gel("kb-classificar-busca-resultados").innerHTML = "";
     gel("kb-classificacao").value = "";
     ["kb-c-destino", "kb-c-pax", "kb-c-data-ida", "kb-c-data-volta", "kb-c-valor", "kb-c-descricao", "kb-c-obs-outros"].forEach((i) => gel(i).value = "");
     gel("kb-c-segmento").value = ""; gel("kb-c-origem").value = ""; gel("kb-c-motivo").value = "";
@@ -317,7 +342,7 @@
         origem_lead: gel("kb-c-origem").value || null,
       });
     } else if (classificacao === "suporte") {
-      if (!gel("kb-c-motivo").value) { erroEl.textContent = "Selecione o motivo do suporte."; erroEl.hidden = false; return; }
+      // Motivo é opcional aqui — dá pra preencher depois, na hora de realmente atender.
       Object.assign(dados, {
         motivo_suporte: gel("kb-c-motivo").value, momento_viagem: gel("kb-c-momento").value || null,
         prioridade: gel("kb-c-prioridade").value, descricao_caso: gel("kb-c-descricao").value.trim(),
@@ -570,6 +595,7 @@
     if (carregouUmaVez) return;
     carregouUmaVez = true;
     await carregarColegas();
+    await carregarClientesCache();
     await carregarConfig();
     popularFiltroFuncionaria();
     await trocarQuadro("vendas");

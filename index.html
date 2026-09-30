@@ -790,7 +790,12 @@
           </div>
           <div style="padding:0 24px 20px">
             <div id="kb-classificar-cliente" style="margin-bottom:6px;font-weight:600"></div>
-            <div id="kb-classificar-cliente-sugestao" style="margin-bottom:12px;font-size:0.82rem"></div>
+            <div id="kb-classificar-cliente-vinculado" style="margin-bottom:8px;font-size:0.82rem"></div>
+            <label class="field field--full" style="margin-bottom:2px">
+              <span class="field__label">Vincular a um cliente já cadastrado <span class="table__muted">(opcional — digite pra buscar pelo nome)</span></span>
+              <input type="text" id="kb-classificar-busca-cliente" class="input" placeholder="Nome do cliente..." autocomplete="off" />
+            </label>
+            <div id="kb-classificar-busca-resultados" class="emi-busca-resultados" style="margin-bottom:12px"></div>
             <div class="form__grid" style="margin-bottom:10px">
               <label class="field field--full"><span class="field__label">Tipo de atendimento *</span>
                 <select id="kb-classificacao" class="input">
@@ -822,7 +827,7 @@
             </div>
 
             <div id="kb-campos-suporte" hidden class="form__grid">
-              <label class="field field--full"><span class="field__label">Motivo do suporte *</span>
+              <label class="field field--full"><span class="field__label">Motivo do suporte <span class="table__muted">(opcional — pode preencher depois)</span></span>
                 <select id="kb-c-motivo" class="input">
                   <option value="">Selecione...</option>
                   <option>Check-in e marcação de assento</option>
