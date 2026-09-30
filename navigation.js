@@ -16,6 +16,7 @@
     clientes:    "Clientes",
     roteiro:     "Roteiro",
     followup:    "Follow-up",
+    kanban:      "Kanban",
     financeiro:  "Financeiro",
     contratos:   "Contratos",
     empresas:    "Empresas",

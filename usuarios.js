@@ -14,6 +14,7 @@
   const AREA_LABEL = {
     emissao: "Emissão", cliente: "Cliente", financeiro: "Financeiro",
     fornecedor: "Fornecedor", contrato: "Contrato", empresa: "Empresa", vendas_config: "Metas de vendas",
+    kanban: "Kanban",
   };
   const ACAO_LABEL = { criar: "➕ Criou", editar: "✏ Editou", excluir: "🗑 Apagou" };
 

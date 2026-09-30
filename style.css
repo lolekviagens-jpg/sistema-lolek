@@ -3759,6 +3759,78 @@ textarea.input {
 }
 
 /* ===================================================================
+   Kanban (CRM) — quadros de Vendas e Suporte
+   =================================================================== */
+.kb-fila-lista {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 18px;
+}
+.kb-fila-lista .kb-card {
+  min-width: 180px;
+  flex: 0 0 auto;
+}
+
+.kb-board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  align-items: flex-start;
+  padding-bottom: 12px;
+}
+
+.kb-coluna {
+  background: var(--navy-deep);
+  border-radius: var(--radius);
+  min-width: 260px;
+  max-width: 280px;
+  flex: 0 0 auto;
+  padding: 10px;
+}
+
+.kb-coluna__header {
+  color: #fff;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 4px 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kb-coluna__lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.kb-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--gold);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.kb-card:hover {
+  transform: translateY(-1px);
+}
+.kb-card--amarelo {
+  border-left-color: #d4a017;
+  background: #fffaf0;
+}
+.kb-card--vermelho {
+  border-left-color: #c0392b;
+  background: #fdf1ef;
+}
+
+/* ===================================================================
    Celular / telas estreitas — o layout acima foi pensado pro desktop
    (sidebar fixa de 264px). Aqui a sidebar vira uma gaveta que desliza
    por cima do conteúdo, em vez de empurrar tudo pra um espaço minúsculo.

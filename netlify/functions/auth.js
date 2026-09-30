@@ -80,6 +80,16 @@ exports.handler = async (event) => {
       return json(200, sessao);
     }
 
+    // Lista leve (id + nome) de colegas ativas — qualquer pessoa logada pode ver, sem dado
+    // sensível nenhum. Usado pelo Kanban pra escolher "transferir para" e (se admin) filtrar
+    // um quadro por vendedora — diferente de listar_usuarios (completa, só admin).
+    if (action === "listar_colegas") {
+      const sessaoColegas = await validarSessao(tokenDoEvento(event) || d.token, secretKey);
+      if (!sessaoColegas.valido) return json(401, { error: "Sessão expirada — faça login novamente." });
+      const rows = await supabaseRest("/usuarios?ativo=eq.true&select=id,nome,usuario&order=nome.asc", "GET", secretKey);
+      return json(200, rows || []);
+    }
+
     // ===== Ações abaixo exigem admin =====
     const sessaoAtual = await validarSessao(tokenDoEvento(event) || d.token, secretKey);
     if (!sessaoAtual.valido || !sessaoAtual.admin) {

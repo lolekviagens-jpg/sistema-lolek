@@ -7,3 +7,6 @@
 
 [functions."orcamentos-recentes-limpeza-cron"]
   schedule = "0 6 * * *"
+
+[functions."kanban-retomada-cron"]
+  schedule = "0 8 * * *"

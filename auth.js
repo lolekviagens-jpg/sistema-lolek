@@ -101,6 +101,7 @@
   window.LolekAuth = {
     token() { return sessaoAtual && sessaoAtual.token; },
     nome() { return sessaoAtual && sessaoAtual.nome; },
+    usuario() { return sessaoAtual && sessaoAtual.usuario; },
     admin() { return !!(sessaoAtual && sessaoAtual.admin); },
     // Header pra incluir nas chamadas de escrita (criar/editar/excluir)
     headers() {
