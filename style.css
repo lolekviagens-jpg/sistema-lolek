@@ -105,6 +105,22 @@ body {
   gap: 4px;
   padding: 22px 14px;
   flex: 1;
+  /* Muitas abas já não cabem numa tela só — rola dentro do menu em vez de
+     estourar por baixo do rodapé (usuário/sair) ou cortar os últimos itens. */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Barra de rolagem discreta, combinando com o fundo escuro da sidebar. */
+.nav::-webkit-scrollbar {
+  width: 6px;
+}
+.nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+.nav::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .nav__item {
