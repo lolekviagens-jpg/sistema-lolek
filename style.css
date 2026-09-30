@@ -3846,6 +3846,24 @@ textarea.input {
   background: #fdf1ef;
 }
 
+/* Resumo do mês — tabela larga (8 colunas) em telas menores precisa rolar de lado; sem uma
+   barra visível, a rolagem passava despercebida e parecia que faltava conteúdo. */
+.kb-resumo-scroll {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.kb-resumo-scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.kb-resumo-scroll::-webkit-scrollbar-thumb {
+  background: var(--gold-soft);
+  border-radius: 4px;
+}
+.kb-resumo-scroll::-webkit-scrollbar-track {
+  background: var(--border);
+  border-radius: 4px;
+}
+
 /* ===================================================================
    Celular / telas estreitas — o layout acima foi pensado pro desktop
    (sidebar fixa de 264px). Aqui a sidebar vira uma gaveta que desliza
