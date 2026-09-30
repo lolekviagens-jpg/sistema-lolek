@@ -79,7 +79,8 @@
   const modalTitulo = gel("usr-modal-titulo");
   const modalErro = gel("usr-modal-erro");
   const idEl = gel("usr-id"), nomeEl = gel("usr-nome"), usuarioEl = gel("usr-usuario"),
-        senhaEl = gel("usr-senha"), senhaHintEl = gel("usr-senha-hint"), adminEl = gel("usr-admin");
+        senhaEl = gel("usr-senha"), senhaHintEl = gel("usr-senha-hint"), adminEl = gel("usr-admin"),
+        digisacIdEl = gel("usr-digisac-id");
 
   function abrirModal(usuario) {
     modalErro.hidden = true;
@@ -89,6 +90,7 @@
     usuarioEl.disabled = !!usuario; // login não muda depois de criado
     senhaEl.value = "";
     adminEl.checked = usuario ? !!usuario.admin : false;
+    digisacIdEl.value = usuario ? (usuario.digisac_user_id || "") : "";
     modalTitulo.textContent = usuario ? "Editar usuário" : "Novo usuário";
     senhaHintEl.textContent = usuario ? "(deixe em branco pra manter)" : "*";
     modal.hidden = false;
@@ -106,6 +108,7 @@
     const usuario = usuarioEl.value.trim();
     const senha = senhaEl.value;
     const admin = adminEl.checked;
+    const digisacUserId = digisacIdEl.value.trim();
 
     if (!nome || (!id && !usuario) || (!id && !senha)) {
       modalErro.textContent = "Preencha nome, usuário e senha.";
@@ -114,9 +117,9 @@
     }
     try {
       if (id) {
-        await chamarAuth("editar_usuario", { id, nome, admin, ...(senha ? { senha } : {}) });
+        await chamarAuth("editar_usuario", { id, nome, admin, digisac_user_id: digisacUserId, ...(senha ? { senha } : {}) });
       } else {
-        await chamarAuth("criar_usuario", { nome, usuario, senha, admin });
+        await chamarAuth("criar_usuario", { nome, usuario, senha, admin, digisac_user_id: digisacUserId });
       }
       fecharModal();
       carregarUsuarios();

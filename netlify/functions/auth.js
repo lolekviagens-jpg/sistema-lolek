@@ -21,6 +21,9 @@
 //     expira_em timestamptz not null
 //   );
 //
+// Se a tabela "usuarios" já existia antes do Kanban (integração com Digisac), rodar uma vez:
+//   alter table usuarios add column if not exists digisac_user_id text;
+//
 // Ações (POST { action, data }):
 //   login            { usuario, senha } -> { token, nome, usuario, admin }
 //   logout           { token }
@@ -84,7 +87,7 @@ exports.handler = async (event) => {
     }
 
     if (action === "listar_usuarios") {
-      const rows = await supabaseRest("/usuarios?select=id,nome,usuario,ativo,admin,criado_em&order=nome.asc", "GET", secretKey);
+      const rows = await supabaseRest("/usuarios?select=id,nome,usuario,ativo,admin,digisac_user_id,criado_em&order=nome.asc", "GET", secretKey);
       return json(200, rows || []);
     }
 
@@ -106,6 +109,7 @@ exports.handler = async (event) => {
         senha_salt: salt,
         senha_hash: hashSenha(d.senha, salt),
         admin: !!d.admin,
+        digisac_user_id: d.digisac_user_id ? String(d.digisac_user_id).trim() : null,
       });
       return json(200, { id: criado.id, nome: criado.nome, usuario: criado.usuario });
     }
@@ -116,6 +120,7 @@ exports.handler = async (event) => {
       if (d.nome != null) patch.nome = d.nome.trim();
       if (d.ativo != null) patch.ativo = !!d.ativo;
       if (d.admin != null) patch.admin = !!d.admin;
+      if (d.digisac_user_id != null) patch.digisac_user_id = String(d.digisac_user_id).trim() || null;
       if (d.senha) {
         const salt = gerarSalt();
         patch.senha_salt = salt;
