@@ -133,6 +133,7 @@
     const sel = gel("kb-filtro-funcionaria");
     sel.hidden = !souAdmin();
     gel("kb-config-btn").hidden = !souAdmin();
+    gel("kb-digisac-log-btn").hidden = !souAdmin();
     if (!souAdmin()) return;
     const atual = sel.value;
     sel.innerHTML = '<option value="">Todas as vendedoras</option>' +
@@ -536,6 +537,21 @@
       gel("kb-modal-config").hidden = true;
       renderBoard();
     } catch (err) { mostrarErro(err.message); }
+  });
+
+  // ===== Modal: eventos crus do Digisac (Fase 3, descoberta — admin) =====
+  gel("kb-digisac-log-btn").addEventListener("click", async () => {
+    const lista = gel("kb-digisac-log-lista");
+    lista.innerHTML = "Carregando...";
+    gel("kb-modal-digisac-log").hidden = false;
+    try {
+      const linhas = await chamarKanban("listar_digisac_log");
+      lista.innerHTML = linhas.length ? linhas.map((l) => `
+        <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px">
+          <div style="font-weight:600;font-size:0.85rem">${escHtml(l.evento || "(sem campo 'event')")} — <span class="table__muted">${fDataHora(l.recebido_em)}</span></div>
+          <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.76rem;background:var(--navy-deep);color:#dbe4f0;padding:8px;border-radius:6px;margin-top:6px">${escHtml(JSON.stringify(l.corpo, null, 2))}</pre>
+        </div>`).join("") : '<div class="empty-state empty-state--compact"><p>Nada recebido ainda — envie uma mensagem de teste no WhatsApp da conexão.</p></div>';
+    } catch (err) { lista.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
   });
 
   // ===== Fechar modais =====

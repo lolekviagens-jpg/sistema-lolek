@@ -754,6 +754,7 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <select id="kb-filtro-funcionaria" class="input" style="max-width:200px" hidden></select>
               <button type="button" class="btn btn--ghost btn--sm" id="kb-config-btn" hidden>⚙ Alertas</button>
+              <button type="button" class="btn btn--ghost btn--sm" id="kb-digisac-log-btn" hidden>📡 Ver eventos do Digisac</button>
               <button type="button" class="btn btn--gold btn--sm" id="kb-novo-btn">+ Novo contato</button>
             </div>
           </div>
@@ -937,6 +938,18 @@
             <label class="field field--full"><span class="field__label">Dias parado até ficar vermelho</span><input type="number" id="kb-config-vermelho" class="input" /></label>
           </div>
           <div class="modal__footer"><button class="btn btn--ghost" data-kb-fechar="kb-modal-config">Cancelar</button><button class="btn btn--gold" id="kb-config-salvar">Salvar</button></div>
+        </div>
+      </div>
+
+      <!-- Modal: últimos eventos crus recebidos do Digisac (Fase 3, descoberta) -->
+      <div class="modal" id="kb-modal-digisac-log" hidden>
+        <div class="modal__backdrop"></div>
+        <div class="modal__dialog" style="max-width:640px">
+          <div class="modal__header"><span class="modal__title">Últimos eventos recebidos do Digisac</span><button class="modal__close" data-kb-fechar="kb-modal-digisac-log">✕</button></div>
+          <div style="padding:0 24px 20px;max-height:70vh;overflow:auto">
+            <p class="table__muted" style="font-size:0.82rem">Isso é temporário — só pra gente ver o formato real dos eventos antes de ligar a automação de verdade.</p>
+            <div id="kb-digisac-log-lista"></div>
+          </div>
         </div>
       </div>
 

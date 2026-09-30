@@ -157,6 +157,7 @@ exports.handler = async (event) => {
       case "obter_config":           return json(200, await obterConfig(secretKey));
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
       case "buscar_cliente_telefone":return json(200, await buscarClientePorTelefone(d, secretKey));
+      case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
     }
   } catch (err) {
@@ -456,6 +457,14 @@ async function buscarClientePorTelefone(d, secretKey) {
   const digitos = String(d.telefone || "").replace(/\D/g, "");
   if (digitos.length < 8) return [];
   const rows = await supabaseRest("/clientes?select=id,nome,telefone&telefone=ilike.*" + digitos.slice(-8) + "*", "GET", secretKey);
+  return rows || [];
+}
+
+// Últimos payloads recebidos do Digisac (Fase 3, descoberta dos eventos) — só admin, só
+// leitura, pra não precisar abrir o Supabase pra ver o que chegou.
+async function listarDigisacLog(sessao, secretKey) {
+  if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
+  const rows = await supabaseRest("/kanban_digisac_log?select=*&order=recebido_em.desc&limit=20", "GET", secretKey);
   return rows || [];
 }
 
