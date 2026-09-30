@@ -778,6 +778,27 @@
             <tbody id="kb-agenda-tbody"></tbody>
           </table>
         </div>
+
+        <!-- Resumo do mês por funcionária -->
+        <div id="kb-resumo-wrap" style="margin-top:24px">
+          <div class="orc-card__header" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span>📊 Resumo do mês</span>
+            <select id="kb-resumo-mes" class="input" style="max-width:150px"></select>
+            <select id="kb-resumo-ano" class="input" style="max-width:110px"></select>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Funcionária</th><th>Atendimentos</th><th>Orçamentos enviados</th>
+                  <th>Vendas fechadas</th><th>Valor fechado</th><th>Vendas perdidas</th>
+                  <th>Suporte</th><th>Conversão</th>
+                </tr>
+              </thead>
+              <tbody id="kb-resumo-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- Modal: classificar card da fila -->

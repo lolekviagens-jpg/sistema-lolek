@@ -109,8 +109,16 @@
 const { supabaseRest, validarSessao, tokenDoEvento, registrarAtividade } = require("./_auth");
 
 const QUADROS = new Set(["vendas", "suporte"]);
-const ETAPAS_VENDAS  = new Set(["em_cotacao", "proposta_enviada", "encerrado"]);
-const ETAPAS_SUPORTE = new Set(["em_atendimento", "aguardando_fornecedor", "aguardando_cliente", "resolvido"]);
+// Ordem de verdade das etapas ativas (sem contar o encerramento, que tem ação própria) — dá
+// pra voltar quantas etapas quiser, mas só avança UMA de cada vez, sem pular.
+const ETAPAS_VENDAS_ORDEM  = ["em_cotacao", "proposta_enviada"];
+const ETAPAS_SUPORTE_ORDEM = ["em_atendimento", "aguardando_fornecedor", "aguardando_cliente"];
+const ETAPAS_VENDAS  = new Set([...ETAPAS_VENDAS_ORDEM, "encerrado"]);
+const ETAPAS_SUPORTE = new Set([...ETAPAS_SUPORTE_ORDEM, "resolvido"]);
+const ETAPA_LABEL = {
+  em_cotacao: "Em cotação", proposta_enviada: "Proposta enviada",
+  em_atendimento: "Em atendimento", aguardando_fornecedor: "Aguardando fornecedor", aguardando_cliente: "Aguardando cliente",
+};
 const MOTIVOS_PERDA = new Set([
   "preco_alto", "comprou_outra_agencia", "desistiu_sem_data", "parou_responder",
   "sem_disponibilidade", "documentacao", "outro",
@@ -157,6 +165,7 @@ exports.handler = async (event) => {
       case "obter_config":           return json(200, await obterConfig(secretKey));
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
+      case "resumo_mensal":          return json(200, await resumoMensal(d, sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
     }
   } catch (err) {
@@ -306,6 +315,17 @@ async function atualizarCard(d, sessao, secretKey) {
   }
   if (d.etapa === "encerrado" || d.etapa === "resolvido") {
     throw new Error("Use a ação de encerrar (com o motivo/resultado obrigatório), não mover direto pra essa etapa.");
+  }
+
+  // Só avança uma etapa de cada vez (sem pular) — pra voltar não tem limite, só pra frente.
+  if (d.etapa != null && d.etapa !== atual.etapa) {
+    const ordem = atual.quadro === "vendas" ? ETAPAS_VENDAS_ORDEM : ETAPAS_SUPORTE_ORDEM;
+    const indiceAtual = ordem.indexOf(atual.etapa);
+    const indiceNovo = ordem.indexOf(d.etapa);
+    if (indiceNovo > indiceAtual + 1) {
+      const etapaFaltando = ETAPA_LABEL[ordem[indiceAtual + 1]] || ordem[indiceAtual + 1];
+      throw new Error(`Essa etapa vem depois — primeiro passe por "${etapaFaltando}".`);
+    }
   }
 
   const patch = { atualizado_em: new Date().toISOString() };
@@ -458,6 +478,64 @@ async function listarDigisacLog(sessao, secretKey) {
   if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
   const rows = await supabaseRest("/kanban_digisac_log?select=*&order=recebido_em.desc&limit=20", "GET", secretKey);
   return rows || [];
+}
+
+// Resumo do mês por funcionária — um prévia leve da Fase 4 (painel de métricas completo vem
+// depois). Vendedora só vê a própria linha; admin vê todo mundo. Calcula tudo em JS a partir
+// dos cards (tabela ainda pequena, sem necessidade de otimizar isso agora).
+async function resumoMensal(d, sessao, secretKey) {
+  const hoje = new Date();
+  const ano = Number(d.ano) || hoje.getUTCFullYear();
+  const mes = Number(d.mes) || (hoje.getUTCMonth() + 1); // 1-12
+
+  const noMes = (iso) => {
+    if (!iso) return false;
+    const dt = new Date(iso);
+    return dt.getUTCFullYear() === ano && (dt.getUTCMonth() + 1) === mes;
+  };
+
+  const [cards, usuarios] = await Promise.all([
+    supabaseRest(
+      "/kanban_cards?select=quadro,responsavel_id,assumido_em,proposta_enviada_em,encerrado_em,encerramento_tipo,encerramento_valor_total&responsavel_id=not.is.null",
+      "GET", secretKey
+    ),
+    supabaseRest("/usuarios?ativo=eq.true&select=id,nome&order=nome.asc", "GET", secretKey),
+  ]);
+
+  const vazio = () => ({ atendidos: 0, orcamentos: 0, vendasFechadas: 0, valorFechado: 0, vendasPerdidas: 0, suporte: 0 });
+  const porFunc = {};
+  (cards || []).forEach((c) => {
+    const m = porFunc[c.responsavel_id] || (porFunc[c.responsavel_id] = vazio());
+    if (noMes(c.assumido_em)) {
+      m.atendidos++;
+      if (c.quadro === "suporte") m.suporte++;
+    }
+    if (c.quadro === "vendas") {
+      if (noMes(c.proposta_enviada_em)) m.orcamentos++;
+      if (noMes(c.encerrado_em) && c.encerramento_tipo === "venda_concluida") {
+        m.vendasFechadas++;
+        m.valorFechado += Number(c.encerramento_valor_total) || 0;
+      }
+      if (noMes(c.encerrado_em) && c.encerramento_tipo === "venda_nao_realizada") m.vendasPerdidas++;
+    }
+  });
+
+  const alvo = sessao.admin ? (usuarios || []) : (usuarios || []).filter((u) => u.id === sessao.usuarioId);
+  return alvo.map((u) => {
+    const m = porFunc[u.id] || vazio();
+    const base = m.vendasFechadas + m.vendasPerdidas;
+    return {
+      usuario_id: u.id,
+      nome: u.nome,
+      atendidos: m.atendidos,
+      orcamentos: m.orcamentos,
+      vendas_fechadas: m.vendasFechadas,
+      valor_fechado: m.valorFechado,
+      vendas_perdidas: m.vendasPerdidas,
+      suporte: m.suporte,
+      conversao: base > 0 ? (m.vendasFechadas / base) * 100 : null,
+    };
+  }).sort((a, b) => b.valor_fechado - a.valor_fechado);
 }
 
 async function registrarEvento(secretKey, cardId, tipo, { usuarioNome, deEtapa, paraEtapa, motivo } = {}) {

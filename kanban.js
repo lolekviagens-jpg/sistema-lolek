@@ -390,7 +390,9 @@
       <button type="button" class="btn ${e.v === card.etapa ? "btn--gold" : "btn--ghost"} btn--sm" data-kb-mover="${e.v}">${escHtml(e.l)}</button>`).join("");
     gel("kb-card-etapas").querySelectorAll("[data-kb-mover]").forEach((btn) => btn.addEventListener("click", async () => {
       try { await chamarKanban("atualizar_card", { id: card.id, etapa: btn.dataset.kbMover }); gel("kb-modal-card").hidden = true; await recarregarTudo(); }
-      catch (err) { mostrarErro(err.message); }
+      // alert() aqui (não mostrarErro) — com o modal aberto por cima, o aviso lá de baixo
+      // ficaria escondido atrás dele e pareceria que não aconteceu nada ao clicar.
+      catch (err) { alert(err.message); }
     }));
 
     gel("kb-card-transferir-btn").hidden = encerrado;
@@ -615,6 +617,43 @@
   });
   gel("kb-filtro-funcionaria").addEventListener("change", recarregarTudo);
 
+  // ===== Resumo do mês por funcionária =====
+  const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  function popularSeletoresResumo() {
+    const hoje = new Date();
+    const selMes = gel("kb-resumo-mes"), selAno = gel("kb-resumo-ano");
+    selMes.innerHTML = MESES_LABEL.map((l, i) => `<option value="${i + 1}">${l}</option>`).join("");
+    selMes.value = hoje.getMonth() + 1;
+    const anoAtual = hoje.getFullYear();
+    selAno.innerHTML = [anoAtual - 1, anoAtual, anoAtual + 1].map((a) => `<option value="${a}">${a}</option>`).join("");
+    selAno.value = anoAtual;
+    selMes.addEventListener("change", carregarResumo);
+    selAno.addEventListener("change", carregarResumo);
+  }
+
+  async function carregarResumo() {
+    const tbody = gel("kb-resumo-tbody");
+    tbody.innerHTML = `<tr><td colspan="8" class="table__muted">Carregando...</td></tr>`;
+    try {
+      const linhas = await chamarKanban("resumo_mensal", {
+        mes: gel("kb-resumo-mes").value, ano: gel("kb-resumo-ano").value,
+      });
+      if (linhas.length === 0) { tbody.innerHTML = `<tr><td colspan="8" class="table__muted">Nada por aqui ainda</td></tr>`; return; }
+      tbody.innerHTML = linhas.map((l) => `
+        <tr>
+          <td>${escHtml(l.nome)}</td>
+          <td>${l.atendidos}</td>
+          <td>${l.orcamentos}</td>
+          <td>${l.vendas_fechadas}</td>
+          <td>${fBRL(l.valor_fechado)}</td>
+          <td>${l.vendas_perdidas}</td>
+          <td>${l.suporte}</td>
+          <td>${l.conversao != null ? l.conversao.toFixed(0) + "%" : "—"}</td>
+        </tr>`).join("");
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="8" class="notice notice--error">${escHtml(err.message)}</td></tr>`; }
+  }
+
   let carregouUmaVez = false;
   document.querySelector('[data-tab="kanban"]').addEventListener("click", async () => {
     if (carregouUmaVez) return;
@@ -623,6 +662,8 @@
     await carregarClientesCache();
     await carregarConfig();
     popularFiltroFuncionaria();
+    popularSeletoresResumo();
     await trocarQuadro("vendas");
+    await carregarResumo();
   });
 })();
