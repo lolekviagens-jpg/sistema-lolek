@@ -2574,6 +2574,33 @@ textarea.input {
   height: 320px;
 }
 
+.vendas-fornecedores-flex {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.vendas-fornecedores-chart-wrap {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  flex: 0 0 auto;
+}
+
+.vendas-fornecedores-legenda {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vendas-fornecedores-legenda .vendas-legenda-item {
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
 .vendas-comp-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

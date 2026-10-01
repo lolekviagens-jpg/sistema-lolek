@@ -60,6 +60,7 @@
     const porFunc       = {};
     const produtosTotal = {};
     const leadsPassagem = {};
+    const porFornecedorCount = {};
     let faturamento = 0, lucroTotal = 0;
 
     rows.forEach((r) => {
@@ -84,13 +85,39 @@
         const lead = r.origem_lead || "Não informado";
         leadsPassagem[lead] = (leadsPassagem[lead] || 0) + paxCount;
       }
+
+      if (r.fornecedor_id) {
+        const nomeForn = (fornecedoresCache.find((f) => f.id === r.fornecedor_id) || {}).nome || "Fornecedor removido";
+        porFornecedorCount[nomeForn] = (porFornecedorCount[nomeForn] || 0) + 1;
+      }
     });
 
-    return { porFunc, produtosTotal, leadsPassagem, faturamento, lucroTotal, month: mes, year: ano };
+    // Top 3 nomeados + resto agrupado em "Outros" — mais de 3 fatias num gráfico de pizza
+    // fica difícil de diferenciar só pela cor (ver skill de dataviz), então só os 3 maiores
+    // ganham cor própria.
+    const fornecedoresOrdenados = Object.entries(porFornecedorCount).sort((a, b) => b[1] - a[1]);
+    const top3 = fornecedoresOrdenados.slice(0, 3);
+    const restoCount = fornecedoresOrdenados.slice(3).reduce((s, [, c]) => s + c, 0);
+    const porFornecedor = top3.map(([nome, count]) => ({ nome, count }));
+    if (restoCount > 0) porFornecedor.push({ nome: "Outros", count: restoCount });
+
+    return { porFunc, produtosTotal, leadsPassagem, porFornecedor, faturamento, lucroTotal, month: mes, year: ano };
   }
 
   // ===== Configuração (metas) =====
   let cfg = { funcs: [], metas: {} };
+  let fornecedoresCache = []; // [{id, nome}] — pro gráfico de fornecedores do mês
+
+  async function carregarFornecedoresCache() {
+    try {
+      const resp = await fetch("/.netlify/functions/emissoes-data", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "listar_fornecedores" }),
+      });
+      fornecedoresCache = resp.ok ? await resp.json() : [];
+    } catch { fornecedoresCache = []; }
+  }
 
   async function fetchCfgRemoto() {
     const resp = await fetch("/.netlify/functions/vendas-config");
@@ -199,6 +226,7 @@
     renderProdutos(d);
     renderLeads(d);
     renderFuncs(d, metas, diasR);
+    renderFornecedores(d);
   }
 
   // ===== Faturamento / lucro / margem =====
@@ -387,7 +415,60 @@
 
   // ===== Comparativos (gráfico do ano, mesmo mês ano passado, trimestral) =====
   let chartAno = null;
+  let chartFornecedores = null;
   let comparativosCache = {}; // ano -> array de 12 buckets, evita rebuscar o mesmo ano toda hora
+
+  // 3 cores nomeadas (validadas pra essa quantidade — mais que isso fica difícil de
+  // diferenciar só pela cor) + cinza neutro pra "Outros", que nunca é uma fatia "de verdade".
+  const CORES_FORNECEDOR = ["#2a78d6", "#eb6834", "#1baf7a"];
+  const COR_OUTROS = "#898781";
+
+  function renderFornecedores(data) {
+    const canvas = gel("vendas-grafico-fornecedores");
+    const legenda = gel("vendas-fornecedores-legenda");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    const itens = data.porFornecedor || [];
+    const total = itens.reduce((s, it) => s + it.count, 0);
+
+    if (chartFornecedores) { chartFornecedores.destroy(); chartFornecedores = null; }
+
+    if (total === 0) {
+      legenda.innerHTML = '<div class="table__muted" style="font-size:0.85rem">Nenhuma emissão com fornecedor neste mês</div>';
+      return;
+    }
+
+    const cores = itens.map((it, i) => it.nome === "Outros" ? COR_OUTROS : CORES_FORNECEDOR[i]);
+
+    chartFornecedores = new Chart(canvas.getContext("2d"), {
+      type: "doughnut",
+      data: {
+        labels: itens.map((it) => it.nome),
+        datasets: [{ data: itens.map((it) => it.count), backgroundColor: cores, borderColor: "#fff", borderWidth: 2 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false }, // legenda própria ao lado, já com % — ver abaixo
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.label + ": " + ctx.parsed + " (" + ((ctx.parsed / total) * 100).toFixed(0) + "%)",
+            },
+          },
+        },
+      },
+    });
+
+    legenda.innerHTML = itens.map((it, i) => {
+      const pct = (it.count / total) * 100;
+      return `<div class="vendas-legenda-item">
+        <span class="vendas-legenda-dot" style="background:${cores[i]}"></span>
+        <span>${escHtml(it.nome)}</span>
+        <strong style="margin-left:auto">${pct.toFixed(0)}%</strong>
+      </div>`;
+    }).join("");
+  }
 
   function bucketizarPorMes(rows) {
     const meses = Array.from({ length: 12 }, () => ({ faturamento: 0, lucro: 0 }));
@@ -625,10 +706,12 @@
     // O gráfico nasce com tamanho zero se a aba Dashboard não for a primeira a abrir
     // (o painel começa escondido) — recalcula o tamanho toda vez que a aba é ativada.
     document.addEventListener("aba:ativada", (e) => {
-      if (e.detail.tab === "vendas" && chartAno) chartAno.resize();
+      if (e.detail.tab !== "vendas") return;
+      if (chartAno) chartAno.resize();
+      if (chartFornecedores) chartFornecedores.resize();
     });
 
-    await carregarCfg();
+    await Promise.all([carregarCfg(), carregarFornecedoresCache()]);
     carregarTudo();
   }
 
