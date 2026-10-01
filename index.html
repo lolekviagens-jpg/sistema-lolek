@@ -325,25 +325,34 @@
         <div class="vendas-section-title">Produtos vendidos no mês</div>
         <div id="vendas-produtos-grid" class="vendas-produtos-grid"></div>
 
-        <!-- Origem das passagens -->
-        <div class="vendas-section-title">Origem das passagens</div>
-        <div id="vendas-leads-list" class="vendas-leads-list"></div>
-
         <!-- Cards funcionárias -->
         <div class="vendas-section-title">Funcionárias</div>
         <div id="vendas-func-grid" class="vendas-func-grid"></div>
 
-        <!-- Fornecedores do mês -->
-        <div class="vendas-section-title">Fornecedores do mês</div>
-        <div class="card vendas-grafico-card">
-          <div class="vendas-grafico-header">
-            <span class="vendas-grafico-titulo">Milheiros / fornecedores mais usados</span>
-          </div>
-          <div class="vendas-fornecedores-flex">
-            <div class="vendas-fornecedores-chart-wrap">
-              <canvas id="vendas-grafico-fornecedores"></canvas>
+        <!-- Origem das passagens + Fornecedores do mês, lado a lado -->
+        <div class="vendas-section-title">Origem das passagens e fornecedores do mês</div>
+        <div class="vendas-donuts-grid">
+          <div class="card vendas-grafico-card">
+            <div class="vendas-grafico-header">
+              <span class="vendas-grafico-titulo">Origem das passagens</span>
             </div>
-            <div id="vendas-fornecedores-legenda" class="vendas-fornecedores-legenda"></div>
+            <div class="vendas-fornecedores-flex">
+              <div class="vendas-fornecedores-chart-wrap">
+                <canvas id="vendas-grafico-leads"></canvas>
+              </div>
+              <div id="vendas-leads-legenda" class="vendas-fornecedores-legenda"></div>
+            </div>
+          </div>
+          <div class="card vendas-grafico-card">
+            <div class="vendas-grafico-header">
+              <span class="vendas-grafico-titulo">Milheiros / fornecedores mais usados</span>
+            </div>
+            <div class="vendas-fornecedores-flex">
+              <div class="vendas-fornecedores-chart-wrap">
+                <canvas id="vendas-grafico-fornecedores"></canvas>
+              </div>
+              <div id="vendas-fornecedores-legenda" class="vendas-fornecedores-legenda"></div>
+            </div>
           </div>
         </div>
 

@@ -2441,53 +2441,6 @@ textarea.input {
 }
 
 /* Origem das passagens (leads) */
-.vendas-leads-list {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 18px 22px;
-  margin-bottom: 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.vendas-lead-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.vendas-lead-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.84rem;
-}
-
-.vendas-lead-nome {
-  font-weight: 600;
-  color: var(--navy);
-}
-
-.vendas-lead-num {
-  color: var(--text-muted);
-}
-
-.vendas-lead-bar {
-  height: 8px;
-  background: var(--bg);
-  border-radius: 20px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-
-.vendas-lead-bar__fill {
-  height: 100%;
-  border-radius: 20px;
-  transition: width 0.4s ease;
-}
-
 .vendas-cfg-row {
   display: flex;
   align-items: center;
@@ -2599,6 +2552,16 @@ textarea.input {
 .vendas-fornecedores-legenda .vendas-legenda-item {
   font-size: 0.88rem;
   color: var(--text);
+}
+
+.vendas-donuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.vendas-donuts-grid .vendas-grafico-card {
+  margin-bottom: 0;
 }
 
 .vendas-comp-grid {

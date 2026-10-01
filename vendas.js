@@ -92,14 +92,11 @@
       }
     });
 
-    // Top 3 nomeados + resto agrupado em "Outros" — mais de 3 fatias num gráfico de pizza
-    // fica difícil de diferenciar só pela cor (ver skill de dataviz), então só os 3 maiores
-    // ganham cor própria.
-    const fornecedoresOrdenados = Object.entries(porFornecedorCount).sort((a, b) => b[1] - a[1]);
-    const top3 = fornecedoresOrdenados.slice(0, 3);
-    const restoCount = fornecedoresOrdenados.slice(3).reduce((s, [, c]) => s + c, 0);
-    const porFornecedor = top3.map(([nome, count]) => ({ nome, count }));
-    if (restoCount > 0) porFornecedor.push({ nome: "Outros", count: restoCount });
+    // Todos os fornecedores nomeados, do maior pro menor — nada agrupado em "Outros": o
+    // objetivo aqui é exatamente enxergar quem são todos eles, não só os 3 maiores.
+    const porFornecedor = Object.entries(porFornecedorCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([nome, count]) => ({ nome, count }));
 
     return { porFunc, produtosTotal, leadsPassagem, porFornecedor, faturamento, lucroTotal, month: mes, year: ano };
   }
@@ -268,35 +265,6 @@
       </div>`).join("");
   }
 
-  // ===== Origem das passagens (lead) =====
-  const LEAD_CORES = ["#0a1f3d", "#c9a84c", "#1f8a4c", "#2563eb", "#b45309", "#7c3aed", "#be123c"];
-
-  function renderLeads(d) {
-    const box   = gel("vendas-leads-list");
-    const leads = Object.entries(d.leadsPassagem || {}).sort((a, b) => b[1] - a[1]);
-    const total = leads.reduce((s, [, n]) => s + n, 0);
-
-    if (total === 0) {
-      box.innerHTML = `<div class="empty-state empty-state--compact"><p>Nenhuma passagem vendida neste mês</p></div>`;
-      return;
-    }
-
-    box.innerHTML = leads.map(([lead, n], i) => {
-      const pct = (n / total) * 100;
-      const cor = LEAD_CORES[i % LEAD_CORES.length];
-      return `
-        <div class="vendas-lead-row">
-          <div class="vendas-lead-info">
-            <span class="vendas-lead-nome">${escHtml(lead)}</span>
-            <span class="vendas-lead-num">${n} · ${fPct(pct)}</span>
-          </div>
-          <div class="vendas-lead-bar">
-            <div class="vendas-lead-bar__fill" style="width:${pct}%;background:${cor}"></div>
-          </div>
-        </div>`;
-    }).join("");
-  }
-
   function renderFuncs(d, metas, diasR) {
     const grid = gel("vendas-func-grid");
     if (cfg.funcs.length === 0) {
@@ -416,31 +384,32 @@
   // ===== Comparativos (gráfico do ano, mesmo mês ano passado, trimestral) =====
   let chartAno = null;
   let chartFornecedores = null;
+  let chartLeads = null;
   let comparativosCache = {}; // ano -> array de 12 buckets, evita rebuscar o mesmo ano toda hora
 
-  // 3 cores nomeadas (validadas pra essa quantidade — mais que isso fica difícil de
-  // diferenciar só pela cor) + cinza neutro pra "Outros", que nunca é uma fatia "de verdade".
-  const CORES_FORNECEDOR = ["#2a78d6", "#eb6834", "#1baf7a"];
-  const COR_OUTROS = "#898781";
+  // Paleta categórica única pra qualquer gráfico de rosca do dashboard — como cada fatia já
+  // sai com o nome escrito do lado (não só a cor), dá pra nomear todo mundo em vez de
+  // esconder a maioria num "Outros" (ela precisa enxergar quem são todos os fornecedores,
+  // não só os 3 maiores). Se um mês tiver mais categorias que cores, repete do início —
+  // o nome ao lado continua distinguindo.
+  const CORES_CATEGORICAS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
-  function renderFornecedores(data) {
-    const canvas = gel("vendas-grafico-fornecedores");
-    const legenda = gel("vendas-fornecedores-legenda");
-    if (!canvas || typeof Chart === "undefined") return;
+  // Desenha um gráfico de rosca + legenda (nome, contagem e %) num par canvas/div — reusado
+  // pra Fornecedores e pra Origem das passagens.
+  function montarDonut(chartAnterior, canvasId, legendaId, itens, vazioMsg) {
+    const canvas = gel(canvasId);
+    const legenda = gel(legendaId);
+    if (chartAnterior) chartAnterior.destroy();
+    if (!canvas || typeof Chart === "undefined") return null;
 
-    const itens = data.porFornecedor || [];
     const total = itens.reduce((s, it) => s + it.count, 0);
-
-    if (chartFornecedores) { chartFornecedores.destroy(); chartFornecedores = null; }
-
     if (total === 0) {
-      legenda.innerHTML = '<div class="table__muted" style="font-size:0.85rem">Nenhuma emissão com fornecedor neste mês</div>';
-      return;
+      legenda.innerHTML = `<div class="table__muted" style="font-size:0.85rem">${vazioMsg}</div>`;
+      return null;
     }
 
-    const cores = itens.map((it, i) => it.nome === "Outros" ? COR_OUTROS : CORES_FORNECEDOR[i]);
-
-    chartFornecedores = new Chart(canvas.getContext("2d"), {
+    const cores = itens.map((it, i) => CORES_CATEGORICAS[i % CORES_CATEGORICAS.length]);
+    const novoChart = new Chart(canvas.getContext("2d"), {
       type: "doughnut",
       data: {
         labels: itens.map((it) => it.nome),
@@ -450,7 +419,7 @@
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false }, // legenda própria ao lado, já com % — ver abaixo
+          legend: { display: false }, // legenda própria ao lado, já com contagem e % — abaixo
           tooltip: {
             callbacks: {
               label: (ctx) => ctx.label + ": " + ctx.parsed + " (" + ((ctx.parsed / total) * 100).toFixed(0) + "%)",
@@ -465,9 +434,28 @@
       return `<div class="vendas-legenda-item">
         <span class="vendas-legenda-dot" style="background:${cores[i]}"></span>
         <span>${escHtml(it.nome)}</span>
-        <strong style="margin-left:auto">${pct.toFixed(0)}%</strong>
+        <strong style="margin-left:auto">${it.count} · ${pct.toFixed(0)}%</strong>
       </div>`;
     }).join("");
+
+    return novoChart;
+  }
+
+  function renderFornecedores(data) {
+    chartFornecedores = montarDonut(
+      chartFornecedores, "vendas-grafico-fornecedores", "vendas-fornecedores-legenda",
+      data.porFornecedor || [], "Nenhuma emissão com fornecedor neste mês"
+    );
+  }
+
+  function renderLeads(data) {
+    const itens = Object.entries(data.leadsPassagem || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([nome, count]) => ({ nome, count }));
+    chartLeads = montarDonut(
+      chartLeads, "vendas-grafico-leads", "vendas-leads-legenda",
+      itens, "Nenhuma passagem vendida neste mês"
+    );
   }
 
   function bucketizarPorMes(rows) {
