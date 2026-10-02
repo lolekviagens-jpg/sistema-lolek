@@ -617,6 +617,17 @@
   });
   gel("kb-filtro-funcionaria").addEventListener("change", recarregarTudo);
 
+  gel("kb-atualizar-btn").addEventListener("click", async () => {
+    const btn = gel("kb-atualizar-btn");
+    btn.disabled = true; btn.textContent = "⏳ Atualizando...";
+    try {
+      await recarregarTudo();
+      await carregarResumo();
+    } finally {
+      btn.disabled = false; btn.textContent = "↻ Atualizar";
+    }
+  });
+
   // ===== Resumo do mês por funcionária =====
   const MESES_LABEL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
