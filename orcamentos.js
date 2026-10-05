@@ -827,20 +827,18 @@
               { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
               { type: "text", text: `${contextoDataAtual()}
 
-Analise este documento/print de passagem aérea. Ele pode vir em DOIS FORMATOS bem diferentes — identifique qual é antes de preencher:
+Analise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — agrupe as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:
 
-FORMATO A — bilhete/e-ticket com tabela de itinerário detalhada (uma linha por voo, com horário de cada trecho). Nesse caso, dê atenção a TODA a tabela, que pode ter mais de uma linha:
 - Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo: "GRU → LIS" seguida de "LIS → ROM" são 2 trechos da MESMA ida (escala em Lisboa) — NÃO é ida e volta.
 - Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA. Na dúvida se é conexão ou volta, trate como conexão — é pior assumir uma volta que não existe.
-
-FORMATO B — print de BUSCA/COMPARAÇÃO de voos (ex: Google Flights, site de companhia, agência) mostrando um resumo da viagem ANTES de comprar — é o mais comum pra montar orçamento. Aqui normalmente NÃO tem uma linha por trecho; em vez disso mostra algo como "1 parada" ou "1 escala em GRU", às vezes com a duração da parada escrita (ex: "2h 30min em GRU") e/ou a duração total do trajeto. Mesmo sem o horário exato de cada perna, você ainda DEVE dividir em 2+ itens no array "segmentos" — um pra cada perna do trajeto (origem→parada, parada→destino) — preenchendo "trecho" com as siglas/cidades de cada perna (ex: "FOR → GRU" e "GRU → LIS") e deixando companhia/voo/horário como null se a imagem não mostrar. O MAIS IMPORTANTE em qualquer um dos dois formatos é capturar "tempo_parada" (a duração da conexão) sempre que a imagem disser isso explicitamente, mesmo que não tenha hora exata de cada voo.
+- Se o print for um resultado de busca sem tabela (ex: só "1 parada em GRU"), divida mesmo assim em 2 trechos (origem→GRU, GRU→destino), preenchendo o que tiver de cada um.
 
 Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
 {
   "cidade_orig": "nome da cidade de origem (ex: Fortaleza)",
   "cidade_dest": "nome da cidade de destino (ex: Lisboa)",
   "segmentos": [
-    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea, ou null se não aparecer", "voo": "número do voo, ou null", "data": "DD/MM/AAAA da data deste voo, ou null se não estiver visível", "horario_partida": "HH:MM ou null", "horario_chegada": "HH:MM ou null", "tempo_parada": "duração da conexão DEPOIS deste trecho (ex: '2h30'), só se a imagem disser isso explicitamente — null no último trecho (não tem conexão depois dele) e null se a imagem não informar a duração" }
+    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "data": "DD/MM/AAAA da data deste voo, ou null se não estiver visível", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte", "tempo_parada": "duração da conexão escrita no print (ex: '2h30'), se houver — null se não tiver conexão depois deste trecho ou o print não disser a duração" }
   ],
   "milhas": número_inteiro_ou_null,
   "taxa_embarque": valor_numerico_em_reais_ou_null,
@@ -851,7 +849,7 @@ Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
     "taxa_embarque": valor_numerico_em_reais_ou_null
   } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho (ainda que com escala), "volta" deve ser null e "segmentos" da ida tem mais de um item.
 
-IMPORTANTE: se a imagem mostrar "1 parada" ou "1 escala" (ou mais) em algum ponto, NUNCA devolva um "segmentos" com 1 item só só porque faltam detalhes de horário — divida em trechos mesmo assim. E preencha "data" em todo segmento sempre que o documento permitir, mesmo quando não tiver "tempo_parada" explícito — é o que permite calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia.
+IMPORTANTE: preencha "data" em TODO segmento sempre que o documento permitir — é o que dá pra calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; quando o documento não disser explicitamente, INFIRA a partir da data + horário de chegada do trecho anterior.
 }` },
             ],
           }],
