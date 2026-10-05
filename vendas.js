@@ -726,6 +726,7 @@
       ["Novos atendimentos", r.total_novos],
       ["Complementos", r.total_complementos],
       ["Suporte", r.total_suporte],
+      ["Follow-up (manutenção)", r.total_follow_up],
       ["Conversão média", r.conversao != null ? r.conversao.toFixed(0) + "%" : "—"],
     ];
     gel("km-tiles").innerHTML = tiles.map(([label, val]) => `
@@ -744,6 +745,7 @@
             { label: "Novos",        data: data.serie.map((b) => b.novos),        borderColor: "#2a78d6", backgroundColor: "#2a78d6", tension: 0.3, borderWidth: 2, pointRadius: 2 },
             { label: "Complementos", data: data.serie.map((b) => b.complementos), borderColor: "#eb6834", backgroundColor: "#eb6834", tension: 0.3, borderWidth: 2, pointRadius: 2 },
             { label: "Suporte",      data: data.serie.map((b) => b.suporte),      borderColor: "#1baf7a", backgroundColor: "#1baf7a", tension: 0.3, borderWidth: 2, pointRadius: 2 },
+            { label: "Follow-up",    data: data.serie.map((b) => b.followUp),     borderColor: "#c9a84c", backgroundColor: "#c9a84c", tension: 0.3, borderWidth: 2, pointRadius: 2 },
           ],
         },
         options: {
@@ -757,11 +759,11 @@
 
     const tbody = gel("km-atendente-tbody");
     tbody.innerHTML = data.por_atendente.length === 0
-      ? `<tr><td colspan="8" class="table__muted">Nada por aqui ainda</td></tr>`
+      ? `<tr><td colspan="9" class="table__muted">Nada por aqui ainda</td></tr>`
       : data.por_atendente.map((a) => `
         <tr>
           <td>${escHtml(a.nome)}</td><td>${a.leads}</td><td>${a.novos}</td><td>${a.complementos}</td>
-          <td>${a.suporte}</td><td>${a.fechadas}</td><td>${a.perdidas}</td>
+          <td>${a.suporte}</td><td>${a.followUp}</td><td>${a.fechadas}</td><td>${a.perdidas}</td>
           <td>${a.conversao != null ? a.conversao.toFixed(0) + "%" : "—"}</td>
         </tr>`).join("");
   }

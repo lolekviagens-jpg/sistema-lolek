@@ -28,8 +28,8 @@
 //     cliente_nome text,
 //     cliente_telefone text,
 //
-//     -- Vendas
-//     tipo text check (tipo in ('nova_viagem','complemento')),
+//     -- Vendas (e "follow_up" é usado também no quadro Suporte — ver abaixo)
+//     tipo text check (tipo in ('nova_viagem','complemento','follow_up')),
 //     destino text,
 //     data_ida date,
 //     data_volta date,
@@ -87,6 +87,20 @@
 //   alter table kanban_cards alter column quadro drop not null;
 //   alter table kanban_cards add column if not exists arquivado boolean not null default false;
 //   alter table kanban_cards add column if not exists etapa_desde timestamptz not null default now();
+//
+//   -- Se a tabela já existia ANTES do classificar "Mensagem de follow up" (rodar uma vez —
+//   -- acha e troca a constraint de "tipo" sem depender de saber o nome exato dela):
+//   do $$
+//   declare nome_constraint text;
+//   begin
+//     select conname into nome_constraint from pg_constraint
+//       where conrelid = 'kanban_cards'::regclass and pg_get_constraintdef(oid) ilike '%tipo%nova_viagem%';
+//     if nome_constraint is not null then
+//       execute 'alter table kanban_cards drop constraint ' || nome_constraint;
+//     end if;
+//   end $$;
+//   alter table kanban_cards add constraint kanban_cards_tipo_check
+//     check (tipo in ('nova_viagem','complemento','follow_up'));
 //
 //   create table kanban_card_eventos (
 //     id uuid primary key default gen_random_uuid(),
@@ -291,6 +305,14 @@ async function classificarCard(d, sessao, secretKey) {
     patch.momento_viagem = d.momento_viagem || null;
     patch.prioridade = d.prioridade || "normal";
     patch.venda_vinculada_id = d.venda_vinculada_id || null;
+    patch.descricao_caso = d.descricao_caso || null;
+  } else if (d.classificacao === "follow_up") {
+    // Follow-up usa o mesmo quadro/fluxo do Suporte (precisa ser trabalhado e encerrado),
+    // mas marcado com tipo="follow_up" pra não contar como lead novo nem suporte nas
+    // métricas — é manutenção da base de clientes (contato proativo), não atendimento de caso.
+    patch.quadro = "suporte";
+    patch.etapa = "em_atendimento";
+    patch.tipo = "follow_up";
     patch.descricao_caso = d.descricao_caso || null;
   } else {
     throw new Error("Classificação inválida.");
@@ -497,19 +519,21 @@ async function resumoMensal(d, sessao, secretKey) {
 
   const [cards, usuarios] = await Promise.all([
     supabaseRest(
-      "/kanban_cards?select=quadro,responsavel_id,assumido_em,proposta_enviada_em,encerrado_em,encerramento_tipo,encerramento_valor_total&responsavel_id=not.is.null",
+      "/kanban_cards?select=quadro,tipo,responsavel_id,assumido_em,proposta_enviada_em,encerrado_em,encerramento_tipo,encerramento_valor_total&responsavel_id=not.is.null",
       "GET", secretKey
     ),
     supabaseRest("/usuarios?ativo=eq.true&select=id,nome&order=nome.asc", "GET", secretKey),
   ]);
 
-  const vazio = () => ({ atendidos: 0, orcamentos: 0, vendasFechadas: 0, valorFechado: 0, vendasPerdidas: 0, suporte: 0 });
+  const vazio = () => ({ atendidos: 0, orcamentos: 0, vendasFechadas: 0, valorFechado: 0, vendasPerdidas: 0, suporte: 0, followUp: 0 });
   const porFunc = {};
   (cards || []).forEach((c) => {
     const m = porFunc[c.responsavel_id] || (porFunc[c.responsavel_id] = vazio());
     if (noMes(c.assumido_em)) {
       m.atendidos++;
-      if (c.quadro === "suporte") m.suporte++;
+      // Follow-up é manutenção da base, não suporte de caso — conta separado.
+      if (c.tipo === "follow_up") m.followUp++;
+      else if (c.quadro === "suporte") m.suporte++;
     }
     if (c.quadro === "vendas") {
       if (noMes(c.proposta_enviada_em)) m.orcamentos++;
@@ -534,6 +558,7 @@ async function resumoMensal(d, sessao, secretKey) {
       valor_fechado: m.valorFechado,
       vendas_perdidas: m.vendasPerdidas,
       suporte: m.suporte,
+      follow_up: m.followUp,
       conversao: base > 0 ? (m.vendasFechadas / base) * 100 : null,
     };
   }).sort((a, b) => b.valor_fechado - a.valor_fechado);
@@ -577,7 +602,7 @@ async function metricasAtendimento(d, sessao, secretKey) {
     supabaseRest("/usuarios?ativo=eq.true&select=id,nome&order=nome.asc", "GET", secretKey),
   ]);
 
-  const vazioBucket = () => ({ leads: 0, novos: 0, complementos: 0, suporte: 0, fechadas: 0, perdidas: 0 });
+  const vazioBucket = () => ({ leads: 0, novos: 0, complementos: 0, suporte: 0, followUp: 0, fechadas: 0, perdidas: 0 });
   const serieMap = {};
   const porAtendenteMap = {};
   // Situação AGORA (não depende do período escolhido) — quantos cards ativos em cada lugar.
@@ -591,8 +616,10 @@ async function metricasAtendimento(d, sessao, secretKey) {
       }
     }
 
+    // Follow-up não conta como "lead" — é contato que a própria agência iniciou pra manter
+    // a base de clientes, não alguém novo chegando.
     const diaCriado = localDateStr(c.criado_em);
-    if (dentroPeriodo(diaCriado)) {
+    if (dentroPeriodo(diaCriado) && c.tipo !== "follow_up") {
       const b = serieMap[bucketDe(c.criado_em, granularidade)] || (serieMap[bucketDe(c.criado_em, granularidade)] = vazioBucket());
       b.leads++;
     }
@@ -603,9 +630,10 @@ async function metricasAtendimento(d, sessao, secretKey) {
         const bKey = bucketDe(c.assumido_em, granularidade);
         const b = serieMap[bKey] || (serieMap[bKey] = vazioBucket());
         const a = porAtendenteMap[c.responsavel_id] || (porAtendenteMap[c.responsavel_id] = vazioBucket());
-        a.leads++;
+        if (c.tipo !== "follow_up") a.leads++; // follow-up não é lead — ver comentário acima
         if (c.tipo === "nova_viagem")      { b.novos++;        a.novos++; }
         else if (c.tipo === "complemento") { b.complementos++; a.complementos++; }
+        else if (c.tipo === "follow_up")   { b.followUp++;     a.followUp++; }
         else if (c.quadro === "suporte")   { b.suporte++;      a.suporte++; }
       }
     }
@@ -646,6 +674,7 @@ async function metricasAtendimento(d, sessao, secretKey) {
       total_novos: soma("novos"),
       total_complementos: soma("complementos"),
       total_suporte: soma("suporte"),
+      total_follow_up: soma("followUp"),
       total_fechadas: totalFechadas,
       total_perdidas: totalPerdidas,
       conversao: baseConv > 0 ? (totalFechadas / baseConv) * 100 : null,

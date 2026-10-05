@@ -154,6 +154,7 @@
     opts = opts || {};
     const linha2 = card.destino || card.motivo_suporte || card.cliente_telefone || "";
     const valorTag = card.valor_estimado ? `<span class="badge">${fBRL(card.valor_estimado)}</span>` : "";
+    const followUpTag = card.tipo === "follow_up" ? `<span class="badge">🔁 Follow-up</span>` : "";
     const prioridadeTag = card.prioridade && card.prioridade !== "normal"
       ? `<span class="badge badge--erro">${card.prioridade === "emergencia" ? "🚨 Emergência" : "⚠ Urgente"}</span>` : "";
     const respNome = card.responsavel_id ? (colegas.find((c) => c.id === card.responsavel_id) || {}).nome : null;
@@ -164,7 +165,7 @@
       <div class="kb-card ${corAlerta(card)}" data-kb-card="${card.id}" ${opts.draggable ? 'draggable="true"' : ""}>
         <div style="font-weight:600;font-size:0.86rem">${escHtml(card.cliente_nome || "Sem nome")}</div>
         ${linha2 ? `<div class="table__muted" style="font-size:0.78rem">${escHtml(linha2)}</div>` : ""}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${prioridadeTag}${diasTag}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${followUpTag}${prioridadeTag}${diasTag}</div>
         ${respTag}
       </div>`;
   }
@@ -327,6 +328,7 @@
     nova_viagem: "Vai pro quadro de Vendas, em \"Em cotação\". Os detalhes (destino, valor, datas...) você preenche depois, direto no card.",
     complemento: "Vai pro quadro de Vendas, marcado como Complemento. Os detalhes você preenche depois, direto no card.",
     suporte: "Vai pro quadro de Suporte, em \"Em atendimento\". O motivo e os detalhes você preenche depois, direto no card.",
+    follow_up: "Vai pro quadro de Suporte, mas marcado como Follow-up — contato proativo de manutenção da base, não entra na métrica de leads/novos atendimentos.",
     outros: "Não entra em quadro nenhum nem conta em métrica — só arquiva.",
   };
   gel("kb-classificacao").addEventListener("change", () => {
@@ -364,6 +366,7 @@
     const resumoLinhas = [
       card.cliente_telefone ? "📞 " + card.cliente_telefone : "",
       card.tipo === "complemento" ? "🏷 Complemento de viagem" : "",
+      card.tipo === "follow_up" ? "🔁 Mensagem de follow up (manutenção de base)" : "",
     ].filter(Boolean);
     gel("kb-card-resumo").innerHTML = resumoLinhas.map((l) => `<div class="table__muted" style="font-size:0.85rem">${escHtml(l)}</div>`).join("");
 
@@ -645,12 +648,12 @@
 
   async function carregarResumo() {
     const tbody = gel("kb-resumo-tbody");
-    tbody.innerHTML = `<tr><td colspan="8" class="table__muted">Carregando...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="table__muted">Carregando...</td></tr>`;
     try {
       const linhas = await chamarKanban("resumo_mensal", {
         mes: gel("kb-resumo-mes").value, ano: gel("kb-resumo-ano").value,
       });
-      if (linhas.length === 0) { tbody.innerHTML = `<tr><td colspan="8" class="table__muted">Nada por aqui ainda</td></tr>`; return; }
+      if (linhas.length === 0) { tbody.innerHTML = `<tr><td colspan="9" class="table__muted">Nada por aqui ainda</td></tr>`; return; }
       tbody.innerHTML = linhas.map((l) => `
         <tr>
           <td>${escHtml(l.nome)}</td>
@@ -660,9 +663,10 @@
           <td>${fBRL(l.valor_fechado)}</td>
           <td>${l.vendas_perdidas}</td>
           <td>${l.suporte}</td>
+          <td>${l.follow_up}</td>
           <td>${l.conversao != null ? l.conversao.toFixed(0) + "%" : "—"}</td>
         </tr>`).join("");
-    } catch (err) { tbody.innerHTML = `<tr><td colspan="8" class="notice notice--error">${escHtml(err.message)}</td></tr>`; }
+    } catch (err) { tbody.innerHTML = `<tr><td colspan="9" class="notice notice--error">${escHtml(err.message)}</td></tr>`; }
   }
 
   let carregouUmaVez = false;
