@@ -3626,6 +3626,62 @@ textarea.input {
   color: #fff;
 }
 
+/* ===== Financeiro: separação por conta/cartão (chips clicáveis) ===== */
+.fin-contas-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.fin-conta-chip {
+  font-family: var(--font-body);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 10px 16px;
+  min-width: 136px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.fin-conta-chip:hover {
+  border-color: var(--gold);
+}
+
+.fin-conta-chip.is-active {
+  background: var(--navy);
+  border-color: var(--navy);
+}
+
+.fin-conta-chip.is-active .fin-conta-chip__nome { color: #cfd8e6; }
+.fin-conta-chip.is-active .fin-conta-chip__valor { color: #fff; }
+.fin-conta-chip.is-active .fin-conta-chip__pendente { color: var(--gold); }
+
+.fin-conta-chip__nome {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.fin-conta-chip__valor {
+  font-family: var(--font-title);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--navy);
+  margin-top: 2px;
+}
+
+.fin-conta-chip__pendente {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .fin-imp-tabela-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

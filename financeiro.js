@@ -9,6 +9,7 @@
   let lancamentos   = [];
   let filtroAtual   = "todos";
   let periodoAtual  = "mes";
+  let origemAtual   = "todas"; // "todas" ou um valor de l.origem — recorte por conta/cartão
   let editando      = null;
   let desbloqueado  = false; // só em memória: recarregar a página (F5) sempre pede a senha de novo
   let senhaAtual    = "";    // guardada em memória pra autenticar cada chamada à function
@@ -360,7 +361,20 @@
     }
   }
 
+  // Recorte por conta/cartão — aplicado a tudo que o dashboard mostra, pra poder focar só
+  // numa conta ou cartão sem perder o período já escolhido.
+  function filtrarPorOrigem(lista) {
+    if (origemAtual === "todas") return lista;
+    return lista.filter(l => (l.origem || "Sem conta/cartão") === origemAtual);
+  }
+
   function lancamentosNoPeriodo() {
+    return filtrarPorOrigem(lancamentosNoPeriodoTodasContas());
+  }
+
+  // Só o período, sem o recorte de conta/cartão — usado pra calcular o valor de CADA chip
+  // (senão, com uma conta já selecionada, as outras apareceriam zeradas).
+  function lancamentosNoPeriodoTodasContas() {
     const intervalo = intervaloPeriodo();
     if (!intervalo) return lancamentos.slice();
     const [ini, fim] = intervalo;
@@ -383,10 +397,60 @@
   }
 
   function render() {
+    renderContasRow();
     renderStats();
     renderDashboard();
     renderTabela();
     gel("fin-updated").textContent = lancamentos.length + " lançamento" + (lancamentos.length !== 1 ? "s" : "") + " no total";
+  }
+
+  // ===== Separação por conta/cartão (chips clicáveis) =====
+  // As 4 contas/cartões reais da empresa aparecem sempre, mesmo com 0 lançamentos no período
+  // (pra não parecer que "não existem") — qualquer outra origem usada aparece depois, e uma
+  // origem em branco (lançamento antigo, de antes desse campo existir) vira "Sem conta/cartão".
+  const ORIGENS_PADRAO = ["Conta C6", "Cartão TAP", "Cartão C6", "Cartão BTG"];
+
+  function origensDisponiveis(lista) {
+    const extras = new Set();
+    let temSemOrigem = false;
+    lista.forEach(l => {
+      if (!l.origem) { temSemOrigem = true; return; }
+      if (!ORIGENS_PADRAO.includes(l.origem)) extras.add(l.origem);
+    });
+    const origens = ORIGENS_PADRAO.concat(Array.from(extras).sort((a, b) => a.localeCompare(b, "pt-BR")));
+    if (temSemOrigem) origens.push("Sem conta/cartão");
+    return origens;
+  }
+
+  function renderContasRow() {
+    const container = gel("fin-contas-row");
+    if (!container) return;
+    const base = lancamentosNoPeriodoTodasContas();
+    const origens = origensDisponiveis(base);
+
+    const chipHtml = (nome, custo, pendente, ativo) => `
+      <button type="button" class="fin-conta-chip ${ativo ? "is-active" : ""}" data-origem="${escHtml(nome)}">
+        <div class="fin-conta-chip__nome">${escHtml(nome)}</div>
+        <div class="fin-conta-chip__valor">${fBRL(custo)}</div>
+        ${pendente > 0 ? `<div class="fin-conta-chip__pendente">${fBRL(pendente)} a pagar</div>` : ""}
+      </button>`;
+
+    let totalCusto = 0, totalPendente = 0;
+    const chips = origens.map(nome => {
+      const doGrupo = base.filter(l => (l.origem || "Sem conta/cartão") === nome);
+      const custo    = doGrupo.filter(l => l.tipo === "saida" && l.status === "pago").reduce((s, l) => s + (parseFloat(l.valor) || 0), 0);
+      const pendente = doGrupo.filter(l => l.tipo === "saida" && l.status === "pendente").reduce((s, l) => s + (parseFloat(l.valor) || 0), 0);
+      totalCusto += custo; totalPendente += pendente;
+      return chipHtml(nome, custo, pendente, origemAtual === nome);
+    }).join("");
+
+    container.innerHTML = chipHtml("Todas", totalCusto, totalPendente, origemAtual === "todas") + chips;
+    container.querySelectorAll("[data-origem]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        origemAtual = btn.dataset.origem === "Todas" ? "todas" : btn.dataset.origem;
+        render();
+      });
+    });
   }
 
   function renderStats() {
@@ -446,7 +510,7 @@
   function lancamentosNoIntervalo(intervalo) {
     if (!intervalo) return [];
     const [ini, fim] = intervalo;
-    return lancamentos.filter(l => l.vencimento && l.vencimento >= ini && l.vencimento <= fim);
+    return filtrarPorOrigem(lancamentos.filter(l => l.vencimento && l.vencimento >= ini && l.vencimento <= fim));
   }
 
   function somaReceitaCusto(lista) {
