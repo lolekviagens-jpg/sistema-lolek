@@ -356,6 +356,61 @@
           </div>
         </div>
 
+        <!-- Métricas de atendimento (Kanban) -->
+        <div class="vendas-section-title">📈 Métricas de atendimento (Kanban)</div>
+        <div class="card vendas-grafico-card">
+          <div class="vendas-grafico-header">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn--ghost btn--sm" data-km-preset="hoje">Hoje</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-km-preset="7dias">7 dias</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-km-preset="30dias">30 dias</button>
+              <button type="button" class="btn btn--ghost btn--sm" data-km-preset="mes">Este mês</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <select id="km-granularidade" class="input" style="max-width:120px">
+                <option value="dia">Diário</option>
+                <option value="semana">Semanal</option>
+                <option value="mes">Mensal</option>
+              </select>
+              <input type="date" id="km-de" class="input" style="max-width:150px" />
+              <span class="table__muted">até</span>
+              <input type="date" id="km-ate" class="input" style="max-width:150px" />
+              <button type="button" class="btn btn--gold btn--sm" id="km-buscar-btn">Buscar</button>
+            </div>
+          </div>
+
+          <div id="km-status"></div>
+
+          <!-- Situação agora -->
+          <div class="km-tiles-grid">
+            <div class="stat"><div class="stat__value" id="km-atual-fila">0</div><div class="stat__label">Na fila agora</div></div>
+            <div class="stat"><div class="stat__value" id="km-atual-vendas">0</div><div class="stat__label">Em negociação</div></div>
+            <div class="stat"><div class="stat__value" id="km-atual-suporte">0</div><div class="stat__label">Em suporte</div></div>
+          </div>
+
+          <!-- Tiles do período -->
+          <div class="km-tiles-grid" id="km-tiles" style="margin-top:10px"></div>
+
+          <!-- Gráfico da série -->
+          <div class="vendas-grafico-wrap" style="height:280px;margin-top:18px">
+            <canvas id="km-grafico-serie"></canvas>
+          </div>
+
+          <!-- Por atendente -->
+          <div class="orc-card__header" style="margin-top:20px">Por atendente, no período</div>
+          <div class="kb-resumo-scroll">
+            <table class="table table--compact">
+              <thead>
+                <tr>
+                  <th>Atendente</th><th>Atendimentos</th><th>Novos</th><th>Complementos</th>
+                  <th>Suporte</th><th>Fechadas</th><th>Perdidas</th><th>Conversão</th>
+                </tr>
+              </thead>
+              <tbody id="km-atendente-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <!-- Comparativos -->
         <div class="vendas-section-title">Comparativos</div>
         <div id="vendas-comparativos-status"></div>

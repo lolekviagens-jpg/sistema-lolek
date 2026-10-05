@@ -661,6 +661,120 @@
     gel("metas-funcs").querySelector("[data-id]:last-child .vcfg-nome")?.focus();
   }
 
+  // ===== Métricas de atendimento (Kanban) =====
+  const KB_FN = "/.netlify/functions/kanban";
+  let chartMetricas = null;
+
+  async function chamarKanban(action, data) {
+    const resp = await fetch(KB_FN, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
+      body: JSON.stringify({ action, data: data || {} }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.error || "Erro HTTP " + resp.status);
+    return json;
+  }
+
+  function ymd(date) { return date.toISOString().slice(0, 10); }
+
+  function kmAplicarPreset(tipo) {
+    const hoje = new Date();
+    let de = new Date(hoje), granularidade = "dia";
+    if (tipo === "hoje") { /* de = hoje mesmo */ }
+    else if (tipo === "7dias") { de.setDate(de.getDate() - 6); }
+    else if (tipo === "30dias") { de.setDate(de.getDate() - 29); granularidade = "semana"; }
+    else if (tipo === "mes") { de = new Date(hoje.getFullYear(), hoje.getMonth(), 1); }
+    gel("km-de").value = ymd(de);
+    gel("km-ate").value = ymd(hoje);
+    gel("km-granularidade").value = granularidade;
+    carregarMetricas();
+  }
+
+  function formatarPeriodo(periodo, granularidade) {
+    if (granularidade === "mes") {
+      const [y, m] = periodo.split("-");
+      return MESES_LABEL[Number(m) - 1].slice(0, 3) + "/" + y.slice(2);
+    }
+    const [, m, dd] = periodo.split("-");
+    return dd + "/" + m + (granularidade === "semana" ? " (sem.)" : "");
+  }
+
+  async function carregarMetricas() {
+    const statusEl = gel("km-status");
+    const de = gel("km-de").value, ate = gel("km-ate").value;
+    if (!de || !ate) return;
+    statusEl.innerHTML = `<div class="notice">Carregando...</div>`;
+    try {
+      const data = await chamarKanban("metricas_atendimento", { de, ate, granularidade: gel("km-granularidade").value });
+      statusEl.innerHTML = "";
+      renderMetricas(data);
+    } catch (e) {
+      statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar métricas.</strong><p>${escHtml(e.message)}</p></div>`;
+    }
+  }
+
+  function renderMetricas(data) {
+    gel("km-atual-fila").textContent    = data.atual.fila;
+    gel("km-atual-vendas").textContent  = data.atual.vendas;
+    gel("km-atual-suporte").textContent = data.atual.suporte;
+
+    const r = data.resumo;
+    const tiles = [
+      ["Leads no período", r.total_leads],
+      ["Média de leads/dia", r.media_leads_dia.toFixed(1).replace(".", ",")],
+      ["Novos atendimentos", r.total_novos],
+      ["Complementos", r.total_complementos],
+      ["Suporte", r.total_suporte],
+      ["Conversão média", r.conversao != null ? r.conversao.toFixed(0) + "%" : "—"],
+    ];
+    gel("km-tiles").innerHTML = tiles.map(([label, val]) => `
+      <div class="stat stat--gold"><div class="stat__value">${val}</div><div class="stat__label">${label}</div></div>`).join("");
+
+    const labels = data.serie.map((b) => formatarPeriodo(b.periodo, data.granularidade));
+    if (chartMetricas) { chartMetricas.destroy(); chartMetricas = null; }
+    const canvas = gel("km-grafico-serie");
+    if (canvas && typeof Chart !== "undefined") {
+      chartMetricas = new Chart(canvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Leads",        data: data.serie.map((b) => b.leads),        borderColor: "#0a1f3d", backgroundColor: "#0a1f3d", tension: 0.3, borderWidth: 2, pointRadius: 2 },
+            { label: "Novos",        data: data.serie.map((b) => b.novos),        borderColor: "#2a78d6", backgroundColor: "#2a78d6", tension: 0.3, borderWidth: 2, pointRadius: 2 },
+            { label: "Complementos", data: data.serie.map((b) => b.complementos), borderColor: "#eb6834", backgroundColor: "#eb6834", tension: 0.3, borderWidth: 2, pointRadius: 2 },
+            { label: "Suporte",      data: data.serie.map((b) => b.suporte),      borderColor: "#1baf7a", backgroundColor: "#1baf7a", tension: 0.3, borderWidth: 2, pointRadius: 2 },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: "index", intersect: false },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+        },
+      });
+    }
+
+    const tbody = gel("km-atendente-tbody");
+    tbody.innerHTML = data.por_atendente.length === 0
+      ? `<tr><td colspan="8" class="table__muted">Nada por aqui ainda</td></tr>`
+      : data.por_atendente.map((a) => `
+        <tr>
+          <td>${escHtml(a.nome)}</td><td>${a.leads}</td><td>${a.novos}</td><td>${a.complementos}</td>
+          <td>${a.suporte}</td><td>${a.fechadas}</td><td>${a.perdidas}</td>
+          <td>${a.conversao != null ? a.conversao.toFixed(0) + "%" : "—"}</td>
+        </tr>`).join("");
+  }
+
+  function initMetricas() {
+    document.querySelectorAll("[data-km-preset]").forEach((btn) => {
+      btn.addEventListener("click", () => kmAplicarPreset(btn.dataset.kmPreset));
+    });
+    gel("km-buscar-btn").addEventListener("click", carregarMetricas);
+    document.addEventListener("aba:ativada", (e) => { if (e.detail.tab === "vendas" && chartMetricas) chartMetricas.resize(); });
+    kmAplicarPreset("7dias");
+  }
+
   // ===== Init =====
   function carregarTudo() {
     carregarMes(selAno, selMes);
@@ -701,6 +815,7 @@
 
     await Promise.all([carregarCfg(), carregarFornecedoresCache()]);
     carregarTudo();
+    initMetricas();
   }
 
   init();

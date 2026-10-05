@@ -166,6 +166,7 @@ exports.handler = async (event) => {
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
       case "resumo_mensal":          return json(200, await resumoMensal(d, sessao, secretKey));
+      case "metricas_atendimento":   return json(200, await metricasAtendimento(d, sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
     }
   } catch (err) {
@@ -536,6 +537,121 @@ async function resumoMensal(d, sessao, secretKey) {
       conversao: base > 0 ? (m.vendasFechadas / base) * 100 : null,
     };
   }).sort((a, b) => b.valor_fechado - a.valor_fechado);
+}
+
+// ===== Painel de métricas (dia/semana/mês, geral e por atendente) =====
+// Fortaleza é UTC-3 o ano todo (sem horário de verão) — sem descontar isso, um lead que
+// chega às 21h local já vira "dia seguinte" em UTC, o que já causou um bug de data parecido
+// em Emissões antes. Todo bucket de dia aqui usa o horário local, não o UTC puro.
+function localDateStr(iso) {
+  if (!iso) return null;
+  const d = new Date(new Date(iso).getTime() - 3 * 60 * 60 * 1000);
+  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+}
+function inicioSemanaStr(diaStr) {
+  const [y, m, dd] = diaStr.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1, dd));
+  const dow = d.getUTCDay(); // 0=domingo
+  d.setUTCDate(d.getUTCDate() + (dow === 0 ? -6 : 1 - dow)); // volta pra segunda-feira
+  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+}
+function bucketDe(iso, granularidade) {
+  const dia = localDateStr(iso);
+  if (!dia) return null;
+  if (granularidade === "semana") return inicioSemanaStr(dia);
+  if (granularidade === "mes") return dia.slice(0, 7);
+  return dia; // "dia"
+}
+
+// Tudo calculado em JS a partir dos cards (tabela ainda pequena) — igual resumoMensal.
+async function metricasAtendimento(d, sessao, secretKey) {
+  if (!d.de || !d.ate) throw new Error("Informe o período (de/até).");
+  const granularidade = ["dia", "semana", "mes"].includes(d.granularidade) ? d.granularidade : "dia";
+  const dentroPeriodo = (diaStr) => !!diaStr && diaStr >= d.de && diaStr <= d.ate;
+
+  const [cards, usuarios] = await Promise.all([
+    supabaseRest(
+      "/kanban_cards?select=quadro,tipo,arquivado,etapa,responsavel_id,criado_em,assumido_em,encerrado_em,encerramento_tipo",
+      "GET", secretKey
+    ),
+    supabaseRest("/usuarios?ativo=eq.true&select=id,nome&order=nome.asc", "GET", secretKey),
+  ]);
+
+  const vazioBucket = () => ({ leads: 0, novos: 0, complementos: 0, suporte: 0, fechadas: 0, perdidas: 0 });
+  const serieMap = {};
+  const porAtendenteMap = {};
+  // Situação AGORA (não depende do período escolhido) — quantos cards ativos em cada lugar.
+  const atual = { fila: 0, vendas: 0, suporte: 0 };
+
+  (cards || []).forEach((c) => {
+    if (!c.arquivado) {
+      if (!c.quadro) atual.fila++;
+      else if (c.etapa !== "encerrado" && c.etapa !== "resolvido") {
+        if (c.quadro === "vendas") atual.vendas++; else atual.suporte++;
+      }
+    }
+
+    const diaCriado = localDateStr(c.criado_em);
+    if (dentroPeriodo(diaCriado)) {
+      const b = serieMap[bucketDe(c.criado_em, granularidade)] || (serieMap[bucketDe(c.criado_em, granularidade)] = vazioBucket());
+      b.leads++;
+    }
+
+    if (!c.arquivado && c.responsavel_id) {
+      const diaAssumido = localDateStr(c.assumido_em);
+      if (dentroPeriodo(diaAssumido)) {
+        const bKey = bucketDe(c.assumido_em, granularidade);
+        const b = serieMap[bKey] || (serieMap[bKey] = vazioBucket());
+        const a = porAtendenteMap[c.responsavel_id] || (porAtendenteMap[c.responsavel_id] = vazioBucket());
+        a.leads++;
+        if (c.tipo === "nova_viagem")      { b.novos++;        a.novos++; }
+        else if (c.tipo === "complemento") { b.complementos++; a.complementos++; }
+        else if (c.quadro === "suporte")   { b.suporte++;      a.suporte++; }
+      }
+    }
+
+    if (c.quadro === "vendas" && c.encerramento_tipo) {
+      const diaEncerrado = localDateStr(c.encerrado_em);
+      if (dentroPeriodo(diaEncerrado)) {
+        const bKey = bucketDe(c.encerrado_em, granularidade);
+        const b = serieMap[bKey] || (serieMap[bKey] = vazioBucket());
+        const a = c.responsavel_id ? (porAtendenteMap[c.responsavel_id] || (porAtendenteMap[c.responsavel_id] = vazioBucket())) : null;
+        if (c.encerramento_tipo === "venda_concluida") { b.fechadas++; if (a) a.fechadas++; }
+        else if (c.encerramento_tipo === "venda_nao_realizada") { b.perdidas++; if (a) a.perdidas++; }
+      }
+    }
+  });
+
+  const serie = Object.entries(serieMap).sort((x, y) => x[0].localeCompare(y[0])).map(([periodo, v]) => ({ periodo, ...v }));
+  const soma = (campo) => serie.reduce((s, b) => s + b[campo], 0);
+  const totalLeads = soma("leads"), totalFechadas = soma("fechadas"), totalPerdidas = soma("perdidas");
+  const baseConv = totalFechadas + totalPerdidas;
+  const diasNoPeriodo = Math.max(1, Math.round((new Date(d.ate) - new Date(d.de)) / 86400000) + 1);
+
+  const nomePorId = new Map((usuarios || []).map((u) => [u.id, u.nome]));
+  const idsParaMostrar = sessao.admin ? Object.keys(porAtendenteMap) : [sessao.usuarioId];
+  const porAtendente = idsParaMostrar.map((id) => {
+    const a = porAtendenteMap[id] || vazioBucket();
+    const base = a.fechadas + a.perdidas;
+    return { usuario_id: id, nome: nomePorId.get(id) || "—", ...a, conversao: base > 0 ? (a.fechadas / base) * 100 : null };
+  }).sort((x, y) => y.leads - x.leads);
+
+  return {
+    granularidade,
+    serie,
+    atual,
+    resumo: {
+      total_leads: totalLeads,
+      media_leads_dia: totalLeads / diasNoPeriodo,
+      total_novos: soma("novos"),
+      total_complementos: soma("complementos"),
+      total_suporte: soma("suporte"),
+      total_fechadas: totalFechadas,
+      total_perdidas: totalPerdidas,
+      conversao: baseConv > 0 ? (totalFechadas / baseConv) * 100 : null,
+    },
+    por_atendente: porAtendente,
+  };
 }
 
 async function registrarEvento(secretKey, cardId, tipo, { usuarioNome, deEtapa, paraEtapa, motivo } = {}) {
