@@ -244,7 +244,7 @@
   // horários, pra dar pra mostrar onde a conexão para e quanto tempo de espera tem —
   // informação que um campo de texto único ("1 escala em GRU") não sustentava.
   function novoSegmentoOrc() {
-    return { id: "seg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), trecho: "", companhia: "", voo: "", data: "", horario_partida: "", horario_chegada: "" };
+    return { id: "seg-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6), trecho: "", companhia: "", voo: "", data: "", horario_partida: "", horario_chegada: "", tempo_parada: "" };
   }
 
   // Duração entre a chegada de um trecho e a partida do próximo — só calcula com as duas
@@ -273,10 +273,12 @@
       let conexaoDepois = "";
       if (i < lista.length - 1) {
         const prox = lista[i + 1];
-        const duracao = calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+        // Prioridade: tempo de parada informado (lido pela IA do print, ou digitado à mão) —
+        // só CALCULA pela data/horário quando ninguém informou nada, de fallback.
+        const duracao = seg.tempo_parada || calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
         const { dest: destinoIata } = parseTrecho(seg.trecho);
         conexaoDepois = `<div class="table__muted" style="text-align:center;font-size:0.76rem;margin:2px 0 10px">
-          ✈ Conexão em ${escapeHtml(destinoIata || "—")}${duracao ? " — " + duracao + " de espera" : " — preencha a Data pra calcular o tempo de espera"}
+          ✈ Conexão em ${escapeHtml(destinoIata || "—")}${duracao ? " — " + escapeHtml(duracao) + " de espera" : " — informe o tempo de parada ou a Data pra calcular"}
         </div>`;
       }
       return `
@@ -305,6 +307,9 @@
               <label class="field"><span class="field__label">Horário de chegada ${temConexao ? '<span style="color:var(--gold)">*</span>' : ""}</span>
                 <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="horario_chegada" placeholder="Ex: 22:15 (+1)" value="${escapeHtml(seg.horario_chegada)}" />
               </label>
+              ${i < lista.length - 1 ? `<label class="field field--full"><span class="field__label">Tempo de parada neste aeroporto <span class="table__muted">(se souber — senão calculamos pela data/horário)</span></span>
+                <input type="text" class="input orc-seg-campo" data-seg="${seg.id}" data-campo="tempo_parada" placeholder="Ex: 2h30" value="${escapeHtml(seg.tempo_parada)}" />
+              </label>` : ""}
             </div>
           </div>
         </div>${conexaoDepois}`;
@@ -318,7 +323,7 @@
         const seg = lista.find((s) => s.id === inp.dataset.seg);
         if (seg) seg[inp.dataset.campo] = inp.value;
       });
-      if (["data", "horario_partida", "horario_chegada"].includes(inp.dataset.campo)) {
+      if (["data", "horario_partida", "horario_chegada", "tempo_parada"].includes(inp.dataset.campo)) {
         inp.addEventListener("change", () => renderSegmentosOrc(destId, pid));
       }
     });
@@ -763,6 +768,7 @@
           trecho: s.trecho || "", companhia: s.companhia || "", voo: s.voo || "",
           data: paraDataISO(s.data) || "",
           horario_partida: s.horario_partida || "", horario_chegada: s.horario_chegada || "",
+          tempo_parada: s.tempo_parada || "",
         }))
       : [novoSegmentoOrc()];
     renderSegmentosOrc(destId, cardPid);
@@ -821,28 +827,31 @@
               { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
               { type: "text", text: `${contextoDataAtual()}
 
-Analise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — agrupe as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:
+Analise este documento/print de passagem aérea. Ele pode vir em DOIS FORMATOS bem diferentes — identifique qual é antes de preencher:
 
+FORMATO A — bilhete/e-ticket com tabela de itinerário detalhada (uma linha por voo, com horário de cada trecho). Nesse caso, dê atenção a TODA a tabela, que pode ter mais de uma linha:
 - Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo: "GRU → LIS" seguida de "LIS → ROM" são 2 trechos da MESMA ida (escala em Lisboa) — NÃO é ida e volta.
 - Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA. Na dúvida se é conexão ou volta, trate como conexão — é pior assumir uma volta que não existe.
+
+FORMATO B — print de BUSCA/COMPARAÇÃO de voos (ex: Google Flights, site de companhia, agência) mostrando um resumo da viagem ANTES de comprar — é o mais comum pra montar orçamento. Aqui normalmente NÃO tem uma linha por trecho; em vez disso mostra algo como "1 parada" ou "1 escala em GRU", às vezes com a duração da parada escrita (ex: "2h 30min em GRU") e/ou a duração total do trajeto. Mesmo sem o horário exato de cada perna, você ainda DEVE dividir em 2+ itens no array "segmentos" — um pra cada perna do trajeto (origem→parada, parada→destino) — preenchendo "trecho" com as siglas/cidades de cada perna (ex: "FOR → GRU" e "GRU → LIS") e deixando companhia/voo/horário como null se a imagem não mostrar. O MAIS IMPORTANTE em qualquer um dos dois formatos é capturar "tempo_parada" (a duração da conexão) sempre que a imagem disser isso explicitamente, mesmo que não tenha hora exata de cada voo.
 
 Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
 {
   "cidade_orig": "nome da cidade de origem (ex: Fortaleza)",
   "cidade_dest": "nome da cidade de destino (ex: Lisboa)",
   "segmentos": [
-    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "data": "DD/MM/AAAA da data deste voo, ou null se não estiver visível", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1) se for dia seguinte" }
+    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea, ou null se não aparecer", "voo": "número do voo, ou null", "data": "DD/MM/AAAA da data deste voo, ou null se não estiver visível", "horario_partida": "HH:MM ou null", "horario_chegada": "HH:MM ou null", "tempo_parada": "duração da conexão DEPOIS deste trecho (ex: '2h30'), só se a imagem disser isso explicitamente — null no último trecho (não tem conexão depois dele) e null se a imagem não informar a duração" }
   ],
   "milhas": número_inteiro_ou_null,
   "taxa_embarque": valor_numerico_em_reais_ou_null,
   "volta": {
     "cidade_orig": "...", "cidade_dest": "...",
-    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "data": "DD/MM/AAAA ou null", "horario_partida": "...", "horario_chegada": "..." } ],
+    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "data": "DD/MM/AAAA ou null", "horario_partida": "...", "horario_chegada": "...", "tempo_parada": "... ou null" } ],
     "milhas": número_inteiro_ou_null,
     "taxa_embarque": valor_numerico_em_reais_ou_null
   } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho (ainda que com escala), "volta" deve ser null e "segmentos" da ida tem mais de um item.
 
-IMPORTANTE: preencha "data" em TODO segmento sempre que o documento permitir — é o que dá pra calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; quando o documento não disser explicitamente, INFIRA a partir da data + horário de chegada do trecho anterior.
+IMPORTANTE: se a imagem mostrar "1 parada" ou "1 escala" (ou mais) em algum ponto, NUNCA devolva um "segmentos" com 1 item só só porque faltam detalhes de horário — divida em trechos mesmo assim. E preencha "data" em todo segmento sempre que o documento permitir, mesmo quando não tiver "tempo_parada" explícito — é o que permite calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia.
 }` },
             ],
           }],
@@ -1150,7 +1159,7 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
           // (renderFlightCard) usa "segmentos" direto pra mostrar cada trecho separado.
           const conexoesTexto = segmentos.length <= 1 ? "Voo direto" : segmentos.slice(0, -1).map((s, i) => {
             const prox = segmentos[i + 1];
-            const dur = calcularDuracaoOrc(s.data, s.horario_chegada, prox.data, prox.horario_partida);
+            const dur = s.tempo_parada || calcularDuracaoOrc(s.data, s.horario_chegada, prox.data, prox.horario_partida);
             const { dest: escalaIata } = parseTrecho(s.trecho);
             return "Escala em " + (escalaIata || "—") + (dur ? " (" + dur + ")" : "");
           }).join(", ");
@@ -1301,7 +1310,7 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
       let html = segmentoFlightHtml(seg, cidadeOrig, cidadeDest);
       if (i < segmentos.length - 1) {
         const prox = segmentos[i + 1];
-        const duracao = calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
+        const duracao = seg.tempo_parada || calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
         const { dest } = parseTrecho(seg.trecho);
         html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escapeHtml(dest || "—")}${duracao ? " — " + escapeHtml(duracao) + " de espera" : ""}</div>`;
       }
