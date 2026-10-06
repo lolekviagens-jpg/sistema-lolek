@@ -22,7 +22,7 @@
     suporte:  [{ v: "em_atendimento", l: "Em atendimento" }, { v: "aguardando_fornecedor", l: "Aguardando fornecedor" }, { v: "aguardando_cliente", l: "Aguardando cliente" }],
   };
   const ETAPA_ENCERRAMENTO = { vendas: "encerrado", suporte: "resolvido" };
-  const ETAPA_LABEL_ENCERRAMENTO = { vendas: "✅ Encerrados", suporte: "✅ Resolvidos" };
+  const ETAPA_LABEL_ENCERRAMENTO = { vendas: "✅ Vendas feitas", suporte: "✅ Resolvidos" };
 
   const PRODUTOS_VENDA = [
     { v: "passagem_aerea", l: "Passagem aérea" }, { v: "hospedagem", l: "Hospedagem" },
@@ -189,10 +189,16 @@
     const etapas = ETAPAS_QUADRO[quadroAtivo];
     const etapaFinal = ETAPA_ENCERRAMENTO[quadroAtivo];
     const colunas = etapas.map((e) => ({ ...e, cards: cards.filter((c) => c.etapa === e.v) }));
-    const encerrados = cards.filter((c) => c.etapa === etapaFinal).slice(0, 30);
 
-    const colunaHtml = (col, dropavel) => `
-      <div class="kb-coluna" data-kb-coluna="${col.v}">
+    // Em Vendas, o "encerrado" genérico vira duas filas separadas — feitas e perdidas (vermelho,
+    // bem destacada). "Oportunidade futura" não entra em nenhuma das duas — ela já tem lugar
+    // próprio na Agenda de retomada. Em Suporte continua só "Resolvidos", sem essa separação.
+    const todosEncerrados = cards.filter((c) => c.etapa === etapaFinal);
+    const feitos   = quadroAtivo === "vendas" ? todosEncerrados.filter((c) => c.encerramento_tipo === "venda_concluida") : todosEncerrados;
+    const perdidos = quadroAtivo === "vendas" ? todosEncerrados.filter((c) => c.encerramento_tipo === "venda_nao_realizada") : [];
+
+    const colunaHtml = (col, dropavel, extraClasse) => `
+      <div class="kb-coluna ${extraClasse || ""}" data-kb-coluna="${col.v}">
         <div class="kb-coluna__header">${escHtml(col.l)} <span class="ci-section__count">${col.cards.length}</span></div>
         <div class="kb-coluna__lista" data-kb-drop="${dropavel ? col.v : ""}">
           ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
@@ -201,7 +207,8 @@
 
     wrap.innerHTML =
       colunas.map((c) => colunaHtml(c, true)).join("") +
-      colunaHtml({ v: etapaFinal, l: ETAPA_LABEL_ENCERRAMENTO[quadroAtivo], cards: encerrados }, false);
+      colunaHtml({ v: etapaFinal, l: ETAPA_LABEL_ENCERRAMENTO[quadroAtivo], cards: feitos.slice(0, 30) }, false) +
+      (quadroAtivo === "vendas" ? colunaHtml({ v: "perdidas", l: "🔴 Vendas perdidas", cards: perdidos.slice(0, 30) }, false, "kb-coluna--perdidas") : "");
 
     wrap.querySelectorAll("[data-kb-card]").forEach((el) => {
       el.addEventListener("click", () => abrirDetalhe(el.dataset.kbCard));

@@ -3898,6 +3898,13 @@ textarea.input {
   background: #fdf1ef;
 }
 
+.kb-coluna--perdidas {
+  background: #4a1510;
+}
+.kb-coluna--perdidas .kb-card {
+  border-left-color: #c0392b;
+}
+
 /* Resumo do mês — tabela larga (8 colunas) em telas menores precisa rolar de lado; sem uma
    barra visível, a rolagem passava despercebida e parecia que faltava conteúdo. */
 .kb-resumo-scroll {
