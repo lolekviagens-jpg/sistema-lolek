@@ -125,14 +125,26 @@ const { supabaseRest, validarSessao, tokenDoEvento, registrarAtividade } = requi
 const QUADROS = new Set(["vendas", "suporte"]);
 // Ordem de verdade das etapas ativas (sem contar o encerramento, que tem ação própria) — dá
 // pra voltar quantas etapas quiser, mas só avança UMA de cada vez, sem pular.
-const ETAPAS_VENDAS_ORDEM  = ["em_cotacao", "proposta_enviada"];
-const ETAPAS_SUPORTE_ORDEM = ["em_atendimento", "aguardando_fornecedor", "aguardando_cliente"];
-const ETAPAS_VENDAS  = new Set([...ETAPAS_VENDAS_ORDEM, "encerrado"]);
-const ETAPAS_SUPORTE = new Set([...ETAPAS_SUPORTE_ORDEM, "resolvido"]);
+// Suporte e Follow-up moram no mesmo quadro ("suporte"), mas cada um tem sua própria fila —
+// por isso tem ordem/conjunto de etapas separados, escolhidos por infoEtapas() a partir do
+// tipo do card, não só do quadro.
+const ETAPAS_VENDAS_ORDEM   = ["em_cotacao", "proposta_enviada"];
+const ETAPAS_SUPORTE_ORDEM  = ["em_resolucao"];
+const ETAPAS_FOLLOWUP_ORDEM = ["enviado", "aguardando_feedback"];
+const ETAPAS_VENDAS   = new Set([...ETAPAS_VENDAS_ORDEM, "encerrado"]);
+const ETAPAS_SUPORTE  = new Set([...ETAPAS_SUPORTE_ORDEM, "resolvido"]);
+const ETAPAS_FOLLOWUP = new Set([...ETAPAS_FOLLOWUP_ORDEM, "resolvido"]);
 const ETAPA_LABEL = {
   em_cotacao: "Em cotação", proposta_enviada: "Proposta enviada",
-  em_atendimento: "Em atendimento", aguardando_fornecedor: "Aguardando fornecedor", aguardando_cliente: "Aguardando cliente",
+  em_resolucao: "Em resolução",
+  enviado: "Follow up enviado", aguardando_feedback: "Follow up aguardando feedback",
 };
+
+function infoEtapas(card) {
+  if (card.quadro === "vendas") return { ordem: ETAPAS_VENDAS_ORDEM, validas: ETAPAS_VENDAS, final: "encerrado" };
+  if (card.tipo === "follow_up") return { ordem: ETAPAS_FOLLOWUP_ORDEM, validas: ETAPAS_FOLLOWUP, final: "resolvido" };
+  return { ordem: ETAPAS_SUPORTE_ORDEM, validas: ETAPAS_SUPORTE, final: "resolvido" };
+}
 const MOTIVOS_PERDA = new Set([
   "preco_alto", "comprou_outra_agencia", "desistiu_sem_data", "parou_responder",
   "sem_disponibilidade", "documentacao", "outro",
@@ -300,18 +312,18 @@ async function classificarCard(d, sessao, secretKey) {
     // suporte" (sai da fila, fica com quem assumiu); o motivo específico dá pra preencher
     // depois, quando for realmente atender o caso.
     patch.quadro = "suporte";
-    patch.etapa = "em_atendimento";
+    patch.etapa = "em_resolucao";
     patch.motivo_suporte = d.motivo_suporte || null;
     patch.momento_viagem = d.momento_viagem || null;
     patch.prioridade = d.prioridade || "normal";
     patch.venda_vinculada_id = d.venda_vinculada_id || null;
     patch.descricao_caso = d.descricao_caso || null;
   } else if (d.classificacao === "follow_up") {
-    // Follow-up usa o mesmo quadro/fluxo do Suporte (precisa ser trabalhado e encerrado),
-    // mas marcado com tipo="follow_up" pra não contar como lead novo nem suporte nas
-    // métricas — é manutenção da base de clientes (contato proativo), não atendimento de caso.
+    // Follow-up usa o mesmo quadro de dados do Suporte (precisa ser trabalhado e encerrado),
+    // mas marcado com tipo="follow_up" — tem fila própria (ver infoEtapas) e não conta como
+    // lead novo nem suporte nas métricas: é manutenção da base, não atendimento de caso.
     patch.quadro = "suporte";
-    patch.etapa = "em_atendimento";
+    patch.etapa = "enviado";
     patch.tipo = "follow_up";
     patch.descricao_caso = d.descricao_caso || null;
   } else {
@@ -332,17 +344,16 @@ async function atualizarCard(d, sessao, secretKey) {
   if (!podeAcessar(atual, sessao)) throw new Error("Esse card já está com outra pessoa.");
   if (!atual.quadro) throw new Error("Classifique o card antes de editar.");
 
-  const etapasValidas = atual.quadro === "vendas" ? ETAPAS_VENDAS : ETAPAS_SUPORTE;
-  if (d.etapa != null && d.etapa !== "encerrado" && d.etapa !== "resolvido" && !etapasValidas.has(d.etapa)) {
-    throw new Error("Etapa inválida pra esse quadro.");
+  const { ordem, validas, final } = infoEtapas(atual);
+  if (d.etapa != null && d.etapa !== final && !validas.has(d.etapa)) {
+    throw new Error("Etapa inválida pra esse card.");
   }
-  if (d.etapa === "encerrado" || d.etapa === "resolvido") {
+  if (d.etapa === final) {
     throw new Error("Use a ação de encerrar (com o motivo/resultado obrigatório), não mover direto pra essa etapa.");
   }
 
   // Só avança uma etapa de cada vez (sem pular) — pra voltar não tem limite, só pra frente.
   if (d.etapa != null && d.etapa !== atual.etapa) {
-    const ordem = atual.quadro === "vendas" ? ETAPAS_VENDAS_ORDEM : ETAPAS_SUPORTE_ORDEM;
     const indiceAtual = ordem.indexOf(atual.etapa);
     const indiceNovo = ordem.indexOf(d.etapa);
     if (indiceNovo > indiceAtual + 1) {
@@ -359,16 +370,6 @@ async function atualizarCard(d, sessao, secretKey) {
   ];
   camposPermitidos.forEach((c) => { if (d[c] !== undefined) patch[c] = d[c]; });
 
-  // Controla o tempo acumulado em "Aguardando fornecedor" (descontado do tempo de
-  // resolução do suporte) — fecha o intervalo ao SAIR dessa etapa, abre um novo ao ENTRAR.
-  if (atual.etapa === "aguardando_fornecedor" && patch.etapa && patch.etapa !== "aguardando_fornecedor" && atual.aguardando_fornecedor_desde) {
-    const minutos = Math.round((Date.now() - new Date(atual.aguardando_fornecedor_desde).getTime()) / 60000);
-    patch.aguardando_fornecedor_acumulado_min = (atual.aguardando_fornecedor_acumulado_min || 0) + Math.max(0, minutos);
-    patch.aguardando_fornecedor_desde = null;
-  }
-  if (patch.etapa === "aguardando_fornecedor" && atual.etapa !== "aguardando_fornecedor") {
-    patch.aguardando_fornecedor_desde = new Date().toISOString();
-  }
   if (patch.etapa === "proposta_enviada" && !atual.proposta_enviada_em) {
     patch.proposta_enviada_em = new Date().toISOString();
   }
@@ -432,6 +433,15 @@ async function encerrarCard(d, sessao, secretKey) {
       patch.encerramento_motivo_perda = d.encerramento_motivo_perda;
       patch.encerramento_obs = d.encerramento_obs || null;
     }
+  } else if (atual.tipo === "follow_up") {
+    // Follow-up fecha num de dois resultados: virou venda (gera o card de Complemento
+    // automaticamente, igual ao suporte) ou não teve retorno do cliente.
+    if (!["venda_gerada", "sem_feedback"].includes(d.encerramento_tipo)) {
+      throw new Error("Selecione o resultado do follow-up.");
+    }
+    patch.etapa = "resolvido";
+    patch.encerramento_tipo = d.encerramento_tipo;
+    patch.resolucao_gerou_venda = d.encerramento_tipo === "venda_gerada";
   } else {
     // Suporte
     if (!d.resolucao_texto) throw new Error("Descreva como foi resolvido.");
@@ -445,33 +455,26 @@ async function encerrarCard(d, sessao, secretKey) {
     patch.resolucao_gerou_custo = !!d.resolucao_gerou_custo;
     patch.resolucao_valor_custo = d.resolucao_gerou_custo ? Number(d.resolucao_valor_custo) : null;
     patch.resolucao_gerou_venda = !!d.resolucao_gerou_venda;
-
-    // Fecha um "aguardando fornecedor" que porventura tenha ficado aberto, pro tempo de
-    // resolução não ficar contando o descanso indevidamente.
-    if (atual.etapa === "aguardando_fornecedor" && atual.aguardando_fornecedor_desde) {
-      const minutos = Math.round((Date.now() - new Date(atual.aguardando_fornecedor_desde).getTime()) / 60000);
-      patch.aguardando_fornecedor_acumulado_min = (atual.aguardando_fornecedor_acumulado_min || 0) + Math.max(0, minutos);
-      patch.aguardando_fornecedor_desde = null;
-    }
   }
 
   await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(d.id), "PATCH", secretKey, patch, { "Prefer": "return=minimal" });
   await registrarEvento(secretKey, d.id, "encerrado", { usuarioNome: sessao.nome, deEtapa: atual.etapa, paraEtapa: patch.etapa });
   await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "editar", area: "kanban", descricao: "Encerrou card — " + patch.encerramento_tipo, registroId: d.id });
 
-  // Suporte que gerou venda: cria um card já em Vendas como Complemento, ligado ao cliente
-  // e ao mesmo caso de suporte (pra ela não ter que copiar os dados na mão).
+  // Suporte (ou Follow-up) que gerou venda: cria um card já em Vendas como Complemento,
+  // ligado ao cliente e ao caso original (pra ela não ter que copiar os dados na mão).
   let novoCardVendaId = null;
   if (atual.quadro === "suporte" && patch.resolucao_gerou_venda) {
+    const origem = atual.tipo === "follow_up" ? "Follow-up" : "Suporte";
     const [novo] = await supabaseRest("/kanban_cards", "POST", secretKey, {
       quadro: "vendas", etapa: "em_cotacao", tipo: "complemento",
       cliente_id: atual.cliente_id, cliente_nome: atual.cliente_nome, cliente_telefone: atual.cliente_telefone,
       responsavel_id: sessao.usuarioId, assumido_em: agora,
-      venda_vinculada_id: atual.id, origem_lead: "Suporte",
+      venda_vinculada_id: atual.id, origem_lead: origem,
     });
     novoCardVendaId = novo.id;
-    await registrarEvento(secretKey, novo.id, "criado", { usuarioNome: sessao.nome, motivo: "Gerado a partir do suporte #" + atual.id });
-    // Guarda a referência também no card de suporte original, nos dois sentidos.
+    await registrarEvento(secretKey, novo.id, "criado", { usuarioNome: sessao.nome, motivo: "Gerado a partir do " + origem.toLowerCase() + " #" + atual.id });
+    // Guarda a referência também no card original, nos dois sentidos.
     await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(atual.id), "PATCH", secretKey,
       { venda_vinculada_id: novo.id }, { "Prefer": "return=minimal" });
   }

@@ -17,14 +17,19 @@
   function fDataHora(iso) { return iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"; }
   function norm(s) { return (s || "").toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, ""); }
 
+  // Suporte e Follow-up moram no mesmo quadro de dados ("suporte"), mas cada um tem sua
+  // própria fila de etapas — por isso a chave "follow_up" aqui, resolvida por etapasDoCard().
   const ETAPAS_QUADRO = {
-    vendas:   [{ v: "em_cotacao", l: "Em cotação" }, { v: "proposta_enviada", l: "Proposta enviada" }],
-    suporte:  [{ v: "em_atendimento", l: "Em atendimento" }, { v: "aguardando_fornecedor", l: "Aguardando fornecedor" }, { v: "aguardando_cliente", l: "Aguardando cliente" }],
+    vendas:    [{ v: "em_cotacao", l: "Em cotação" }, { v: "proposta_enviada", l: "Proposta enviada" }],
+    suporte:   [{ v: "em_resolucao", l: "Em resolução" }],
+    follow_up: [{ v: "enviado", l: "Follow up enviado" }, { v: "aguardando_feedback", l: "Follow up aguardando feedback" }],
   };
-  const ETAPA_ENCERRAMENTO = { vendas: "encerrado", suporte: "resolvido" };
   const ETAPA_LABEL_ENCERRAMENTO = { vendas: "✅ Vendas feitas", suporte: "✅ Resolvidos" };
-  const ETAPA_LABEL_MAP = {};
-  Object.keys(ETAPAS_QUADRO).forEach((q) => ETAPAS_QUADRO[q].forEach((e) => { ETAPA_LABEL_MAP[e.v] = e.l; }));
+
+  function etapasDoCard(card) {
+    if (card.quadro === "vendas") return ETAPAS_QUADRO.vendas;
+    return card.tipo === "follow_up" ? ETAPAS_QUADRO.follow_up : ETAPAS_QUADRO.suporte;
+  }
 
   const PRODUTOS_VENDA = [
     { v: "passagem_aerea", l: "Passagem aérea" }, { v: "hospedagem", l: "Hospedagem" },
@@ -163,15 +168,11 @@
     const respTag = (souAdmin() && respNome) ? `<div class="table__muted" style="font-size:0.72rem">${escHtml(respNome)}</div>` : "";
     const dias = card.etapa !== "encerrado" && card.etapa !== "resolvido" ? diasParado(card) : null;
     const diasTag = dias != null && dias > 0 ? `<span class="table__muted" style="font-size:0.7rem">${dias}d esperando</span>` : "";
-    // No quadro de Suporte, as filas agora são por tempo de espera (não mais por etapa) —
-    // sem a coluna pra dizer isso, a etapa some de vista, então mostra como etiqueta no card.
-    const etapaTag = (card.quadro === "suporte" && card.etapa !== "resolvido" && opts.mostrarEtapa)
-      ? `<span class="badge">${escHtml(ETAPA_LABEL_MAP[card.etapa] || card.etapa)}</span>` : "";
     return `
       <div class="kb-card ${corAlerta(card)}" data-kb-card="${card.id}" ${opts.draggable ? 'draggable="true"' : ""}>
         <div style="font-weight:600;font-size:0.86rem">${escHtml(card.cliente_nome || "Sem nome")}</div>
         ${linha2 ? `<div class="table__muted" style="font-size:0.78rem">${escHtml(linha2)}</div>` : ""}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${followUpTag}${etapaTag}${prioridadeTag}${diasTag}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${followUpTag}${prioridadeTag}${diasTag}</div>
         ${respTag}
       </div>`;
   }
@@ -192,11 +193,11 @@
     const wrap = gel("kb-board");
     if (quadroAtivo === "agenda") { wrap.innerHTML = ""; return; }
 
-    const colunaHtml = (col, dropavel, extraClasse, mostrarEtapa) => `
+    const colunaHtml = (col, dropavel, extraClasse) => `
       <div class="kb-coluna ${extraClasse || ""}" data-kb-coluna="${col.v}">
         <div class="kb-coluna__header">${escHtml(col.l)} <span class="ci-section__count">${col.cards.length}</span></div>
         <div class="kb-coluna__lista" data-kb-drop="${dropavel ? col.v : ""}">
-          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel, mostrarEtapa })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
+          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
         </div>
       </div>`;
 
@@ -214,23 +215,33 @@
         colunaHtml({ v: "encerrado", l: ETAPA_LABEL_ENCERRAMENTO.vendas, cards: feitos.slice(0, 30) }, false) +
         colunaHtml({ v: "perdidas", l: "🔴 Vendas perdidas", cards: perdidos.slice(0, 30) }, false, "kb-coluna--perdidas");
     } else {
-      // Suporte (inclui Follow-up) — em vez de colunas por etapa, as filas são por tempo de
-      // espera: dá pra ver de cara quem tá parado há mais tempo, sem abrir card por card. Pra
-      // mudar a etapa (em atendimento → aguardando fornecedor → aguardando cliente) continua
-      // sendo só abrir o card — os botões de mover etapa estão lá dentro, intactos.
-      const abertos = cards.filter((c) => c.etapa !== "resolvido").sort((x, y) => diasParado(y) - diasParado(x));
-      const resolvidos = cards.filter((c) => c.etapa === "resolvido").slice(0, 30);
+      // Suporte e Follow-up têm filas próprias (não se misturam mais), cada um com sua
+      // sequência de etapas e seu próprio encerramento.
+      const suporteCards  = cards.filter((c) => c.tipo !== "follow_up");
+      const followUpCards = cards.filter((c) => c.tipo === "follow_up");
 
-      const amarelo = configAlertas.dias_alerta_amarelo, vermelho = configAlertas.dias_alerta_vermelho;
-      const buckets = [
-        { v: "recente",    l: `🟢 Recente (até ${amarelo - 1}d)`,        lista: abertos.filter((c) => diasParado(c) < amarelo) },
-        { v: "esperando",  l: `🟡 Esperando (${amarelo}–${vermelho - 1}d)`, lista: abertos.filter((c) => diasParado(c) >= amarelo && diasParado(c) < vermelho), classe: "kb-coluna--alerta-amarelo" },
-        { v: "urgente",    l: `🔴 Urgente (${vermelho}d+)`,              lista: abertos.filter((c) => diasParado(c) >= vermelho), classe: "kb-coluna--perdidas" },
-      ];
+      const suporteEtapas = ETAPAS_QUADRO.suporte.map((e) => ({ ...e, cards: suporteCards.filter((c) => c.etapa === e.v) }));
+      const suporteResolvidos = suporteCards.filter((c) => c.etapa === "resolvido").slice(0, 30);
 
-      wrap.innerHTML =
-        buckets.map((b) => colunaHtml({ v: b.v, l: b.l, cards: b.lista }, false, b.classe, true)).join("") +
-        colunaHtml({ v: "resolvido", l: ETAPA_LABEL_ENCERRAMENTO.suporte, cards: resolvidos }, false);
+      const fuEtapas = ETAPAS_QUADRO.follow_up.map((e) => ({ ...e, cards: followUpCards.filter((c) => c.etapa === e.v) }));
+      const fuEncerrados = followUpCards.filter((c) => c.etapa === "resolvido");
+      const fuVendas = fuEncerrados.filter((c) => c.encerramento_tipo === "venda_gerada");
+      const fuSemFeedback = fuEncerrados.filter((c) => c.encerramento_tipo === "sem_feedback");
+
+      wrap.innerHTML = `
+        <div class="kb-sub-board">
+          <div class="kb-sub-board__titulo">🎧 Suporte</div>
+          <div class="kb-sub-board__linha">
+            ${suporteEtapas.map((c) => colunaHtml(c, true)).join("")}
+            ${colunaHtml({ v: "resolvido", l: ETAPA_LABEL_ENCERRAMENTO.suporte, cards: suporteResolvidos }, false)}
+          </div>
+          <div class="kb-sub-board__titulo">🔁 Follow-up</div>
+          <div class="kb-sub-board__linha">
+            ${fuEtapas.map((c) => colunaHtml(c, true)).join("")}
+            ${colunaHtml({ v: "venda_gerada", l: "✅ Vendas feitas", cards: fuVendas.slice(0, 30) }, false)}
+            ${colunaHtml({ v: "sem_feedback", l: "🔴 Follow up sem feedback", cards: fuSemFeedback.slice(0, 30) }, false, "kb-coluna--perdidas")}
+          </div>
+        </div>`;
     }
 
     wrap.querySelectorAll("[data-kb-card]").forEach((el) => {
@@ -357,8 +368,8 @@
   const DICA_CLASSIFICACAO = {
     nova_viagem: "Vai pro quadro de Vendas, em \"Em cotação\". Os detalhes (destino, valor, datas...) você preenche depois, direto no card.",
     complemento: "Vai pro quadro de Vendas, marcado como Complemento. Os detalhes você preenche depois, direto no card.",
-    suporte: "Vai pro quadro de Suporte, em \"Em atendimento\". O motivo e os detalhes você preenche depois, direto no card.",
-    follow_up: "Vai pro quadro de Suporte, mas marcado como Follow-up — contato proativo de manutenção da base, não entra na métrica de leads/novos atendimentos.",
+    suporte: "Vai pra fila de Suporte, em \"Em resolução\". O motivo e os detalhes você preenche depois, direto no card.",
+    follow_up: "Vai pra fila própria de Follow-up, em \"Follow up enviado\" — contato proativo de manutenção da base, não entra na métrica de leads/novos atendimentos.",
     outros: "Não entra em quadro nenhum nem conta em métrica — só arquiva.",
   };
   gel("kb-classificacao").addEventListener("change", () => {
@@ -418,7 +429,7 @@
       gel("kb-card-descricao").value = card.descricao_caso || "";
     }
 
-    const etapas = ETAPAS_QUADRO[card.quadro] || [];
+    const etapas = etapasDoCard(card);
     gel("kb-card-etapas").innerHTML = encerrado ? "" : etapas.map((e) => `
       <button type="button" class="btn ${e.v === card.etapa ? "btn--gold" : "btn--ghost"} btn--sm" data-kb-mover="${e.v}">${escHtml(e.l)}</button>`).join("");
     gel("kb-card-etapas").querySelectorAll("[data-kb-mover]").forEach((btn) => btn.addEventListener("click", async () => {
@@ -527,6 +538,17 @@
         </div>
         <div class="kb-modal-erro" id="kb-encerrar-erro" hidden style="color:#c0392b;font-size:0.82rem"></div>`;
     }
+    if (card.tipo === "follow_up") {
+      return `
+        <label class="field field--full"><span class="field__label">Resultado *</span>
+          <select id="kb-enc-fu-tipo" class="input">
+            <option value="">Selecione...</option>
+            <option value="venda_gerada">✅ Vendas feitas (cria card em Vendas como Complemento)</option>
+            <option value="sem_feedback">🔴 Follow up sem feedback (cliente não retornou)</option>
+          </select>
+        </label>
+        <div class="kb-modal-erro" id="kb-encerrar-erro" hidden style="color:#c0392b;font-size:0.82rem"></div>`;
+    }
     return `
       <label class="field field--full"><span class="field__label">Como foi resolvido? *</span><textarea id="kb-enc-resolucao" class="input" rows="2"></textarea></label>
       <label class="field field--full"><span class="field__label">Gerou custo? *</span>
@@ -548,7 +570,7 @@
         gel("kb-enc-bloco-retomada").hidden = v !== "oportunidade_futura";
         gel("kb-enc-bloco-perda").hidden = v !== "venda_nao_realizada";
       });
-    } else {
+    } else if (cardAtual.tipo !== "follow_up") {
       gel("kb-enc-gerou-custo").addEventListener("change", () => {
         gel("kb-enc-custo-valor-wrap").hidden = gel("kb-enc-gerou-custo").value !== "1";
       });
@@ -573,6 +595,10 @@
         dados.encerramento_motivo_perda = gel("kb-enc-motivo-perda").value;
         dados.encerramento_obs = gel("kb-enc-obs-perda").value.trim();
       }
+    } else if (cardAtual.tipo === "follow_up") {
+      const tipo = gel("kb-enc-fu-tipo").value;
+      if (!tipo) { erroEl.textContent = "Selecione o resultado."; erroEl.hidden = false; return; }
+      dados.encerramento_tipo = tipo;
     } else {
       dados.resolucao_texto = gel("kb-enc-resolucao").value.trim();
       const gerouCusto = gel("kb-enc-gerou-custo").value;

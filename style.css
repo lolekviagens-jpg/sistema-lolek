@@ -3904,11 +3904,27 @@ textarea.input {
 .kb-coluna--perdidas .kb-card {
   border-left-color: #c0392b;
 }
-.kb-coluna--alerta-amarelo {
-  background: #4a3a10;
+
+/* Suporte e Follow-up — duas fileiras de colunas empilhadas, cada uma com seu título. */
+.kb-sub-board {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
 }
-.kb-coluna--alerta-amarelo .kb-card {
-  border-left-color: #d4a017;
+.kb-sub-board__titulo {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--navy);
+}
+.kb-sub-board__linha {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  align-items: flex-start;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 /* Resumo do mês — tabela larga (8 colunas) em telas menores precisa rolar de lado; sem uma
