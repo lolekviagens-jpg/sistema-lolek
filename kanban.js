@@ -23,6 +23,8 @@
   };
   const ETAPA_ENCERRAMENTO = { vendas: "encerrado", suporte: "resolvido" };
   const ETAPA_LABEL_ENCERRAMENTO = { vendas: "✅ Vendas feitas", suporte: "✅ Resolvidos" };
+  const ETAPA_LABEL_MAP = {};
+  Object.keys(ETAPAS_QUADRO).forEach((q) => ETAPAS_QUADRO[q].forEach((e) => { ETAPA_LABEL_MAP[e.v] = e.l; }));
 
   const PRODUTOS_VENDA = [
     { v: "passagem_aerea", l: "Passagem aérea" }, { v: "hospedagem", l: "Hospedagem" },
@@ -160,12 +162,16 @@
     const respNome = card.responsavel_id ? (colegas.find((c) => c.id === card.responsavel_id) || {}).nome : null;
     const respTag = (souAdmin() && respNome) ? `<div class="table__muted" style="font-size:0.72rem">${escHtml(respNome)}</div>` : "";
     const dias = card.etapa !== "encerrado" && card.etapa !== "resolvido" ? diasParado(card) : null;
-    const diasTag = dias != null && dias > 0 ? `<span class="table__muted" style="font-size:0.7rem">${dias}d parado</span>` : "";
+    const diasTag = dias != null && dias > 0 ? `<span class="table__muted" style="font-size:0.7rem">${dias}d esperando</span>` : "";
+    // No quadro de Suporte, as filas agora são por tempo de espera (não mais por etapa) —
+    // sem a coluna pra dizer isso, a etapa some de vista, então mostra como etiqueta no card.
+    const etapaTag = (card.quadro === "suporte" && card.etapa !== "resolvido" && opts.mostrarEtapa)
+      ? `<span class="badge">${escHtml(ETAPA_LABEL_MAP[card.etapa] || card.etapa)}</span>` : "";
     return `
       <div class="kb-card ${corAlerta(card)}" data-kb-card="${card.id}" ${opts.draggable ? 'draggable="true"' : ""}>
         <div style="font-weight:600;font-size:0.86rem">${escHtml(card.cliente_nome || "Sem nome")}</div>
         ${linha2 ? `<div class="table__muted" style="font-size:0.78rem">${escHtml(linha2)}</div>` : ""}
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${followUpTag}${prioridadeTag}${diasTag}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${valorTag}${followUpTag}${etapaTag}${prioridadeTag}${diasTag}</div>
         ${respTag}
       </div>`;
   }
@@ -186,29 +192,46 @@
     const wrap = gel("kb-board");
     if (quadroAtivo === "agenda") { wrap.innerHTML = ""; return; }
 
-    const etapas = ETAPAS_QUADRO[quadroAtivo];
-    const etapaFinal = ETAPA_ENCERRAMENTO[quadroAtivo];
-    const colunas = etapas.map((e) => ({ ...e, cards: cards.filter((c) => c.etapa === e.v) }));
-
-    // Em Vendas, o "encerrado" genérico vira duas filas separadas — feitas e perdidas (vermelho,
-    // bem destacada). "Oportunidade futura" não entra em nenhuma das duas — ela já tem lugar
-    // próprio na Agenda de retomada. Em Suporte continua só "Resolvidos", sem essa separação.
-    const todosEncerrados = cards.filter((c) => c.etapa === etapaFinal);
-    const feitos   = quadroAtivo === "vendas" ? todosEncerrados.filter((c) => c.encerramento_tipo === "venda_concluida") : todosEncerrados;
-    const perdidos = quadroAtivo === "vendas" ? todosEncerrados.filter((c) => c.encerramento_tipo === "venda_nao_realizada") : [];
-
-    const colunaHtml = (col, dropavel, extraClasse) => `
+    const colunaHtml = (col, dropavel, extraClasse, mostrarEtapa) => `
       <div class="kb-coluna ${extraClasse || ""}" data-kb-coluna="${col.v}">
         <div class="kb-coluna__header">${escHtml(col.l)} <span class="ci-section__count">${col.cards.length}</span></div>
         <div class="kb-coluna__lista" data-kb-drop="${dropavel ? col.v : ""}">
-          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
+          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel, mostrarEtapa })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
         </div>
       </div>`;
 
-    wrap.innerHTML =
-      colunas.map((c) => colunaHtml(c, true)).join("") +
-      colunaHtml({ v: etapaFinal, l: ETAPA_LABEL_ENCERRAMENTO[quadroAtivo], cards: feitos.slice(0, 30) }, false) +
-      (quadroAtivo === "vendas" ? colunaHtml({ v: "perdidas", l: "🔴 Vendas perdidas", cards: perdidos.slice(0, 30) }, false, "kb-coluna--perdidas") : "");
+    if (quadroAtivo === "vendas") {
+      // Vendas continua por etapa (como já era) — só o "encerrado" genérico virou duas filas
+      // separadas: feitas e perdidas (vermelho, bem destacada). "Oportunidade futura" não entra
+      // em nenhuma das duas — ela já tem lugar próprio na Agenda de retomada.
+      const etapas = ETAPAS_QUADRO.vendas.map((e) => ({ ...e, cards: cards.filter((c) => c.etapa === e.v) }));
+      const todosEncerrados = cards.filter((c) => c.etapa === "encerrado");
+      const feitos   = todosEncerrados.filter((c) => c.encerramento_tipo === "venda_concluida");
+      const perdidos = todosEncerrados.filter((c) => c.encerramento_tipo === "venda_nao_realizada");
+
+      wrap.innerHTML =
+        etapas.map((c) => colunaHtml(c, true)).join("") +
+        colunaHtml({ v: "encerrado", l: ETAPA_LABEL_ENCERRAMENTO.vendas, cards: feitos.slice(0, 30) }, false) +
+        colunaHtml({ v: "perdidas", l: "🔴 Vendas perdidas", cards: perdidos.slice(0, 30) }, false, "kb-coluna--perdidas");
+    } else {
+      // Suporte (inclui Follow-up) — em vez de colunas por etapa, as filas são por tempo de
+      // espera: dá pra ver de cara quem tá parado há mais tempo, sem abrir card por card. Pra
+      // mudar a etapa (em atendimento → aguardando fornecedor → aguardando cliente) continua
+      // sendo só abrir o card — os botões de mover etapa estão lá dentro, intactos.
+      const abertos = cards.filter((c) => c.etapa !== "resolvido").sort((x, y) => diasParado(y) - diasParado(x));
+      const resolvidos = cards.filter((c) => c.etapa === "resolvido").slice(0, 30);
+
+      const amarelo = configAlertas.dias_alerta_amarelo, vermelho = configAlertas.dias_alerta_vermelho;
+      const buckets = [
+        { v: "recente",    l: `🟢 Recente (até ${amarelo - 1}d)`,        lista: abertos.filter((c) => diasParado(c) < amarelo) },
+        { v: "esperando",  l: `🟡 Esperando (${amarelo}–${vermelho - 1}d)`, lista: abertos.filter((c) => diasParado(c) >= amarelo && diasParado(c) < vermelho), classe: "kb-coluna--alerta-amarelo" },
+        { v: "urgente",    l: `🔴 Urgente (${vermelho}d+)`,              lista: abertos.filter((c) => diasParado(c) >= vermelho), classe: "kb-coluna--perdidas" },
+      ];
+
+      wrap.innerHTML =
+        buckets.map((b) => colunaHtml({ v: b.v, l: b.l, cards: b.lista }, false, b.classe, true)).join("") +
+        colunaHtml({ v: "resolvido", l: ETAPA_LABEL_ENCERRAMENTO.suporte, cards: resolvidos }, false);
+    }
 
     wrap.querySelectorAll("[data-kb-card]").forEach((el) => {
       el.addEventListener("click", () => abrirDetalhe(el.dataset.kbCard));

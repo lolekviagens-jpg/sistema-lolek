@@ -3904,6 +3904,12 @@ textarea.input {
 .kb-coluna--perdidas .kb-card {
   border-left-color: #c0392b;
 }
+.kb-coluna--alerta-amarelo {
+  background: #4a3a10;
+}
+.kb-coluna--alerta-amarelo .kb-card {
+  border-left-color: #d4a017;
+}
 
 /* Resumo do mês — tabela larga (8 colunas) em telas menores precisa rolar de lado; sem uma
    barra visível, a rolagem passava despercebida e parecia que faltava conteúdo. */
