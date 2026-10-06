@@ -193,13 +193,19 @@
     const wrap = gel("kb-board");
     if (quadroAtivo === "agenda") { wrap.innerHTML = ""; return; }
 
-    const colunaHtml = (col, dropavel, extraClasse) => `
+    // cardsArrastaveis por padrão acompanha "dropavel" (se dá pra soltar aqui, também dá pra
+    // tirar daqui) — só é passado à parte quando a coluna é um destino de encerramento (dá
+    // pra SOLTAR um card nela, mas os cards que já estão lá, já encerrados, não se arrastam).
+    const colunaHtml = (col, dropavel, extraClasse, cardsArrastaveis) => {
+      const podeArrastar = cardsArrastaveis !== undefined ? cardsArrastaveis : dropavel;
+      return `
       <div class="kb-coluna ${extraClasse || ""}" data-kb-coluna="${col.v}">
         <div class="kb-coluna__header">${escHtml(col.l)} <span class="ci-section__count">${col.cards.length}</span></div>
         <div class="kb-coluna__lista" data-kb-drop="${dropavel ? col.v : ""}">
-          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: dropavel })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
+          ${col.cards.length ? col.cards.map((c) => cardChipHtml(c, { draggable: podeArrastar })).join("") : '<div class="table__muted" style="font-size:0.78rem;padding:8px">Vazio</div>'}
         </div>
       </div>`;
+    };
 
     if (quadroAtivo === "vendas") {
       // Vendas continua por etapa (como já era) — só o "encerrado" genérico virou duas filas
@@ -228,18 +234,21 @@
       const fuVendas = fuEncerrados.filter((c) => c.encerramento_tipo === "venda_gerada");
       const fuSemFeedback = fuEncerrados.filter((c) => c.encerramento_tipo === "sem_feedback");
 
+      // Todas as fileiras aceitam soltar um card (inclusive as de encerramento) — pra
+      // Follow-up isso já fecha o card direto (não tem campo obrigatório nenhum); pra
+      // Suporte, abre o modal de encerrar (precisa descrever como foi resolvido).
       wrap.innerHTML = `
         <div class="kb-sub-board">
           <div class="kb-sub-board__titulo">🎧 Suporte</div>
           <div class="kb-sub-board__linha">
             ${suporteEtapas.map((c) => colunaHtml(c, true)).join("")}
-            ${colunaHtml({ v: "resolvido", l: ETAPA_LABEL_ENCERRAMENTO.suporte, cards: suporteResolvidos }, false)}
+            ${colunaHtml({ v: "resolvido", l: ETAPA_LABEL_ENCERRAMENTO.suporte, cards: suporteResolvidos }, true, "", false)}
           </div>
           <div class="kb-sub-board__titulo">🔁 Follow-up</div>
           <div class="kb-sub-board__linha">
             ${fuEtapas.map((c) => colunaHtml(c, true)).join("")}
-            ${colunaHtml({ v: "venda_gerada", l: "✅ Vendas feitas", cards: fuVendas.slice(0, 30) }, false)}
-            ${colunaHtml({ v: "sem_feedback", l: "🔴 Follow up sem feedback", cards: fuSemFeedback.slice(0, 30) }, false, "kb-coluna--perdidas")}
+            ${colunaHtml({ v: "venda_gerada", l: "✅ Vendas feitas", cards: fuVendas.slice(0, 30) }, true, "", false)}
+            ${colunaHtml({ v: "sem_feedback", l: "🔴 Follow up sem feedback", cards: fuSemFeedback.slice(0, 30) }, true, "kb-coluna--perdidas", false)}
           </div>
         </div>`;
     }
@@ -265,6 +274,21 @@
     if (doFila) { abrirClassificar(id); return; } // vindo da fila sempre exige classificar
     const card = cards.find((c) => c.id === id);
     if (!card || card.etapa === etapaAlvo) return;
+
+    // Fechamentos do Follow-up não têm campo obrigatório nenhum — soltar o card já encerra
+    // direto, sem precisar abrir modal.
+    if (card.tipo === "follow_up" && (etapaAlvo === "venda_gerada" || etapaAlvo === "sem_feedback")) {
+      try { await chamarKanban("encerrar_card", { id, encerramento_tipo: etapaAlvo }); await recarregarTudo(); }
+      catch (err) { mostrarErro(err.message); }
+      return;
+    }
+    // Encerrar o Suporte exige descrever como foi resolvido — soltar em "Resolvido" abre o
+    // modal certo já com esse card, em vez de não fazer nada.
+    if (card.quadro === "suporte" && card.tipo !== "follow_up" && etapaAlvo === "resolvido") {
+      abrirEncerrar(card);
+      return;
+    }
+
     try {
       await chamarKanban("atualizar_card", { id, etapa: etapaAlvo });
       await recarregarTudo();
@@ -561,7 +585,10 @@
       <div class="kb-modal-erro" id="kb-encerrar-erro" hidden style="color:#c0392b;font-size:0.82rem"></div>`;
   }
 
-  gel("kb-card-encerrar-btn").addEventListener("click", () => {
+  // Abre o modal de encerrar — tanto pelo botão (dentro do detalhe do card) quanto ao
+  // arrastar o card direto pra uma fileira que exige campo obrigatório pra fechar.
+  function abrirEncerrar(card) {
+    cardAtual = card;
     gel("kb-encerrar-corpo").innerHTML = montarEncerrarHtml(cardAtual);
     if (cardAtual.quadro === "vendas") {
       gel("kb-enc-tipo").addEventListener("change", () => {
@@ -576,7 +603,9 @@
       });
     }
     gel("kb-modal-encerrar").hidden = false;
-  });
+  }
+
+  gel("kb-card-encerrar-btn").addEventListener("click", () => abrirEncerrar(cardAtual));
 
   gel("kb-encerrar-salvar").addEventListener("click", async () => {
     const erroEl = gel("kb-encerrar-erro");
