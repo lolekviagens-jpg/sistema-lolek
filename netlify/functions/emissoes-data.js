@@ -59,12 +59,6 @@
 //   );
 //   alter table venda_emissoes_produtos enable row level security;
 //
-//   -- Marca um produto como cortesia/uso pessoal (ex: passagem emitida pra família, sem
-//   -- lucro real) — some do cálculo de MARGEM no Dashboard de Vendas, mas continua contando
-//   -- em faturamento/lucro total e em todo o resto (produtos vendidos, fornecedor etc), já
-//   -- que ele realmente aconteceu, só não deve distorcer a margem % da empresa.
-//   alter table venda_emissoes_produtos add column if not exists excluir_margem boolean not null default false;
-//
 //   -- Liga cada lançamento de entrada gerado automaticamente ao produto de origem, e
 //   -- libera a nova fonte 'emissao_app' (além de 'planilha_venda' já existente):
 //   alter table financeiro_lancamentos add column emissao_produto_id uuid references venda_emissoes_produtos(id) on delete set null;
@@ -445,7 +439,6 @@ async function criarEmissao(data, secretKey, opcoes) {
         funcionaria: prod.funcionaria || null,
         origem_lead: prod.origem_lead || null,
         data_venda: dataVenda,
-        excluir_margem: !!prod.excluir_margem,
       });
       produtosCriados.push(produtoCriado);
 

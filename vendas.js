@@ -62,11 +62,6 @@
     const leadsPassagem = {};
     const porFornecedorCount = {};
     let faturamento = 0, lucroTotal = 0;
-    // Faturamento/lucro usados só pro cálculo da Margem % — exclui produtos marcados como
-    // cortesia/uso pessoal (ex: passagem emitida pra família, sem lucro real), que senão
-    // distorcem a margem da empresa pra baixo sem representar um problema de verdade.
-    // "faturamento"/"lucroTotal" continuam somando tudo — essa exclusão é só da margem.
-    let faturamentoMargem = 0, lucroMargem = 0;
 
     rows.forEach((r) => {
       const tipo     = TIPO_LABEL[r.tipo] || r.tipo;
@@ -85,10 +80,6 @@
       produtosTotal[tipo] = (produtosTotal[tipo] || 0) + paxCount;
       faturamento += Number(r.valor_venda) || 0;
       lucroTotal  += Number(r.lucro) || 0;
-      if (!r.excluir_margem) {
-        faturamentoMargem += Number(r.valor_venda) || 0;
-        lucroMargem       += Number(r.lucro) || 0;
-      }
 
       if (r.tipo === "passagem") {
         const lead = r.origem_lead || "Não informado";
@@ -107,7 +98,7 @@
       .sort((a, b) => b[1] - a[1])
       .map(([nome, count]) => ({ nome, count }));
 
-    return { porFunc, produtosTotal, leadsPassagem, porFornecedor, faturamento, lucroTotal, faturamentoMargem, lucroMargem, month: mes, year: ano };
+    return { porFunc, produtosTotal, leadsPassagem, porFornecedor, faturamento, lucroTotal, month: mes, year: ano };
   }
 
   // ===== Configuração (metas) =====
@@ -239,11 +230,7 @@
   function renderStats(d) {
     const faturamento = d.faturamento || 0;
     const lucro       = d.lucroTotal  || 0;
-    // Margem usa os totais "sem cortesia" (ver processaEmissoes) — Faturamento e Lucro
-    // continuam mostrando o valor real de tudo que aconteceu.
-    const faturamentoMargem = d.faturamentoMargem || 0;
-    const lucroMargem       = d.lucroMargem || 0;
-    const margem = faturamentoMargem > 0 ? (lucroMargem / faturamentoMargem) * 100 : 0;
+    const margem      = faturamento > 0 ? (lucro / faturamento) * 100 : 0;
 
     gel("vendas-stat-faturamento").textContent = fBRL(faturamento);
     gel("vendas-stat-lucro").textContent       = fBRL(lucro);
@@ -472,19 +459,14 @@
   }
 
   function bucketizarPorMes(rows) {
-    const meses = Array.from({ length: 12 }, () => ({ faturamento: 0, lucro: 0, faturamentoMargem: 0, lucroMargem: 0 }));
+    const meses = Array.from({ length: 12 }, () => ({ faturamento: 0, lucro: 0 }));
     rows.forEach((r) => {
       const m = Number((r.data_venda || "").slice(5, 7)) - 1;
       if (m < 0 || m > 11) return;
       meses[m].faturamento += Number(r.valor_venda) || 0;
       meses[m].lucro += Number(r.lucro) || 0;
-      // Mesma exclusão de cortesia/uso pessoal do Dashboard — só afeta a Margem %.
-      if (!r.excluir_margem) {
-        meses[m].faturamentoMargem += Number(r.valor_venda) || 0;
-        meses[m].lucroMargem += Number(r.lucro) || 0;
-      }
     });
-    return meses.map((m) => ({ ...m, margem: m.faturamentoMargem > 0 ? (m.lucroMargem / m.faturamentoMargem) * 100 : 0 }));
+    return meses.map((m) => ({ ...m, margem: m.faturamento > 0 ? (m.lucro / m.faturamento) * 100 : 0 }));
   }
 
   async function buscarAnoBucketizado(ano) {
@@ -578,9 +560,7 @@
       const grupo = meses.slice(t * 3, t * 3 + 3);
       const faturamento = grupo.reduce((s, m) => s + m.faturamento, 0);
       const lucro       = grupo.reduce((s, m) => s + m.lucro, 0);
-      const faturamentoMargem = grupo.reduce((s, m) => s + m.faturamentoMargem, 0);
-      const lucroMargem       = grupo.reduce((s, m) => s + m.lucroMargem, 0);
-      return { faturamento, lucro, margem: faturamentoMargem > 0 ? (lucroMargem / faturamentoMargem) * 100 : 0 };
+      return { faturamento, lucro, margem: faturamento > 0 ? (lucro / faturamento) * 100 : 0 };
     });
     const melhorLucro = Math.max(...trimestres.map((t) => t.lucro));
 

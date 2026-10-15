@@ -978,10 +978,6 @@
                 <span class="field__label">Empresa ★</span>
                 <select class="input emi-sel-empresa" id="emi-prod-${prod.id}-empresa_id">${montarOptionsEmpresa(null)}</select>
               </label>
-              <label class="field field--full" style="display:flex;align-items:center;gap:8px;flex-direction:row">
-                <input type="checkbox" id="emi-prod-${prod.id}-excluir-margem" />
-                <span class="field__label" style="margin:0">Cortesia / uso pessoal — não contar na margem do Dashboard</span>
-              </label>
             </div>
 
             <div class="orc-extras-label" style="margin-top:10px">Funcionária responsável</div>
@@ -1494,7 +1490,6 @@
         // Só existe quando o produto veio de uma edição (ver editarEmissao) — numa venda
         // nova fica undefined e o backend usa a data de hoje, como sempre.
         data_venda: prod.data_venda || undefined,
-        excluir_margem: !!gel(`emi-prod-${prod.id}-excluir-margem`)?.checked,
       };
     });
 
@@ -1754,8 +1749,6 @@
       }
       const empresaEl = gel(`emi-prod-${novoProdId}-empresa_id`);
       if (empresaEl && p.dados && p.dados.empresa_id) empresaEl.value = p.dados.empresa_id;
-      const margemEl = gel(`emi-prod-${novoProdId}-excluir-margem`);
-      if (margemEl) margemEl.checked = !!p.excluir_margem;
     });
 
     gel("emi-editando-aviso").hidden = false;
