@@ -150,6 +150,7 @@
     sel.hidden = !souAdmin();
     gel("kb-config-btn").hidden = !souAdmin();
     gel("kb-digisac-log-btn").hidden = !souAdmin();
+    gel("kb-duplicados-btn").hidden = !souAdmin();
     if (!souAdmin()) return;
     const atual = sel.value;
     sel.innerHTML = '<option value="">Todas as vendedoras</option>' +
@@ -692,6 +693,46 @@
           <pre style="white-space:pre-wrap;word-break:break-word;font-size:0.76rem;background:var(--navy-deep);color:#dbe4f0;padding:8px;border-radius:6px;margin-top:6px">${escHtml(JSON.stringify(l.corpo, null, 2))}</pre>
         </div>`).join("") : '<div class="empty-state empty-state--compact"><p>Nada recebido ainda — envie uma mensagem de teste no WhatsApp da conexão.</p></div>';
     } catch (err) { lista.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
+  });
+
+  // ===== Modal: verificação de duplicados (admin) =====
+  function cardLinhaHtml(c) {
+    return `${escHtml(c.cliente_nome || "Sem nome")} — ${escHtml(c.quadro || "fila")}/${escHtml(c.etapa || "—")}` +
+      (c.digisac_ticket_id ? ` — ticket ${escHtml(c.digisac_ticket_id)}` : "") +
+      ` — criado ${fDataHora(c.criado_em)}`;
+  }
+  gel("kb-duplicados-btn").addEventListener("click", async () => {
+    const corpo = gel("kb-duplicados-corpo");
+    corpo.innerHTML = "Verificando...";
+    gel("kb-modal-duplicados").hidden = false;
+    try {
+      const r = await chamarKanban("diagnosticar_duplicados");
+      const blocoPessoa = r.porPessoa.length
+        ? r.porPessoa.map((lista) => `
+          <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px">
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px">${escHtml(lista[0].cliente_nome || "Sem nome")} ${lista[0].cliente_telefone ? "— " + escHtml(lista[0].cliente_telefone) : ""} (${lista.length} cards ativos ao mesmo tempo)</div>
+            ${lista.map((c) => `<div class="table__muted" style="font-size:0.78rem">${cardLinhaHtml(c)}</div>`).join("")}
+          </div>`).join("")
+        : '<div class="empty-state empty-state--compact"><p>Nenhuma pessoa com mais de um card ativo ao mesmo tempo.</p></div>';
+
+      const blocoTicket = r.porTicket.length
+        ? r.porTicket.map((lista) => `
+          <div style="margin-bottom:12px;border:1px solid #c0392b;border-radius:8px;padding:10px">
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px">Ticket ${escHtml(lista[0].digisac_ticket_id)} virou ${lista.length} cards</div>
+            ${lista.map((c) => `<div class="table__muted" style="font-size:0.78rem">${cardLinhaHtml(c)}</div>`).join("")}
+          </div>`).join("")
+        : '<div class="empty-state empty-state--compact"><p>Nenhum ticket do Digisac virou mais de um card — a proteção contra reenvio está funcionando.</p></div>';
+
+      corpo.innerHTML = `
+        <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
+          "Mesma pessoa com mais de um card ativo" é o que de fato conta como duplicação — card já
+          encerrado/resolvido ou arquivado não entra nessa conta (histórico normal, não duplicado).
+        </div>
+        <div style="font-weight:600;margin-bottom:8px">👤 Mesma pessoa com mais de um card ativo</div>
+        ${blocoPessoa}
+        <div style="font-weight:600;margin:16px 0 8px">📡 Mesmo ticket do Digisac virando mais de um card</div>
+        ${blocoTicket}`;
+    } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
   });
 
   // ===== Fechar modais =====

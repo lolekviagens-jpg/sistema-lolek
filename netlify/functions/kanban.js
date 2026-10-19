@@ -191,6 +191,7 @@ exports.handler = async (event) => {
       case "obter_config":           return json(200, await obterConfig(secretKey));
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
+      case "diagnosticar_duplicados": return json(200, await diagnosticarDuplicados(sessao, secretKey));
       case "resumo_mensal":          return json(200, await resumoMensal(d, sessao, secretKey));
       case "metricas_atendimento":   return json(200, await metricasAtendimento(d, sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
@@ -504,6 +505,42 @@ async function listarDigisacLog(sessao, secretKey) {
   if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
   const rows = await supabaseRest("/kanban_digisac_log?select=*&order=recebido_em.desc&limit=20", "GET", secretKey);
   return rows || [];
+}
+
+// Verifica duas formas de duplicação possíveis — só admin, só leitura:
+//  1) a MESMA pessoa (nome+telefone) com mais de um card "ativo" (não arquivado, não
+//     encerrado/resolvido) ao mesmo tempo — isso sim seria duplicação de verdade.
+//  2) o mesmo ticket do Digisac virando mais de um card — indicaria falha na proteção
+//     contra reenvio (ver tratarTicketCriado em digisac-webhook.js).
+// Tudo calculado em JS a partir dos cards (tabela ainda pequena, sem necessidade de SQL).
+async function diagnosticarDuplicados(sessao, secretKey) {
+  if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
+
+  const ativos = await supabaseRest(
+    "/kanban_cards?select=id,cliente_nome,cliente_telefone,quadro,etapa,tipo,digisac_ticket_id,criado_em" +
+      "&arquivado=eq.false&etapa=not.in.(encerrado,resolvido)&order=criado_em.asc",
+    "GET", secretKey
+  );
+
+  const porPessoaMap = {};
+  (ativos || []).forEach((c) => {
+    // Pessoa sem nome nem telefone não dá pra agrupar com segurança — ignora (não é
+    // possível afirmar que é a mesma pessoa só porque os dois campos estão vazios).
+    if (!c.cliente_nome && !c.cliente_telefone) return;
+    const chave = (c.cliente_nome || "").trim().toLowerCase() + "|" + (c.cliente_telefone || "").trim();
+    (porPessoaMap[chave] || (porPessoaMap[chave] = [])).push(c);
+  });
+  const porPessoa = Object.values(porPessoaMap).filter((lista) => lista.length > 1);
+
+  const comTicket = await supabaseRest(
+    "/kanban_cards?select=id,cliente_nome,digisac_ticket_id,criado_em&digisac_ticket_id=not.is.null&order=criado_em.asc",
+    "GET", secretKey
+  );
+  const porTicketMap = {};
+  (comTicket || []).forEach((c) => (porTicketMap[c.digisac_ticket_id] || (porTicketMap[c.digisac_ticket_id] = [])).push(c));
+  const porTicket = Object.values(porTicketMap).filter((lista) => lista.length > 1);
+
+  return { porPessoa, porTicket };
 }
 
 // Resumo do mês por funcionária — um prévia leve da Fase 4 (painel de métricas completo vem
