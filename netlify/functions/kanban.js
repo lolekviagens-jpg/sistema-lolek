@@ -192,6 +192,7 @@ exports.handler = async (event) => {
       case "salvar_config":          return json(200, await salvarConfig(d, sessao, secretKey));
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
       case "diagnosticar_duplicados": return json(200, await diagnosticarDuplicados(sessao, secretKey));
+      case "excluir_card":           return json(200, await excluirCard(d, sessao, secretKey));
       case "resumo_mensal":          return json(200, await resumoMensal(d, sessao, secretKey));
       case "metricas_atendimento":   return json(200, await metricasAtendimento(d, sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
@@ -517,7 +518,7 @@ async function diagnosticarDuplicados(sessao, secretKey) {
   if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
 
   const ativos = await supabaseRest(
-    "/kanban_cards?select=id,cliente_nome,cliente_telefone,quadro,etapa,tipo,digisac_ticket_id,criado_em" +
+    "/kanban_cards?select=id,cliente_nome,cliente_telefone,quadro,etapa,tipo,digisac_ticket_id,responsavel_id,criado_em,atualizado_em" +
       "&arquivado=eq.false&etapa=not.in.(encerrado,resolvido)&order=criado_em.asc",
     "GET", secretKey
   );
@@ -541,6 +542,18 @@ async function diagnosticarDuplicados(sessao, secretKey) {
   const porTicket = Object.values(porTicketMap).filter((lista) => lista.length > 1);
 
   return { porPessoa, porTicket };
+}
+
+// Apaga um card definitivamente (cascata apaga os eventos dele também) — só admin, usado
+// pela tela de "Verificar duplicados" pra remover a cópia errada depois de ela confirmar
+// qual card é o certo pra manter. Sem recuperação — por isso só admin, e a tela pede
+// confirmação antes de chamar isso.
+async function excluirCard(d, sessao, secretKey) {
+  if (!sessao.admin) throw new Error("Só a administradora pode apagar um card.");
+  if (!d.id) throw new Error("id é obrigatório");
+  await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(d.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+  await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "excluir", area: "kanban", descricao: "Apagou card duplicado", registroId: d.id });
+  return { ok: true };
 }
 
 // Resumo do mês por funcionária — um prévia leve da Fase 4 (painel de métricas completo vem

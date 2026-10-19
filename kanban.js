@@ -696,22 +696,29 @@
   });
 
   // ===== Modal: verificação de duplicados (admin) =====
-  function cardLinhaHtml(c) {
-    return `${escHtml(c.cliente_nome || "Sem nome")} — ${escHtml(c.quadro || "fila")}/${escHtml(c.etapa || "—")}` +
+  function cardLinhaHtml(c, comBotaoApagar) {
+    const respNome = c.responsavel_id ? (colegas.find((co) => co.id === c.responsavel_id) || {}).nome : null;
+    const detalhes = `${escHtml(c.quadro || "fila")}/${escHtml(c.etapa || "—")}` +
+      (respNome ? ` — com ${escHtml(respNome)}` : " — sem dono") +
       (c.digisac_ticket_id ? ` — ticket ${escHtml(c.digisac_ticket_id)}` : "") +
       ` — criado ${fDataHora(c.criado_em)}`;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:4px 0">
+        <div style="font-size:0.78rem"><strong>${escHtml(c.cliente_nome || "Sem nome")}</strong> — ${detalhes}</div>
+        ${comBotaoApagar ? `<button type="button" class="btn btn--ghost btn--sm" data-kb-dup-apagar="${c.id}" style="color:#c0392b;flex:0 0 auto">🗑 Apagar este</button>` : ""}
+      </div>`;
   }
-  gel("kb-duplicados-btn").addEventListener("click", async () => {
+
+  async function carregarDuplicados() {
     const corpo = gel("kb-duplicados-corpo");
     corpo.innerHTML = "Verificando...";
-    gel("kb-modal-duplicados").hidden = false;
     try {
       const r = await chamarKanban("diagnosticar_duplicados");
       const blocoPessoa = r.porPessoa.length
         ? r.porPessoa.map((lista) => `
           <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px">
             <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px">${escHtml(lista[0].cliente_nome || "Sem nome")} ${lista[0].cliente_telefone ? "— " + escHtml(lista[0].cliente_telefone) : ""} (${lista.length} cards ativos ao mesmo tempo)</div>
-            ${lista.map((c) => `<div class="table__muted" style="font-size:0.78rem">${cardLinhaHtml(c)}</div>`).join("")}
+            ${lista.map((c) => cardLinhaHtml(c, true)).join("")}
           </div>`).join("")
         : '<div class="empty-state empty-state--compact"><p>Nenhuma pessoa com mais de um card ativo ao mesmo tempo.</p></div>';
 
@@ -719,7 +726,7 @@
         ? r.porTicket.map((lista) => `
           <div style="margin-bottom:12px;border:1px solid #c0392b;border-radius:8px;padding:10px">
             <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px">Ticket ${escHtml(lista[0].digisac_ticket_id)} virou ${lista.length} cards</div>
-            ${lista.map((c) => `<div class="table__muted" style="font-size:0.78rem">${cardLinhaHtml(c)}</div>`).join("")}
+            ${lista.map((c) => cardLinhaHtml(c, true)).join("")}
           </div>`).join("")
         : '<div class="empty-state empty-state--compact"><p>Nenhum ticket do Digisac virou mais de um card — a proteção contra reenvio está funcionando.</p></div>';
 
@@ -727,12 +734,27 @@
         <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
           "Mesma pessoa com mais de um card ativo" é o que de fato conta como duplicação — card já
           encerrado/resolvido ou arquivado não entra nessa conta (histórico normal, não duplicado).
+          Confira qual card tem mais informação (dono, histórico) antes de apagar o outro — apagar
+          remove o card inteiro e não dá pra desfazer.
         </div>
         <div style="font-weight:600;margin-bottom:8px">👤 Mesma pessoa com mais de um card ativo</div>
         ${blocoPessoa}
         <div style="font-weight:600;margin:16px 0 8px">📡 Mesmo ticket do Digisac virando mais de um card</div>
         ${blocoTicket}`;
+
+      corpo.querySelectorAll("[data-kb-dup-apagar]").forEach((btn) => btn.addEventListener("click", async () => {
+        if (!confirm("Apagar este card definitivamente? Remove todo o histórico dele e NÃO dá pra desfazer.")) return;
+        try {
+          await chamarKanban("excluir_card", { id: btn.dataset.kbDupApagar });
+          await carregarDuplicados();
+          await recarregarTudo();
+        } catch (err) { alert(err.message); }
+      }));
     } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
+  }
+  gel("kb-duplicados-btn").addEventListener("click", () => {
+    gel("kb-modal-duplicados").hidden = false;
+    carregarDuplicados();
   });
 
   // ===== Fechar modais =====
