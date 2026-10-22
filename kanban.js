@@ -751,7 +751,48 @@
         } catch (err) { alert(err.message); }
       }));
     } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
+    gel("kb-duplicados-limpar-btn").hidden = true;
   }
+
+  // Limpeza automática — primeiro mostra uma PRÉVIA (quem seria mantido/apagado em cada
+  // grupo, sem apagar nada ainda); só apaga de verdade depois de confirmar vendo essa prévia.
+  gel("kb-duplicados-preview-btn").addEventListener("click", async () => {
+    const corpo = gel("kb-duplicados-corpo");
+    corpo.innerHTML = "Calculando prévia...";
+    gel("kb-duplicados-limpar-btn").hidden = true;
+    try {
+      const r = await chamarKanban("limpar_duplicados_automatico", { confirmar: false });
+      if (r.gruposTratados === 0) {
+        corpo.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhum grupo de duplicados pra limpar.</p></div>';
+        return;
+      }
+      corpo.innerHTML = `
+        <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
+          Regra: entre os cards do mesmo grupo, mantém o que já foi classificado (em vez do que
+          ainda está na fila), com dono (em vez de sem dono), e mais recentemente atualizado — o
+          resto é apagado. Nada foi apagado ainda, isso é só a prévia.
+        </div>
+        ${r.resumo.map((g) => `
+          <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px">
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:4px">${escHtml(g.pessoa)}</div>
+            <div style="font-size:0.78rem;color:#1f8a4c">✅ Mantém: ${g.manteve.quadro || "fila"}/${g.manteve.etapa || "—"}</div>
+            ${g.apagou.map((a) => `<div style="font-size:0.78rem;color:#c0392b">🗑 Apaga: ${a.quadro || "fila"}/${a.etapa || "—"}</div>`).join("")}
+          </div>`).join("")}`;
+      gel("kb-duplicados-limpar-btn").hidden = false;
+      gel("kb-duplicados-limpar-btn").onclick = async () => {
+        if (!confirm(`Confirma apagar os duplicados de ${r.gruposTratados} pessoa(s), seguindo a regra acima? Não dá pra desfazer.`)) return;
+        gel("kb-duplicados-limpar-btn").disabled = true;
+        try {
+          await chamarKanban("limpar_duplicados_automatico", { confirmar: true });
+          await carregarDuplicados();
+          await recarregarTudo();
+          alert("Duplicados apagados.");
+        } catch (err) { alert(err.message); }
+        finally { gel("kb-duplicados-limpar-btn").disabled = false; }
+      };
+    } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
+  });
+
   gel("kb-duplicados-btn").addEventListener("click", () => {
     gel("kb-modal-duplicados").hidden = false;
     carregarDuplicados();

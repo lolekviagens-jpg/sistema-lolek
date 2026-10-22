@@ -193,6 +193,7 @@ exports.handler = async (event) => {
       case "listar_digisac_log":     return json(200, await listarDigisacLog(sessao, secretKey));
       case "diagnosticar_duplicados": return json(200, await diagnosticarDuplicados(sessao, secretKey));
       case "excluir_card":           return json(200, await excluirCard(d, sessao, secretKey));
+      case "limpar_duplicados_automatico": return json(200, await limparDuplicadosAutomatico(d, sessao, secretKey));
       case "resumo_mensal":          return json(200, await resumoMensal(d, sessao, secretKey));
       case "metricas_atendimento":   return json(200, await metricasAtendimento(d, sessao, secretKey));
       default: return json(400, { error: "Ação desconhecida: " + action });
@@ -508,39 +509,45 @@ async function listarDigisacLog(sessao, secretKey) {
   return rows || [];
 }
 
-// Verifica duas formas de duplicação possíveis — só admin, só leitura:
+const CAMPOS_DUPLICADOS = "id,cliente_nome,cliente_telefone,quadro,etapa,tipo,digisac_ticket_id,responsavel_id,criado_em,atualizado_em";
+
+// Monta os dois agrupamentos de possível duplicação, reaproveitado tanto pelo diagnóstico
+// (só mostra) quanto pela limpeza automática (decide e apaga):
 //  1) a MESMA pessoa (nome+telefone) com mais de um card "ativo" (não arquivado, não
 //     encerrado/resolvido) ao mesmo tempo — isso sim seria duplicação de verdade.
 //  2) o mesmo ticket do Digisac virando mais de um card — indicaria falha na proteção
 //     contra reenvio (ver tratarTicketCriado em digisac-webhook.js).
-// Tudo calculado em JS a partir dos cards (tabela ainda pequena, sem necessidade de SQL).
-async function diagnosticarDuplicados(sessao, secretKey) {
-  if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
-
+async function listarGruposDuplicados(secretKey) {
   const ativos = await supabaseRest(
-    "/kanban_cards?select=id,cliente_nome,cliente_telefone,quadro,etapa,tipo,digisac_ticket_id,responsavel_id,criado_em,atualizado_em" +
-      "&arquivado=eq.false&etapa=not.in.(encerrado,resolvido)&order=criado_em.asc",
+    "/kanban_cards?select=" + CAMPOS_DUPLICADOS + "&arquivado=eq.false&etapa=not.in.(encerrado,resolvido)&order=criado_em.asc",
     "GET", secretKey
   );
-
   const porPessoaMap = {};
   (ativos || []).forEach((c) => {
     // Pessoa sem nome nem telefone não dá pra agrupar com segurança — ignora (não é
     // possível afirmar que é a mesma pessoa só porque os dois campos estão vazios).
     if (!c.cliente_nome && !c.cliente_telefone) return;
-    const chave = (c.cliente_nome || "").trim().toLowerCase() + "|" + (c.cliente_telefone || "").trim();
+    const chave = "pessoa:" + (c.cliente_nome || "").trim().toLowerCase() + "|" + (c.cliente_telefone || "").trim();
     (porPessoaMap[chave] || (porPessoaMap[chave] = [])).push(c);
   });
-  const porPessoa = Object.values(porPessoaMap).filter((lista) => lista.length > 1);
 
   const comTicket = await supabaseRest(
-    "/kanban_cards?select=id,cliente_nome,digisac_ticket_id,criado_em&digisac_ticket_id=not.is.null&order=criado_em.asc",
+    "/kanban_cards?select=" + CAMPOS_DUPLICADOS + "&digisac_ticket_id=not.is.null&order=criado_em.asc",
     "GET", secretKey
   );
   const porTicketMap = {};
-  (comTicket || []).forEach((c) => (porTicketMap[c.digisac_ticket_id] || (porTicketMap[c.digisac_ticket_id] = [])).push(c));
-  const porTicket = Object.values(porTicketMap).filter((lista) => lista.length > 1);
+  (comTicket || []).forEach((c) => (porTicketMap["ticket:" + c.digisac_ticket_id] || (porTicketMap["ticket:" + c.digisac_ticket_id] = [])).push(c));
 
+  return {
+    porPessoa: Object.values(porPessoaMap).filter((lista) => lista.length > 1),
+    porTicket: Object.values(porTicketMap).filter((lista) => lista.length > 1),
+    todosGrupos: Object.values(porPessoaMap).concat(Object.values(porTicketMap)).filter((lista) => lista.length > 1),
+  };
+}
+
+async function diagnosticarDuplicados(sessao, secretKey) {
+  if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
+  const { porPessoa, porTicket } = await listarGruposDuplicados(secretKey);
   return { porPessoa, porTicket };
 }
 
@@ -554,6 +561,62 @@ async function excluirCard(d, sessao, secretKey) {
   await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(d.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
   await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "excluir", area: "kanban", descricao: "Apagou card duplicado", registroId: d.id });
   return { ok: true };
+}
+
+// Limpeza automática em lote — mantém UM card por grupo de duplicados, apaga o resto. Regra
+// de qual manter, nessa ordem de prioridade:
+//   1) se algum já foi classificado (quadro preenchido) e outro ainda está na fila
+//      (quadro=null, nunca classificado), mantém o classificado — o da fila não tem
+//      informação de caso nenhuma preenchida, não há nada a perder apagando ele.
+//   2) entre os classificados, prioriza quem já tem responsável (dona do atendimento).
+//   3) empate: mantém o mais recentemente atualizado (mais provável de ser o card em uso).
+//   4) empate final: mantém o mais antigo (mais tempo de histórico acumulado).
+// Só admin — e mesmo assim só executa de verdade com d.confirmar=true (sem isso, devolve
+// a prévia de quem seria mantido/apagado em cada grupo, sem apagar nada).
+async function limparDuplicadosAutomatico(d, sessao, secretKey) {
+  if (!sessao.admin) throw new Error("Só a administradora pode fazer isso.");
+
+  const { todosGrupos } = await listarGruposDuplicados(secretKey);
+  const idsJaTratados = new Set();
+  const resumo = [];
+
+  for (const grupo of todosGrupos) {
+    const restante = grupo.filter((c) => !idsJaTratados.has(c.id));
+    if (restante.length < 2) continue;
+
+    const classificados = restante.filter((c) => c.quadro);
+    const candidatos = classificados.length > 0 ? classificados : restante;
+    const comResponsavel = candidatos.filter((c) => c.responsavel_id);
+    const pool = comResponsavel.length > 0 ? comResponsavel : candidatos;
+
+    pool.sort((a, b) => {
+      const porAtualizacao = new Date(b.atualizado_em || b.criado_em) - new Date(a.atualizado_em || a.criado_em);
+      if (porAtualizacao !== 0) return porAtualizacao;
+      return new Date(a.criado_em) - new Date(b.criado_em); // empate final: mais antigo primeiro
+    });
+    const manter = pool[0];
+    const apagar = restante.filter((c) => c.id !== manter.id);
+
+    restante.forEach((c) => idsJaTratados.add(c.id));
+    resumo.push({
+      pessoa: manter.cliente_nome || manter.cliente_telefone || "(sem nome)",
+      manteve: { id: manter.id, quadro: manter.quadro, etapa: manter.etapa, responsavel_id: manter.responsavel_id },
+      apagou: apagar.map((c) => ({ id: c.id, quadro: c.quadro, etapa: c.etapa, responsavel_id: c.responsavel_id })),
+    });
+
+    if (d.confirmar) {
+      for (const c of apagar) {
+        await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(c.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+        await registrarAtividade(secretKey, {
+          usuarioNome: sessao.nome, acao: "excluir", area: "kanban",
+          descricao: "Limpeza automática de duplicados — apagou card de " + (manter.cliente_nome || manter.cliente_telefone || "—"),
+          registroId: c.id,
+        });
+      }
+    }
+  }
+
+  return { executado: !!d.confirmar, gruposTratados: resumo.length, resumo };
 }
 
 // Resumo do mês por funcionária — um prévia leve da Fase 4 (painel de métricas completo vem
