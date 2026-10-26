@@ -93,6 +93,7 @@ const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_p
 
 const AÇÕES_QUE_PRECISAM_LOGIN = new Set([
   "criar_emissao", "editar_emissao", "excluir_emissao", "excluir_produto", "criar_fornecedor",
+  "diagnosticar_versoes_antigas",
 ]);
 
 const TIPO_LABEL = {
@@ -275,6 +276,23 @@ async function executarAcao(action, data, secretKey, sessao) {
       }
       await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "emissao", descricao: "Produto excluído da emissão", registroId: data.id });
       return { ok: true };
+    }
+
+    // Acha "versões fantasmas" de uma edição — quando editar_emissao cria a versão corrigida
+    // mas por algum motivo falha ao apagar a antiga depois (ver aviso em editar_emissao acima),
+    // as duas ficam com o MESMO criado_em (a edição propositalmente preserva essa data, pra não
+    // pular pro topo da lista). Isso faz o lucro do Dashboard (soma tudo que está no banco)
+    // ficar maior que o da planilha de backup (que teve a linha antiga removida corretamente).
+    // Só admin, só leitura — não apaga nada, só aponta onde olhar.
+    case "diagnosticar_versoes_antigas": {
+      if (!sessao.admin) throw new Error("Só a administradora pode ver isso.");
+      const rows = await supabaseRest(
+        "/venda_emissoes?select=id,destino,data_ida,criado_em,venda_emissoes_produtos(tipo,valor_venda,lucro,data_venda)&order=criado_em.desc",
+        "GET", secretKey
+      );
+      const porCriadoEm = {};
+      (rows || []).forEach((e) => (porCriadoEm[e.criado_em] || (porCriadoEm[e.criado_em] = [])).push(e));
+      return Object.values(porCriadoEm).filter((lista) => lista.length > 1);
     }
 
     case "listar_produtos_periodo": {

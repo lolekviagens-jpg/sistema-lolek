@@ -319,6 +319,45 @@
     return json;
   }
 
+  // Acha emissões que ficaram com uma versão antiga esquecida depois de uma edição (ver
+  // comentário em "diagnosticar_versoes_antigas", em netlify/functions/emissoes-data.js) —
+  // isso faz o lucro bruto do Dashboard contar a emissão em dobro (antiga + nova), enquanto
+  // a planilha de backup só tem a nova, causando divergência entre os dois. Só leitura.
+  async function verificarVersoesDuplicadas() {
+    const corpo = gel("emi-duplicadas-corpo");
+    corpo.innerHTML = "Verificando...";
+    gel("emi-modal-duplicadas").hidden = false;
+    try {
+      const grupos = await chamarEmissoes("diagnosticar_versoes_antigas");
+      if (!grupos.length) {
+        corpo.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhuma versão duplicada encontrada.</p></div>';
+        return;
+      }
+      corpo.innerHTML = `
+        <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
+          Cada grupo abaixo são emissões com a MESMA data de criação — isso só acontece quando
+          uma edição cria a versão corrigida mas falha ao apagar a antiga depois. Abra cada uma em
+          "Por viagem", compare os produtos, e apague a que estiver errada pelo botão de excluir
+          que já existe lá.
+        </div>
+        ${grupos.map((lista) => `
+          <div style="margin-bottom:12px;border:1px solid #c0392b;border-radius:8px;padding:10px">
+            <div style="font-weight:600;font-size:0.85rem;margin-bottom:6px">Criadas em ${fDataHoraSimples(lista[0].criado_em)} (${lista.length} versões)</div>
+            ${lista.map((e) => {
+              const produtos = e.venda_emissoes_produtos || [];
+              const lucroSoma = produtos.reduce((s, p) => s + (Number(p.lucro) || 0), 0);
+              return `<div style="font-size:0.78rem;margin-bottom:4px">
+                <strong>${escHtml(e.destino || "Sem destino")}</strong> — ida ${fData(e.data_ida)} —
+                ${produtos.length} produto(s), lucro somado ${fBRL(lucroSoma)} — id ${escHtml(e.id)}
+              </div>`;
+            }).join("")}
+          </div>`).join("")}`;
+    } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
+  }
+  function fDataHoraSimples(iso) {
+    return iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+  }
+
   async function carregarClientes() {
     try {
       const resp = await fetch("/.netlify/functions/clientes-data");
@@ -2423,6 +2462,12 @@
     gel("emi-salvar-btn").addEventListener("click", salvarEmissao);
     gel("emi-atualizar-btn").addEventListener("click", async () => { await carregarListaEmissoes(); renderListaEmissoes(); });
     gel("emi-cancelar-edicao-btn").addEventListener("click", cancelarEdicao);
+
+    gel("emi-duplicadas-btn").hidden = !(window.LolekAuth && window.LolekAuth.admin());
+    gel("emi-duplicadas-btn").addEventListener("click", verificarVersoesDuplicadas);
+    document.querySelectorAll("[data-emi-fechar]").forEach((btn) => {
+      btn.addEventListener("click", () => { gel(btn.dataset.emiFechar).hidden = true; });
+    });
 
     gel("emi-comprovante-nova-btn").addEventListener("click", () => {
       gel("emi-comprovante-wrap").hidden = true;

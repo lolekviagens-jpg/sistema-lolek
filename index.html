@@ -578,11 +578,23 @@
           </select>
           <input class="input" id="emi-filtro-nome" type="text" placeholder="🔍 Nome do passageiro" style="max-width:220px" />
           <span class="toolbar__info" id="emi-count" style="margin-left:auto"></span>
+          <button class="btn btn--ghost btn--sm" id="emi-duplicadas-btn" type="button" hidden>🔍 Verificar versões duplicadas</button>
           <button class="btn btn--ghost btn--icon" id="emi-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
         </div>
         <div id="emi-lista-wrap"></div>
 
       </section>
+
+      <!-- Modal: versões antigas esquecidas de uma edição (admin) -->
+      <div class="modal" id="emi-modal-duplicadas" hidden>
+        <div class="modal__backdrop"></div>
+        <div class="modal__dialog" style="max-width:680px">
+          <div class="modal__header"><span class="modal__title">Versões duplicadas (edição que não limpou a antiga)</span><button class="modal__close" data-emi-fechar="emi-modal-duplicadas">✕</button></div>
+          <div style="padding:0 24px 20px;max-height:70vh;overflow:auto">
+            <div id="emi-duplicadas-corpo"></div>
+          </div>
+        </div>
+      </div>
 
       <!-- ===== PAINEL CLIENTES ===== -->
       <section class="panel" data-panel="clientes">
