@@ -336,9 +336,9 @@
       corpo.innerHTML = `
         <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
           Cada grupo abaixo são emissões com a MESMA data de criação — isso só acontece quando
-          uma edição cria a versão corrigida mas falha ao apagar a antiga depois. Abra cada uma em
-          "Por viagem", compare os produtos, e apague a que estiver errada pelo botão de excluir
-          que já existe lá.
+          uma edição cria a versão corrigida mas falha ao apagar a antiga depois. Se as duas
+          tiverem os mesmos dados (destino, lucro), é seguro apagar qualquer uma das duas — são
+          cópias idênticas. Se os dados forem diferentes, compare em "Por viagem" antes de apagar.
         </div>
         ${grupos.map((lista) => `
           <div style="margin-bottom:12px;border:1px solid #c0392b;border-radius:8px;padding:10px">
@@ -346,12 +346,23 @@
             ${lista.map((e) => {
               const produtos = e.venda_emissoes_produtos || [];
               const lucroSoma = produtos.reduce((s, p) => s + (Number(p.lucro) || 0), 0);
-              return `<div style="font-size:0.78rem;margin-bottom:4px">
-                <strong>${escHtml(e.destino || "Sem destino")}</strong> — ida ${fData(e.data_ida)} —
-                ${produtos.length} produto(s), lucro somado ${fBRL(lucroSoma)} — id ${escHtml(e.id)}
+              return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:0.78rem;margin-bottom:4px">
+                <div><strong>${escHtml(e.destino || "Sem destino")}</strong> — ida ${fData(e.data_ida)} —
+                ${produtos.length} produto(s), lucro somado ${fBRL(lucroSoma)} — id ${escHtml(e.id)}</div>
+                <button type="button" class="btn btn--ghost btn--sm" data-emi-dup-apagar="${e.id}" style="color:#c0392b;flex:0 0 auto">🗑 Apagar esta</button>
               </div>`;
             }).join("")}
           </div>`).join("")}`;
+
+      corpo.querySelectorAll("[data-emi-dup-apagar]").forEach((btn) => btn.addEventListener("click", async () => {
+        if (!confirm("Apagar esta emissão definitivamente? Remove todos os produtos dela e o lançamento no Financeiro. NÃO dá pra desfazer.")) return;
+        try {
+          await chamarEmissoes("excluir_emissao", { id: btn.dataset.emiDupApagar });
+          await verificarVersoesDuplicadas();
+          await carregarListaEmissoes();
+          renderListaEmissoes();
+        } catch (err) { alert(err.message); }
+      }));
     } catch (err) { corpo.innerHTML = `<div class="notice notice--error">${escHtml(err.message)}</div>`; }
   }
   function fDataHoraSimples(iso) {
