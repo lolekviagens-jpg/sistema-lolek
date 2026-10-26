@@ -181,6 +181,12 @@ async function executarAcao(action, data, secretKey, sessao) {
 
     case "excluir_emissao": {
       if (!data.id) throw new Error("id é obrigatório");
+      // Remove da planilha de backup AS LINHAS dessa emissão ANTES de apagar do banco —
+      // depois de apagada, removerVersaoAntigaDaPlanilha não acha mais os produtos pra
+      // montar a chave de busca. Sem isso, toda exclusão deixava a linha pra sempre na
+      // planilha (ela nunca soube que a venda tinha sido apagada), inflando o total dela
+      // acima do Dashboard com o tempo.
+      await removerVersaoAntigaDaPlanilha(data.id, secretKey);
       const produtos = await supabaseRest(
         "/venda_emissoes_produtos?emissao_id=eq." + encodeURIComponent(data.id) + "&select=id",
         "GET", secretKey
@@ -257,10 +263,14 @@ async function executarAcao(action, data, secretKey, sessao) {
     case "excluir_produto": {
       if (!data.id) throw new Error("id é obrigatório");
       const [produto] = await supabaseRest(
-        "/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id) + "&select=id,emissao_id",
+        "/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id) + "&select=*",
         "GET", secretKey
       );
       if (!produto) throw new Error("Produto não encontrado");
+
+      // Mesmo motivo do excluir_emissao — sem isso, a linha desse produto ficava pra
+      // sempre na planilha de backup mesmo depois de excluído do sistema.
+      await removerProdutoDaPlanilha(produto, secretKey);
 
       await supabaseRest("/financeiro_lancamentos?emissao_produto_id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
       await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id), "DELETE", secretKey);
@@ -715,6 +725,33 @@ async function excluirLinhaBackup(chave) {
     await comLimiteDeTempo(getSeguindoRedirect(urlComDados.toString()), 6000, "remoção de linha antiga na planilha de backup");
   } catch (err) {
     console.error("[emissoes-data] falha ao remover linha antiga da planilha de backup:", err.message);
+  }
+}
+
+// Remove da planilha de backup a linha de UM produto específico (ex: excluir_produto) —
+// precisa buscar os nomes dos passageiros dele à parte, já que esse produto sozinho não vem
+// com o join de venda_emissoes_passageiros (diferente de removerVersaoAntigaDaPlanilha, que
+// já tem a emissão inteira carregada). Nunca lança erro.
+async function removerProdutoDaPlanilha(prod, secretKey) {
+  if (!process.env.PLANILHA_BACKUP_URL) return;
+  try {
+    let nomesPax = "";
+    if (Array.isArray(prod.passageiro_ids) && prod.passageiro_ids.length > 0) {
+      const paxRows = await supabaseRest(
+        "/venda_emissoes_passageiros?id=in.(" + prod.passageiro_ids.join(",") + ")&select=cliente_id",
+        "GET", secretKey
+      );
+      const idsClientesUnicos = [...new Set((paxRows || []).map((p) => p.cliente_id).filter(Boolean))];
+      if (idsClientesUnicos.length > 0) {
+        const clientesRows = await supabaseRest("/clientes?id=in.(" + idsClientesUnicos.join(",") + ")&select=id,nome", "GET", secretKey);
+        const nomePorId = new Map((clientesRows || []).map((c) => [c.id, c.nome]));
+        nomesPax = (paxRows || []).map((p) => nomePorId.get(p.cliente_id)).filter(Boolean).join(" / ");
+      }
+    }
+    const { reserva } = extrairReservaCompanhia(prod);
+    await excluirLinhaBackup({ nome: nomesPax, reserva: reserva || "", valorTotal: prod.valor_venda || "" });
+  } catch (err) {
+    console.error("[emissoes-data] falha ao remover produto da planilha de backup:", err.message);
   }
 }
 
