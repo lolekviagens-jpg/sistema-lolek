@@ -62,41 +62,156 @@
     if (!r.ok) throw new Error("Erro ao carregar emissões (HTTP " + r.status + ")");
     return r.json();
   }
+  async function chamarEmissoes(action, data) {
+    const resp = await fetch("/.netlify/functions/emissoes-data", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
+      body: JSON.stringify({ action, data: data || {} }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.error || "Erro HTTP " + resp.status);
+    return json;
+  }
   async function carregarClientes() {
     const r = await fetch("/.netlify/functions/clientes-data");
     return r.ok ? r.json() : [];
   }
 
-  // Texto-chave de cada tipo de produto, usado pra detectar cidade e pra mostrar o detalhe
-  // principal na lista (o que mais importa olhar de cada um).
-  function detalheEBase(prod) {
+  // O objetivo dessa aba é conferir cada reserva direto com a empresa (cia aérea, hotel,
+  // locadora...) — por isso o foco é data/horário/companhia/localizador, nunca o valor.
+  function textoSegmentos(segmentos) {
+    return (segmentos || []).map((s) => {
+      const partes = [];
+      if (s.trecho) partes.push(s.trecho);
+      if (s.companhia) partes.push(s.companhia + (s.voo ? " " + s.voo : ""));
+      if (s.data) partes.push(fData(s.data));
+      if (s.horario_partida || s.horario_chegada) partes.push((s.horario_partida || "—") + " → " + (s.horario_chegada || "—"));
+      return partes.join(" · ") || "—";
+    }).join("  |  ") || "—";
+  }
+
+  // Campos relevantes de cada tipo de produto (pra conferência com a empresa) + o texto
+  // usado pra detectar a cidade do evento.
+  function camposEBase(prod) {
     const d = prod.dados || {};
     switch (prod.tipo) {
       case "passagem": {
         const ida = d.ida || d;
-        const seg = (ida.segmentos && ida.segmentos[0]) || {};
-        const voltaTxt = d.volta ? " + volta" : "";
-        return { detalhe: `${seg.trecho || "—"}${seg.companhia ? " — " + seg.companhia : ""}${voltaTxt}`, textoCidade: (seg.trecho || "") };
+        const campos = [{ label: "Ida", value: textoSegmentos(ida.segmentos) }];
+        if (ida.localizador) campos.push({ label: "Localizador (ida)", value: ida.localizador });
+        if (d.volta) {
+          campos.push({ label: "Volta", value: textoSegmentos(d.volta.segmentos) });
+          if (d.volta.localizador) campos.push({ label: "Localizador (volta)", value: d.volta.localizador });
+        }
+        const trechosIda = (ida.segmentos || []).map((s) => s.trecho).join(" ");
+        const trechosVolta = (d.volta && d.volta.segmentos || []).map((s) => s.trecho).join(" ");
+        return { campos, textoCidade: trechosIda + " " + trechosVolta };
       }
       case "hospedagem":
-        return { detalhe: `${d.hotel || "Hotel não informado"} — ${fData(d.checkin)} a ${fData(d.checkout)}`, textoCidade: [d.hotel, d.endereco].filter(Boolean).join(" ") };
+        return {
+          campos: [
+            { label: "Hotel", value: d.hotel || "—" },
+            { label: "Check-in", value: fData(d.checkin) + (d.horario_checkin ? " · " + d.horario_checkin : "") },
+            { label: "Check-out", value: fData(d.checkout) + (d.horario_checkout ? " · " + d.horario_checkout : "") },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: [d.hotel, d.endereco].filter(Boolean).join(" "),
+        };
       case "trem":
-        return { detalhe: `${d.trecho || "—"} — ${d.companhia || ""} — ${fData(d.data_viagem)}`, textoCidade: d.trecho || "" };
+        return {
+          campos: [
+            { label: "Trecho", value: d.trecho || "—" },
+            { label: "Companhia", value: d.companhia || "—" },
+            { label: "Data", value: fData(d.data_viagem) },
+            { label: "Horário", value: (d.horario_partida || "—") + " → " + (d.horario_chegada || "—") },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: d.trecho || "",
+        };
       case "transfer":
-        return { detalhe: `${d.trecho || "—"} (${d.tipo_transfer || "—"})`, textoCidade: d.trecho || "" };
+        return {
+          campos: [
+            { label: "Trecho", value: d.trecho || "—" },
+            { label: "Tipo", value: d.tipo_transfer || "—" },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: d.trecho || "",
+        };
       case "carro":
-        return { detalhe: `${d.locadora || "—"} — ${fData(d.data_retirada)} a ${fData(d.data_devolucao)}`, textoCidade: d.locadora || "" };
+        return {
+          campos: [
+            { label: "Locadora", value: d.locadora || "—" },
+            { label: "Retirada", value: fData(d.data_retirada) },
+            { label: "Devolução", value: fData(d.data_devolucao) },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: d.locadora || "",
+        };
       case "chip":
-        return { detalhe: `${d.operadora || "—"} — ${d.dados || ""} — ${d.cobertura || ""}`, textoCidade: d.cobertura || "" };
+        return {
+          campos: [
+            { label: "Operadora", value: d.operadora || "—" },
+            { label: "Cobertura", value: d.cobertura || "—" },
+            { label: "Dados/validade", value: d.dados || "—" },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: d.cobertura || "",
+        };
       case "passeio":
-        return { detalhe: `${d.descricao || "—"} — ${fData(d.data_passeio)}`, textoCidade: d.descricao || "" };
+        return {
+          campos: [
+            { label: "Descrição", value: d.descricao || "—" },
+            { label: "Data", value: fData(d.data_passeio) },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: d.descricao || "",
+        };
       case "seguro":
-        return { detalhe: `${d.seguradora || "—"} — ${d.plano || ""}`, textoCidade: "" };
+        return {
+          campos: [
+            { label: "Seguradora", value: d.seguradora || "—" },
+            { label: "Plano", value: d.plano || "—" },
+            { label: "Vigência", value: fData(d.data_inicio) + " a " + fData(d.data_fim) },
+            { label: "Localizador", value: d.localizador || "—" },
+          ],
+          textoCidade: "",
+        };
       case "mala":
-        return { detalhe: d.descricao || "Mala adicional", textoCidade: "" };
-      default:
-        return { detalhe: d.descricao || "—", textoCidade: "" };
+        return { campos: [{ label: "Descrição", value: d.descricao || "Mala adicional" }], textoCidade: "" };
+      default: {
+        const campos = [{ label: "Descrição", value: d.descricao || "—" }];
+        if (d.localizador) campos.push({ label: "Localizador", value: d.localizador });
+        return { campos, textoCidade: "" };
+      }
     }
+  }
+
+  // "Outro" cobre coisas bem diferentes (chip, roteiro, consultoria...) — pra não misturar
+  // tudo numa sala só, usa o texto da descrição pra dar um rótulo melhor que "outro" no
+  // relatório. Não precisa ser perfeito: o texto completo continua nos campos de qualquer forma.
+  function rotuloOutro(descricao) {
+    const t = norm(descricao || "");
+    if (/\bchip\b|esim|e-sim/.test(t)) return "📶 Chip/eSIM (lançado como Outro)";
+    return "📌 Outro / Diversos";
+  }
+
+  function construirItem(prod, e, paxPorId, clienteNomePorId) {
+    const nomesPax = (prod.passageiro_ids || [])
+      .map((pid) => { const pax = paxPorId.get(pid); return pax && clienteNomePorId.get(pax.cliente_id); })
+      .filter(Boolean)
+      .join(" / ") || "Passageiro não identificado";
+    const { campos, textoCidade } = camposEBase(prod);
+    return {
+      id: prod.id,
+      tipo: prod.tipo,
+      grupo: prod.tipo === "outro" ? rotuloOutro((prod.dados || {}).descricao) : null,
+      nomesPax,
+      campos,
+      cidade: detectarCidade(textoCidade) || detectarCidade(e.destino),
+      funcionaria: prod.funcionaria || "—",
+      origemAtual: prod.origem_lead,
+      destino: e.destino || "",
+    };
   }
 
   // Monta a lista plana de itens vendidos pra Convenção, a partir de todas as emissões —
@@ -107,24 +222,28 @@
       const paxPorId = new Map((e.venda_emissoes_passageiros || []).map((p) => [p.id, p]));
       (e.venda_emissoes_produtos || []).forEach((prod) => {
         if (prod.origem_lead !== "Convenção") return;
-        const nomesPax = (prod.passageiro_ids || [])
-          .map((pid) => { const pax = paxPorId.get(pid); return pax && clienteNomePorId.get(pax.cliente_id); })
-          .filter(Boolean)
-          .join(" / ") || "Passageiro não identificado";
-        const { detalhe, textoCidade } = detalheEBase(prod);
-        itens.push({
-          id: prod.id,
-          tipo: prod.tipo,
-          nomesPax,
-          detalhe,
-          cidade: detectarCidade(textoCidade) || detectarCidade(e.destino),
-          valor: prod.valor_venda,
-          funcionaria: prod.funcionaria || "—",
-          destino: e.destino || "",
-        });
+        itens.push(construirItem(prod, e, paxPorId, clienteNomePorId));
       });
     });
     return itens;
+  }
+
+  // Itens que PARECEM ser da Convenção (destino bate com uma das cidades do evento, ou com
+  // "Europa" genérico) mas não estão marcados com essa origem — ex: o chip foi adicionado
+  // num produto separado e a funcionária deixou a origem padrão em vez de trocar pra
+  // "Convenção". Mostrado à parte, com um botão de corrigir em 1 clique.
+  function montarSuspeitos(emissoes, clienteNomePorId) {
+    const suspeitos = [];
+    emissoes.forEach((e) => {
+      const destinoBate = detectarCidade(e.destino) !== null || norm(e.destino || "").includes("europa");
+      if (!destinoBate) return;
+      const paxPorId = new Map((e.venda_emissoes_passageiros || []).map((p) => [p.id, p]));
+      (e.venda_emissoes_produtos || []).forEach((prod) => {
+        if (prod.origem_lead === "Convenção") return;
+        suspeitos.push(construirItem(prod, e, paxPorId, clienteNomePorId));
+      });
+    });
+    return suspeitos;
   }
 
   let confirmadosSet = new Set();
@@ -140,6 +259,9 @@
 
   function itemLinhaHtml(item) {
     const confirmado = confirmadosSet.has(item.id);
+    const camposHtml = item.campos.map((c) =>
+      `<span class="cv-campo"><strong>${escHtml(c.label)}:</strong> ${escHtml(c.value)}</span>`
+    ).join("");
     return `
       <div class="cv-item ${confirmado ? "cv-item--ok" : ""}">
         <label class="cv-item__check">
@@ -147,9 +269,8 @@
         </label>
         <div class="cv-item__corpo">
           <div class="cv-item__nome">${escHtml(item.nomesPax)}</div>
-          <div class="cv-item__detalhe">${escHtml(item.detalhe)}</div>
+          <div class="cv-item__campos">${camposHtml}</div>
         </div>
-        <div class="cv-item__valor">${fBRL(item.valor)}</div>
         <div class="cv-item__func table__muted">${escHtml(item.funcionaria)}</div>
       </div>`;
   }
@@ -166,8 +287,8 @@
     const tipos = ORDEM_TIPOS.filter((t) => porTipo[t]).concat(Object.keys(porTipo).filter((t) => !ORDEM_TIPOS.includes(t)));
 
     // Tipos onde a cidade importa pra conferência (vários destinos na mesma viagem) —
-    // sub-agrupa por cidade dentro da seção; os demais (chip, seguro, mala...) ficam numa
-    // lista só, sem sub-divisão, porque não dependem de qual cidade é.
+    // sub-agrupa por cidade dentro da seção. "Outro" sub-agrupa por grupo (ex: separa Chip
+    // do resto) em vez de cidade. Os demais ficam numa lista só, sem sub-divisão.
     const TIPOS_COM_CIDADE = new Set(["hospedagem", "trem", "transfer", "passeio"]);
 
     wrap.innerHTML = tipos.map((tipo) => {
@@ -175,17 +296,18 @@
       const confirmadosTipo = lista.filter((i) => confirmadosSet.has(i.id)).length;
       const cabecalho = `<div class="cv-secao__header"><span>${TIPO_LABEL[tipo] || tipo}</span><span class="cv-secao__count">${confirmadosTipo}/${lista.length}</span></div>`;
 
-      if (!TIPOS_COM_CIDADE.has(tipo)) {
+      const chaveSub = tipo === "outro" ? (i) => i.grupo : TIPOS_COM_CIDADE.has(tipo) ? (i) => i.cidade || "Cidade não identificada" : null;
+      if (!chaveSub) {
         return `<div class="card cv-secao">${cabecalho}${lista.map(itemLinhaHtml).join("")}</div>`;
       }
 
-      const porCidade = {};
-      lista.forEach((i) => { const c = i.cidade || "Cidade não identificada"; (porCidade[c] || (porCidade[c] = [])).push(i); });
-      const cidades = Object.keys(porCidade).sort((a, b) => a === "Cidade não identificada" ? 1 : b === "Cidade não identificada" ? -1 : a.localeCompare(b, "pt-BR"));
+      const porSub = {};
+      lista.forEach((i) => { const c = chaveSub(i); (porSub[c] || (porSub[c] = [])).push(i); });
+      const subs = Object.keys(porSub).sort((a, b) => a === "Cidade não identificada" ? 1 : b === "Cidade não identificada" ? -1 : a.localeCompare(b, "pt-BR"));
       return `<div class="card cv-secao">${cabecalho}
-        ${cidades.map((cidade) => `
-          <div class="cv-subsecao__header">${escHtml(cidade)}</div>
-          ${porCidade[cidade].map(itemLinhaHtml).join("")}
+        ${subs.map((sub) => `
+          <div class="cv-subsecao__header">${escHtml(sub)}</div>
+          ${porSub[sub].map(itemLinhaHtml).join("")}
         `).join("")}
       </div>`;
     }).join("");
@@ -207,6 +329,38 @@
     });
   }
 
+  function renderSuspeitos(suspeitos) {
+    const wrap = gel("cv-suspeitos-wrap");
+    if (suspeitos.length === 0) { wrap.innerHTML = ""; return; }
+    wrap.innerHTML = `
+      <div class="card cv-secao cv-secao--alerta">
+        <div class="cv-secao__header"><span>⚠ Possíveis itens da Convenção sem essa origem marcada</span><span class="cv-secao__count">${suspeitos.length}</span></div>
+        <div class="table__muted" style="font-size:0.78rem;margin-bottom:8px">
+          O destino bate com uma cidade do evento, mas a origem do lead está diferente de "Convenção" —
+          pode ser um item que realmente é do evento e só não foi marcado certo. Confira e corrija se for o caso.
+        </div>
+        ${suspeitos.map((item) => `
+          <div class="cv-item">
+            <div class="cv-item__corpo">
+              <div class="cv-item__nome">${escHtml(item.nomesPax)} <span class="table__muted">— ${escHtml(item.destino)} — origem atual: "${escHtml(item.origemAtual || "—")}"</span></div>
+              <div class="cv-item__campos">${item.campos.map((c) => `<span class="cv-campo"><strong>${escHtml(c.label)}:</strong> ${escHtml(c.value)}</span>`).join("")}</div>
+            </div>
+            <button type="button" class="btn btn--gold btn--sm" data-cv-corrigir="${item.id}">✅ É da Convenção</button>
+          </div>`).join("")}
+      </div>`;
+
+    wrap.querySelectorAll("[data-cv-corrigir]").forEach((btn) => btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await chamarEmissoes("corrigir_origem_lead", { id: btn.dataset.cvCorrigir, origem_lead: "Convenção" });
+        await carregarTudo();
+      } catch (err) {
+        alert("Não foi possível corrigir: " + err.message);
+        btn.disabled = false;
+      }
+    }));
+  }
+
   async function carregarTudo() {
     const statusEl = gel("cv-status");
     statusEl.innerHTML = `<div class="notice">Carregando...</div>`;
@@ -219,6 +373,7 @@
       itensCache = montarItens(emissoes, clienteNomePorId);
       statusEl.innerHTML = "";
       renderResumo(itensCache);
+      renderSuspeitos(montarSuspeitos(emissoes, clienteNomePorId));
       renderLista(itensCache);
     } catch (err) {
       statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar.</strong><p>${escHtml(err.message)}</p></div>`;

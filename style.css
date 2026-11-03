@@ -4104,18 +4104,25 @@ textarea.input {
   color: var(--navy);
 }
 
-.cv-item__detalhe {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin-top: 1px;
+.cv-item__campos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 3px;
 }
 
-.cv-item__valor {
-  font-weight: 600;
-  font-size: 0.84rem;
+.cv-campo {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.cv-campo strong {
   color: var(--navy);
-  flex: 0 0 auto;
-  white-space: nowrap;
+  font-weight: 600;
+}
+
+.cv-secao--alerta {
+  border: 1px solid #d4a017;
+  background: #fffaf0;
 }
 
 .cv-item__func {

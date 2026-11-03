@@ -98,7 +98,7 @@ const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_p
 
 const AÇÕES_QUE_PRECISAM_LOGIN = new Set([
   "criar_emissao", "editar_emissao", "excluir_emissao", "excluir_produto", "criar_fornecedor",
-  "diagnosticar_versoes_antigas",
+  "diagnosticar_versoes_antigas", "corrigir_origem_lead",
 ]);
 
 const TIPO_LABEL = {
@@ -291,6 +291,19 @@ async function executarAcao(action, data, secretKey, sessao) {
         await supabaseRest("/venda_emissoes?id=eq." + encodeURIComponent(produto.emissao_id), "DELETE", secretKey);
       }
       await registrarAtividade(secretKey, { usuarioNome, acao: "excluir", area: "emissao", descricao: "Produto excluído da emissão", registroId: data.id });
+      return { ok: true };
+    }
+
+    // Correção rápida da origem do lead de UM produto já lançado — sem recriar a emissão
+    // inteira (editar_emissao), só esse campo. Criado pra consertar produtos que deveriam
+    // estar marcados "Convenção" mas saíram com outra origem (ver aba Convenção). Não
+    // atualiza a planilha de backup — esse campo lá é só informativo, não vale o custo de
+    // mexer na linha só por isso.
+    case "corrigir_origem_lead": {
+      if (!data.id || !data.origem_lead) throw new Error("id e origem_lead são obrigatórios");
+      await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey,
+        { origem_lead: data.origem_lead }, { "Prefer": "return=minimal" });
+      await registrarAtividade(secretKey, { usuarioNome, acao: "editar", area: "emissao", descricao: "Corrigiu origem do lead para \"" + data.origem_lead + "\"", registroId: data.id });
       return { ok: true };
     }
 
