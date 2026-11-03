@@ -311,7 +311,7 @@
     });
   }
 
-  // Reclassificação automática em lote (regra: viagem Itália/Assis + chip, 12–25/11) — roda
+  // Reclassificação automática em lote (regra: viagem Itália/Assis + chip, 10–25/11) — roda
   // tudo de uma vez no backend (ver reconciliar_convencao em emissoes-data.js) e mostra o
   // resumo de quem mudou, sem precisar confirmar item por item.
   function renderResultadoReconciliacao(r) {

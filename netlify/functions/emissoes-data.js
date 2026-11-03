@@ -315,7 +315,7 @@ async function executarAcao(action, data, secretKey, sessao) {
     // dela (revisar um por um estava dando trabalho demais) — mas devolve o resumo de tudo
     // que mudou pra conferência rápida depois.
     case "reconciliar_convencao": {
-      const DE = "2026-11-12", ATE = "2026-11-25";
+      const DE = "2026-11-10", ATE = "2026-11-25";
       const PALAVRAS_ITALIA = /italia|roma|assis|florenc|firenze|venez|venice|europa/i;
 
       // Paginado — "venda_emissoes" já passou de 1000 linhas (ver supabaseRestPaginado no
