@@ -4026,3 +4026,111 @@ textarea.input {
     font-size: 0.82rem;
   }
 }
+
+/* ===================================================================
+   Convenção (aba temporária) — checklist de itens vendidos pro evento
+   =================================================================== */
+.cv-secao {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+}
+
+.cv-secao__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 10px;
+}
+
+.cv-secao__count {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--navy);
+  background: var(--bg);
+  border-radius: 20px;
+  padding: 3px 12px;
+}
+
+.cv-subsecao__header {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 14px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.cv-subsecao__header:first-of-type {
+  margin-top: 4px;
+}
+
+.cv-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+.cv-item:last-child {
+  border-bottom: none;
+}
+.cv-item--ok {
+  background: #f0f8f3;
+}
+
+.cv-item__check input {
+  width: 19px;
+  height: 19px;
+  cursor: pointer;
+  accent-color: var(--gold);
+}
+
+.cv-item__corpo {
+  flex: 1;
+  min-width: 0;
+}
+
+.cv-item__nome {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--navy);
+}
+
+.cv-item__detalhe {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.cv-item__valor {
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: var(--navy);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cv-item__func {
+  font-size: 0.74rem;
+  flex: 0 0 auto;
+  min-width: 70px;
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .cv-item {
+    flex-wrap: wrap;
+  }
+  .cv-item__func {
+    text-align: left;
+    min-width: 0;
+  }
+}

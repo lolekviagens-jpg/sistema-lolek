@@ -17,6 +17,7 @@
     roteiro:     "Roteiro",
     followup:    "Follow-up",
     kanban:      "Kanban",
+    convencao:   "Convenção",
     financeiro:  "Financeiro",
     contratos:   "Contratos",
     empresas:    "Empresas",

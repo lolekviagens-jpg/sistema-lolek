@@ -177,6 +177,7 @@
     { tipo: "trem",       label: "Trem",              icon: "🚆" },
     { tipo: "passeio",    label: "Passeio / Ingresso", icon: "🗺️" },
     { tipo: "transfer",   label: "Transfer",           icon: "🚌" },
+    { tipo: "chip",       label: "Chip/eSIM internacional", icon: "📶" },
     { tipo: "mala",       label: "Adicional de mala",  icon: "🧳" },
     { tipo: "assento",    label: "Assento",            icon: "💺" },
     { tipo: "consultoria_milhas", label: "Consultoria de milhas", icon: "🧭" },
@@ -247,6 +248,13 @@
       { id: "trecho", label: "Trecho" },
       { id: "tipo_transfer", label: "Tipo", type: "select", options: ["Privativo", "Compartilhado", "Executivo"] },
       { id: "localizador", label: "Localizador / número da reserva" },
+    ],
+    chip: [
+      { id: "operadora", label: "Operadora", placeholder: "Ex: Holafly, Orange, Vodafone" },
+      { id: "cobertura", label: "Cobertura (países)", placeholder: "Ex: Europa, Itália" },
+      { id: "dados", label: "Dados/validade", placeholder: "Ex: 20GB por 15 dias" },
+      { id: "localizador", label: "Código/localizador do pedido" },
+      { id: "instrucoes_ativacao", label: "Instruções de ativação", type: "textarea", placeholder: "Ex: instalar o eSIM pelo app antes de embarcar..." },
     ],
     mala: [
       { id: "descricao", label: "Descrição", placeholder: "Ex: 1 mala extra 23kg" },

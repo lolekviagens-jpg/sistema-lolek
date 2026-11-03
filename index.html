@@ -65,6 +65,10 @@
           <span class="nav__icon">🗂</span>
           <span class="nav__label">Kanban</span>
         </button>
+        <button class="nav__item" data-tab="convencao">
+          <span class="nav__icon">🎪</span>
+          <span class="nav__label">Convenção</span>
+        </button>
         <button class="nav__item" data-tab="checkin">
           <span class="nav__icon">✈</span>
           <span class="nav__label">Check-in do dia</span>
@@ -1089,6 +1093,17 @@
         </div>
       </div>
 
+      <!-- ===== PAINEL CONVENÇÃO (temporário — pra esse evento específico) ===== -->
+      <section class="panel" data-panel="convencao">
+        <div class="toolbar" style="flex-wrap:wrap;row-gap:10px">
+          <span class="toolbar__info" id="cv-resumo"></span>
+          <span style="margin-left:auto"></span>
+          <button class="btn btn--ghost btn--icon" id="cv-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
+        </div>
+        <div id="cv-status"></div>
+        <div id="cv-lista-wrap"></div>
+      </section>
+
       <!-- ===== PAINEL FINANCEIRO ===== -->
       <section class="panel" data-panel="financeiro">
 
@@ -1986,6 +2001,7 @@
   <script src="roteiro.js"></script>
   <script src="followup.js"></script>
   <script src="kanban.js"></script>
+  <script src="convencao.js"></script>
   <script src="financeiro.js"></script>
   <script src="financeiro-fornecedores.js"></script>
   <script src="contratos.js"></script>
