@@ -98,7 +98,7 @@ const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_p
 
 const AÇÕES_QUE_PRECISAM_LOGIN = new Set([
   "criar_emissao", "editar_emissao", "excluir_emissao", "excluir_produto", "criar_fornecedor",
-  "diagnosticar_versoes_antigas", "corrigir_origem_lead",
+  "diagnosticar_versoes_antigas", "corrigir_origem_lead", "reconciliar_convencao",
 ]);
 
 const TIPO_LABEL = {
@@ -305,6 +305,61 @@ async function executarAcao(action, data, secretKey, sessao) {
         { origem_lead: data.origem_lead }, { "Prefer": "return=minimal" });
       await registrarAtividade(secretKey, { usuarioNome, acao: "editar", area: "emissao", descricao: "Corrigiu origem do lead para \"" + data.origem_lead + "\"", registroId: data.id });
       return { ok: true };
+    }
+
+    // Reclassificação em lote pra Convenção (evento de novembro/2026) — regra dada direto
+    // pela usuária: viagem pra Itália/Assis com data dentro da janela do evento é Convenção;
+    // chip dentro da mesma janela também (independente do destino, já que às vezes é um
+    // produto solto sem destino preenchido); o que não bater, tira a marcação (pra não ficar
+    // contando lixo no relatório). Roda tudo de uma vez — sem confirmação por item, a pedido
+    // dela (revisar um por um estava dando trabalho demais) — mas devolve o resumo de tudo
+    // que mudou pra conferência rápida depois.
+    case "reconciliar_convencao": {
+      const DE = "2026-11-12", ATE = "2026-11-25";
+      const PALAVRAS_ITALIA = /italia|roma|assis|florenc|firenze|venez|venice|europa/i;
+
+      // Paginado — "venda_emissoes" já passou de 1000 linhas (ver supabaseRestPaginado no
+      // handler GET), e o corte silencioso do Supabase faria essa reconciliação ignorar
+      // tudo que não estivesse nas primeiras 1000.
+      const emissoes = await supabaseRestPaginado(
+        "/venda_emissoes?select=id,destino,data_ida,data_volta,venda_emissoes_produtos(id,tipo,origem_lead)",
+        secretKey
+      );
+
+      const marcados = [], desmarcados = [], ambiguos = [];
+      for (const e of (emissoes || [])) {
+        const destinoBate = PALAVRAS_ITALIA.test(e.destino || "");
+        // Sobreposição de intervalo — cobre viagens que atravessam a janela sem a data_ida
+        // exata cair dentro dela (ex: embarca dia 10, volta dia 14).
+        const fimViagem = e.data_volta || e.data_ida;
+        const dataBate = e.data_ida && fimViagem && e.data_ida <= ATE && fimViagem >= DE;
+        const semData = !e.data_ida;
+
+        for (const prod of (e.venda_emissoes_produtos || [])) {
+          // Sem data de viagem não dá pra aplicar a regra com confiança — não toca no que
+          // já está (nem marca nem desmarca), só reporta pra conferência manual.
+          if (semData) { ambiguos.push({ id: prod.id, destino: e.destino, tipo: prod.tipo, origem_atual: prod.origem_lead }); continue; }
+
+          const deveSerConvencao = prod.tipo === "chip" ? dataBate : (destinoBate && dataBate);
+          const jaEConvencao = prod.origem_lead === "Convenção";
+
+          if (deveSerConvencao && !jaEConvencao) {
+            await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(prod.id), "PATCH", secretKey,
+              { origem_lead: "Convenção" }, { "Prefer": "return=minimal" });
+            marcados.push({ id: prod.id, destino: e.destino, tipo: prod.tipo });
+          } else if (!deveSerConvencao && jaEConvencao) {
+            await supabaseRest("/venda_emissoes_produtos?id=eq." + encodeURIComponent(prod.id), "PATCH", secretKey,
+              { origem_lead: null }, { "Prefer": "return=minimal" });
+            desmarcados.push({ id: prod.id, destino: e.destino, tipo: prod.tipo });
+          }
+        }
+      }
+
+      await registrarAtividade(secretKey, {
+        usuarioNome, acao: "editar", area: "emissao",
+        descricao: `Reconciliação automática da Convenção — marcou ${marcados.length}, desmarcou ${desmarcados.length}`,
+      });
+      return { marcados, desmarcados, ambiguos };
     }
 
     // Acha "versões fantasmas" de uma edição — quando editar_emissao cria a versão corrigida

@@ -228,24 +228,6 @@
     return itens;
   }
 
-  // Itens que PARECEM ser da Convenção (destino bate com uma das cidades do evento, ou com
-  // "Europa" genérico) mas não estão marcados com essa origem — ex: o chip foi adicionado
-  // num produto separado e a funcionária deixou a origem padrão em vez de trocar pra
-  // "Convenção". Mostrado à parte, com um botão de corrigir em 1 clique.
-  function montarSuspeitos(emissoes, clienteNomePorId) {
-    const suspeitos = [];
-    emissoes.forEach((e) => {
-      const destinoBate = detectarCidade(e.destino) !== null || norm(e.destino || "").includes("europa");
-      if (!destinoBate) return;
-      const paxPorId = new Map((e.venda_emissoes_passageiros || []).map((p) => [p.id, p]));
-      (e.venda_emissoes_produtos || []).forEach((prod) => {
-        if (prod.origem_lead === "Convenção") return;
-        suspeitos.push(construirItem(prod, e, paxPorId, clienteNomePorId));
-      });
-    });
-    return suspeitos;
-  }
-
   let confirmadosSet = new Set();
   let itensCache = [];
 
@@ -329,37 +311,36 @@
     });
   }
 
-  function renderSuspeitos(suspeitos) {
+  // Reclassificação automática em lote (regra: viagem Itália/Assis + chip, 12–25/11) — roda
+  // tudo de uma vez no backend (ver reconciliar_convencao em emissoes-data.js) e mostra o
+  // resumo de quem mudou, sem precisar confirmar item por item.
+  function renderResultadoReconciliacao(r) {
     const wrap = gel("cv-suspeitos-wrap");
-    if (suspeitos.length === 0) { wrap.innerHTML = ""; return; }
-    wrap.innerHTML = `
-      <div class="card cv-secao cv-secao--alerta">
-        <div class="cv-secao__header"><span>⚠ Possíveis itens da Convenção sem essa origem marcada</span><span class="cv-secao__count">${suspeitos.length}</span></div>
-        <div class="table__muted" style="font-size:0.78rem;margin-bottom:8px">
-          O destino bate com uma cidade do evento, mas a origem do lead está diferente de "Convenção" —
-          pode ser um item que realmente é do evento e só não foi marcado certo. Confira e corrija se for o caso.
-        </div>
-        ${suspeitos.map((item) => `
-          <div class="cv-item">
-            <div class="cv-item__corpo">
-              <div class="cv-item__nome">${escHtml(item.nomesPax)} <span class="table__muted">— ${escHtml(item.destino)} — origem atual: "${escHtml(item.origemAtual || "—")}"</span></div>
-              <div class="cv-item__campos">${item.campos.map((c) => `<span class="cv-campo"><strong>${escHtml(c.label)}:</strong> ${escHtml(c.value)}</span>`).join("")}</div>
-            </div>
-            <button type="button" class="btn btn--gold btn--sm" data-cv-corrigir="${item.id}">✅ É da Convenção</button>
-          </div>`).join("")}
-      </div>`;
-
-    wrap.querySelectorAll("[data-cv-corrigir]").forEach((btn) => btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      try {
-        await chamarEmissoes("corrigir_origem_lead", { id: btn.dataset.cvCorrigir, origem_lead: "Convenção" });
-        await carregarTudo();
-      } catch (err) {
-        alert("Não foi possível corrigir: " + err.message);
-        btn.disabled = false;
-      }
-    }));
+    const partes = [];
+    if (r.marcados.length) partes.push(`<div style="color:#1f8a4c">✅ Marcados como Convenção: ${r.marcados.length}</div>`);
+    if (r.desmarcados.length) partes.push(`<div style="color:#c0392b">🗑 Removida a marcação de Convenção (fora da regra): ${r.desmarcados.length}</div>`);
+    if (r.ambiguos.length) {
+      partes.push(`<div style="color:#d4a017">⚠ ${r.ambiguos.length} sem data de viagem cadastrada — não dá pra aplicar a regra, confira na mão:</div>`);
+      partes.push(r.ambiguos.map((a) => `<div class="table__muted" style="font-size:0.78rem;margin-left:12px">${escHtml(a.tipo)} — destino: ${escHtml(a.destino || "—")} — origem atual: "${escHtml(a.origem_atual || "—")}"</div>`).join(""));
+    }
+    if (partes.length === 0) { wrap.innerHTML = ""; return; }
+    wrap.innerHTML = `<div class="card cv-secao cv-secao--alerta"><div class="cv-secao__header"><span>Resultado da reclassificação automática</span></div>${partes.join("")}</div>`;
   }
+
+  gel("cv-reconciliar-btn").addEventListener("click", async () => {
+    const btn = gel("cv-reconciliar-btn");
+    btn.disabled = true;
+    const statusEl = gel("cv-status");
+    statusEl.innerHTML = `<div class="notice">Reclassificando...</div>`;
+    try {
+      const r = await chamarEmissoes("reconciliar_convencao");
+      statusEl.innerHTML = "";
+      await carregarTudo();
+      renderResultadoReconciliacao(r);
+    } catch (err) {
+      statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao reclassificar.</strong><p>${escHtml(err.message)}</p></div>`;
+    } finally { btn.disabled = false; }
+  });
 
   async function carregarTudo() {
     const statusEl = gel("cv-status");
@@ -372,8 +353,8 @@
       confirmadosSet = new Set((confirmacoes || []).map((c) => c.chave));
       itensCache = montarItens(emissoes, clienteNomePorId);
       statusEl.innerHTML = "";
+      gel("cv-suspeitos-wrap").innerHTML = "";
       renderResumo(itensCache);
-      renderSuspeitos(montarSuspeitos(emissoes, clienteNomePorId));
       renderLista(itensCache);
     } catch (err) {
       statusEl.innerHTML = `<div class="notice notice--error"><strong>Erro ao carregar.</strong><p>${escHtml(err.message)}</p></div>`;
