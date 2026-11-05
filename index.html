@@ -23,6 +23,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -68,6 +69,10 @@
         <button class="nav__item" data-tab="convencao">
           <span class="nav__icon">🎪</span>
           <span class="nav__label">Convenção</span>
+        </button>
+        <button class="nav__item" data-tab="convencao-roma">
+          <span class="nav__icon">🇮🇹</span>
+          <span class="nav__label">Convenção Roma 2026</span>
         </button>
         <button class="nav__item" data-tab="checkin">
           <span class="nav__icon">✈</span>
@@ -1106,6 +1111,113 @@
         <div id="cv-lista-wrap"></div>
       </section>
 
+      <!-- ===== PAINEL CONVENÇÃO ROMA 2026 (temporário — pra esse evento específico) ===== -->
+      <section class="panel" data-panel="convencao-roma">
+        <div class="toolbar" style="flex-wrap:wrap;row-gap:10px">
+          <span class="toolbar__info" id="cvr-resumo"></span>
+          <input type="text" id="cvr-busca" class="input" placeholder="🔍 Buscar por nome" style="max-width:220px" />
+          <span style="margin-left:auto"></span>
+          <label class="btn btn--gold btn--sm" style="cursor:pointer">
+            📥 Importar planilha
+            <input type="file" id="cvr-importar-input" accept=".xlsx" hidden />
+          </label>
+          <button class="btn btn--ghost btn--icon" id="cvr-atualizar-btn" type="button" title="Atualizar">↻ Atualizar</button>
+        </div>
+        <div id="cvr-status"></div>
+
+        <div id="cvr-hoje-wrap" style="margin-bottom:18px"></div>
+
+        <div class="fin-filtros" style="margin-bottom:14px">
+          <button class="fin-filtro is-active" data-cvr-filtro="" type="button">Todos</button>
+          <button class="fin-filtro" data-cvr-filtro="pronto" type="button">✅ Pronto</button>
+          <button class="fin-filtro" data-cvr-filtro="revisar" type="button">⚠ Revisar</button>
+          <button class="fin-filtro" data-cvr-filtro="decidir" type="button">❓ Decidir</button>
+        </div>
+
+        <div id="cvr-lista-wrap"></div>
+      </section>
+
+      <!-- Modal: resolver pendências de um peregrino -->
+      <div class="modal" id="cvr-modal-resolver" hidden>
+        <div class="modal__backdrop"></div>
+        <div class="modal__dialog" style="max-width:640px">
+          <div class="modal__header"><span class="modal__title">Resolver pendências — <span id="cvr-resolver-nome"></span></span><button class="modal__close" data-cvr-fechar="cvr-modal-resolver">✕</button></div>
+          <div style="padding:0 24px 20px;max-height:70vh;overflow:auto">
+            <div class="form__grid">
+              <label class="field"><span class="field__label">WhatsApp</span><input type="text" id="cvr-r-whatsapp" class="input" placeholder="5585999999999" /></label>
+              <label class="field"><span class="field__label">Seguradora</span>
+                <select id="cvr-r-seguradora" class="input">
+                  <option value="">Selecione...</option>
+                  <option value="GTA">GTA</option>
+                  <option value="Assist Card">Assist Card</option>
+                </select>
+              </label>
+              <label class="field"><span class="field__label">Apólice do seguro</span><input type="text" id="cvr-r-seguro-apolice" class="input" /></label>
+              <label class="field"><span class="field__label">Horário do voo de ida</span><input type="text" id="cvr-r-hora-voo" class="input" placeholder="Ex: 23h55" /></label>
+              <label class="field"><span class="field__label">Cidade de conexão (vazio = voo direto)</span><input type="text" id="cvr-r-conexao" class="input" /></label>
+            </div>
+            <div class="orc-extras-label" style="margin-top:10px">Hotel em Roma</div>
+            <div class="form__grid">
+              <label class="field"><span class="field__label">Nome</span><input type="text" id="cvr-r-hotel-roma-nome" class="input" /></label>
+              <label class="field field--full"><span class="field__label">Endereço</span><input type="text" id="cvr-r-hotel-roma-endereco" class="input" /></label>
+              <label class="field"><span class="field__label">Estrelas</span>
+                <select id="cvr-r-hotel-roma-estrelas" class="input">
+                  <option value="">—</option><option value="3">3★</option><option value="4">4★</option><option value="5">5★</option>
+                </select>
+              </label>
+              <label class="field"><span class="field__label">Noites</span><input type="number" id="cvr-r-hotel-roma-noites" class="input" /></label>
+              <label class="field"><span class="field__label">Horário do check-in</span><input type="text" id="cvr-r-hotel-roma-checkin" class="input" placeholder="Ex: 14h" /></label>
+            </div>
+            <div class="orc-extras-label" style="margin-top:10px">Hotel em Assis</div>
+            <div class="form__grid">
+              <label class="field"><span class="field__label">Nome</span><input type="text" id="cvr-r-hotel-assis-nome" class="input" /></label>
+              <label class="field field--full"><span class="field__label">Endereço</span><input type="text" id="cvr-r-hotel-assis-endereco" class="input" /></label>
+              <label class="field"><span class="field__label">Taxa por noite (€)</span><input type="number" step="0.01" id="cvr-r-hotel-assis-taxa" class="input" /></label>
+            </div>
+            <div class="orc-extras-label" style="margin-top:10px">Trem Roma ⇄ Assis / Transfer</div>
+            <div class="form__grid">
+              <label class="field"><span class="field__label">Horário do trem</span><input type="text" id="cvr-r-trem-horario" class="input" /></label>
+              <label class="field"><span class="field__label">Estação de saída</span><input type="text" id="cvr-r-trem-estacao" class="input" /></label>
+              <label class="field field--full"><span class="field__label">Transfer (ponto de encontro e contato)</span><input type="text" id="cvr-r-transfer" class="input" /></label>
+            </div>
+            <label class="field field--full" style="margin-top:10px"><span class="field__label">O que é o(s) item(ns) não identificado(s)?</span><textarea id="cvr-r-itens" class="input" rows="2"></textarea></label>
+            <div class="orc-extras-label" style="margin-top:10px">Texto bruto da planilha (referência)</div>
+            <div id="cvr-r-raw" class="table__muted" style="font-size:0.76rem;white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:6px"></div>
+          </div>
+          <div class="modal__footer">
+            <button class="btn btn--ghost" data-cvr-fechar="cvr-modal-resolver">Cancelar</button>
+            <button class="btn btn--gold" id="cvr-resolver-salvar">Salvar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: prévia e envio de uma mensagem -->
+      <div class="modal" id="cvr-modal-previa" hidden>
+        <div class="modal__backdrop"></div>
+        <div class="modal__dialog" style="max-width:600px">
+          <div class="modal__header"><span class="modal__title" id="cvr-previa-titulo"></span><button class="modal__close" data-cvr-fechar="cvr-modal-previa">✕</button></div>
+          <div style="padding:0 24px 20px">
+            <textarea id="cvr-previa-texto" class="input" rows="18" style="font-size:0.82rem"></textarea>
+            <div class="kb-modal-erro" id="cvr-previa-erro" hidden style="color:#c0392b;font-size:0.82rem;margin-top:6px"></div>
+          </div>
+          <div class="modal__footer">
+            <button class="btn btn--ghost" data-cvr-fechar="cvr-modal-previa">Cancelar</button>
+            <button class="btn btn--gold" id="cvr-previa-enviar">✅ Enviar pelo WhatsApp</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal: ver as 5 mensagens de um peregrino -->
+      <div class="modal" id="cvr-modal-todas" hidden>
+        <div class="modal__backdrop"></div>
+        <div class="modal__dialog" style="max-width:640px">
+          <div class="modal__header"><span class="modal__title">As 5 mensagens — <span id="cvr-todas-nome"></span></span><button class="modal__close" data-cvr-fechar="cvr-modal-todas">✕</button></div>
+          <div style="padding:0 24px 20px;max-height:70vh;overflow:auto">
+            <div id="cvr-todas-corpo"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ===== PAINEL FINANCEIRO ===== -->
       <section class="panel" data-panel="financeiro">
 
@@ -2004,6 +2116,7 @@
   <script src="followup.js"></script>
   <script src="kanban.js"></script>
   <script src="convencao.js"></script>
+  <script src="convencao-roma.js"></script>
   <script src="financeiro.js"></script>
   <script src="financeiro-fornecedores.js"></script>
   <script src="contratos.js"></script>

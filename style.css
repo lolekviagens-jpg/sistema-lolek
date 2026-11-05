@@ -4141,3 +4141,76 @@ textarea.input {
     min-width: 0;
   }
 }
+
+/* ===================================================================
+   Convenção Roma 2026 (aba temporária) — peregrinos e mensagens
+   =================================================================== */
+.cvr-secao {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid #d4a017;
+  background: #fffaf0;
+}
+
+.cvr-secao__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-title);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 10px;
+}
+
+.cvr-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.cvr-item:last-child {
+  border-bottom: none;
+}
+
+.cvr-item__nome {
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--navy);
+}
+
+.cvr-pessoa {
+  margin-bottom: 12px;
+  padding: 14px 18px;
+}
+
+.cvr-pessoa__topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cvr-pessoa__nome {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--navy);
+}
+
+.cvr-pessoa__acoes {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.cvr-decisao {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  margin: 6px 0;
+}

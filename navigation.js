@@ -18,6 +18,7 @@
     followup:    "Follow-up",
     kanban:      "Kanban",
     convencao:   "Convenção",
+    "convencao-roma": "Convenção Roma 2026",
     financeiro:  "Financeiro",
     contratos:   "Contratos",
     empresas:    "Empresas",
