@@ -133,11 +133,18 @@
     return out;
   }
 
+  // O sistema só aceita exatamente "GTA" ou "Assist Card" (restrição do banco) — a planilha
+  // às vezes já tem a seguradora escrita, mas com variação de texto (ex: "GTA Assist"), não
+  // necessariamente igual a essas duas strings. Normaliza antes de salvar.
+  function normalizarSeguradora(texto) {
+    if (!texto) return null;
+    if (/assist\s*card/i.test(texto)) return "Assist Card";
+    if (/\bgta\b/i.test(texto)) return "GTA";
+    return null;
+  }
   function parseSeguro(texto) {
-    const out = { seguradora: null, apolice: null };
+    const out = { seguradora: normalizarSeguradora(texto), apolice: null };
     if (!texto) return out;
-    if (/assist\s*card/i.test(texto)) out.seguradora = "Assist Card";
-    else if (/\bgta\b/i.test(texto)) out.seguradora = "GTA";
     const apolice = texto.match(/(?:n[ºo]\.?|loc\.?)\s*([A-Z0-9][A-Z0-9\s/]{2,20}?)(?:\s*·|\s*$)/i);
     if (apolice) out.apolice = apolice[1].trim();
     return out;
@@ -224,7 +231,7 @@
         hotel_assis_endereco: !ehPendente(endAssisPlanilha) && typeof endAssisPlanilha === "string" ? endAssisPlanilha : hotelAssis.endereco,
         hotel_assis_noites: hotelAssis.noites,
 
-        seguradora: !ehPendente(seguradoraPlanilha) && typeof seguradoraPlanilha === "string" ? seguradoraPlanilha : seguro.seguradora,
+        seguradora: !ehPendente(seguradoraPlanilha) && typeof seguradoraPlanilha === "string" ? normalizarSeguradora(seguradoraPlanilha) : seguro.seguradora,
         seguro_apolice: seguro.apolice,
 
         trem_data: trem.data,
