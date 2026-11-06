@@ -376,7 +376,7 @@
     partes.push(`🌧️ *CLIMA*\nRoma: entre 8 °C e 17 °C, com chuva frequente.\nAssis: entre 4 °C e 12 °C, mais fria e com vento.\n` +
       `Leve casaco quente, corta-vento impermeável, roupas em camadas, sapato fechado e guarda-chuva. Nas igrejas, ombros e joelhos cobertos.`);
 
-    partes.push(`No guia completo abaixo estão os detalhes de pagamento, transporte, imigração e o que fazer em atrasos, mala extraviada e uso do seguro:\n${LINK_GUIA_PDF}`);
+    partes.push(`Em seguida mando o guia completo em PDF, com os detalhes de pagamento, transporte, imigração e o que fazer em atrasos, mala extraviada e uso do seguro.`);
 
     partes.push(`Qualquer dúvida, é só me chamar. Estamos com você antes, durante e depois. 💛`);
 
@@ -456,40 +456,64 @@
         `1. Ligue para a seguradora *antes* de buscar atendimento: ela indica aonde ir\n2. Em emergência grave, vá direto ao hospital e avise a seguradora assim que puder\n3. Guarde recibos, laudos e receitas para o reembolso`);
     }
     partes.push(`📞 *QUEM CHAMAR*\n• Voo ou bagagem → balcão da companhia, depois a Lolek\n• Saúde → central do seguro, depois a Lolek\n• Problema no hotel → recepção, depois a Lolek\n• Dúvidas e bilhetes → Lolek`);
-    partes.push(`💛 *LOLEK VIAGENS*: ${campo(p, "responsavel_lolek", "equipe")} · (85) 9727-4989\nEstamos com você durante toda a viagem.`);
+    partes.push(`💛 *LOLEK VIAGENS*: ${campo(p, "responsavel_lolek", "equipe")} · (85) 99632-7092\nEstamos com você durante toda a viagem.`);
     return partes.join("\n\n");
   }
 
-  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5 };
   // O PDF fica na raiz do próprio site (commitado no repo, servido estático pelo Netlify) —
   // o Digisac aqui nunca anexou arquivo de verdade, só manda link em texto (mesmo padrão já
-  // usado em gerar-contrato.js pro link de assinatura).
+  // usado em gerar-contrato.js pro link de assinatura). Vai como mensagem PRÓPRIA (não dentro
+  // do texto da Mensagem 1) pra aparecer como um balão separado no WhatsApp, fácil de achar —
+  // um link no meio de um parágrafo grande passava despercebido.
   const LINK_GUIA_PDF = location.origin + "/orientacoes-convencao-shalom-2026.pdf";
+  function montarMensagemPdf(p) {
+    return `📄 ${p.nome}, aqui está o guia completo da Convenção (pagamento, transporte, imigração, mala extraviada, seguro):\n${LINK_GUIA_PDF}`;
+  }
+
+  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, pdf: montarMensagemPdf };
   const AVISO_CONEXAO_NAO_CONFIRMADA = "⚠ *A equipe ainda precisa confirmar se esse voo tem conexão* — essa mensagem não deveria estar sendo enviada ainda, avise a Lolek.";
 
-  // A Mensagem 5 vai "junto" com a 1 e reenviada na 2, mas como MENSAGEM SEPARADA — não
-  // concatenada no mesmo texto (isso já causou um caso real de mensagem gigante onde o link
-  // do PDF parecia ter desaparecido). Esses números indicam, pra cada mensagem principal,
-  // quais outras mensagens devem ser enviadas em seguida, automaticamente, no mesmo clique.
-  const MENSAGENS_EM_CADEIA = { 1: [5], 2: [5] };
+  // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
+  // como MENSAGEM SEPARADA — não concatenadas no mesmo texto (isso já causou um caso real de
+  // mensagem gigante onde o link do PDF parecia ter desaparecido). Esses valores indicam, pra
+  // cada mensagem principal, quais outras devem ser enviadas em seguida, automaticamente, no
+  // mesmo clique.
+  const MENSAGENS_EM_CADEIA = { 1: ["pdf", 5], 2: [5] };
 
   // ===================================================================
   // "Mensagens pra enviar hoje" — regras de gatilho do calendário
   // ===================================================================
-  function mensagensDevidasHoje(peregrinos) {
-    const hojeIso = (() => { const d = hoje0(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); })();
-    const devidas = { 1: [], 2: [], 3: [], 4: [] };
+  function hojeIso() {
+    const d = hoje0();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  // SEM filtrar por status — usado tanto pra achar quem já pode receber (pronto) quanto pra
+  // contar quem está travado (revisar/decidir) mas já deveria estar recebendo mensagem hoje.
+  function gatilhosDeHoje(peregrinos) {
+    const hj = hojeIso();
+    const porMsg = { 1: [], 2: [], 3: [], 4: [] };
     peregrinos.forEach((p) => {
-      if (p.status !== "pronto") return;
       const ja = p.mensagens_enviadas || {};
       if (p.data_voo_ida) {
-        if (!ja["1"] && somarDias(p.data_voo_ida, -7) <= hojeIso) devidas[1].push(p);
-        if (!ja["2"] && somarDias(p.data_voo_ida, -1) <= hojeIso) devidas[2].push(p);
-        if (!ja["3"] && p.data_voo_ida <= hojeIso) devidas[3].push(p);
+        if (!ja["1"] && somarDias(p.data_voo_ida, -7) <= hj) porMsg[1].push(p);
+        if (!ja["2"] && somarDias(p.data_voo_ida, -1) <= hj) porMsg[2].push(p);
+        if (!ja["3"] && p.data_voo_ida <= hj) porMsg[3].push(p);
       }
-      if (p.trem_data && !ja["4"] && somarDias(p.trem_data, -1) <= hojeIso) devidas[4].push(p);
+      if (p.trem_data && !ja["4"] && somarDias(p.trem_data, -1) <= hj) porMsg[4].push(p);
     });
+    return porMsg;
+  }
+  function mensagensDevidasHoje(peregrinos) {
+    const todos = gatilhosDeHoje(peregrinos);
+    const devidas = {};
+    Object.entries(todos).forEach(([n, lista]) => { devidas[n] = lista.filter((p) => p.status === "pronto"); });
     return devidas;
+  }
+  function pendentesDeHoje(peregrinos) {
+    const todos = gatilhosDeHoje(peregrinos);
+    const vistos = new Set();
+    Object.values(todos).forEach((lista) => lista.forEach((p) => { if (p.status !== "pronto") vistos.add(p.id); }));
+    return vistos.size;
   }
 
   // ===================================================================
@@ -522,12 +546,24 @@
   function renderDevidasHoje() {
     const wrap = gel("cvr-hoje-wrap");
     const devidas = mensagensDevidasHoje(peregrinosCache);
+    const bloqueados = pendentesDeHoje(peregrinosCache);
     const algumaCoisa = Object.values(devidas).some((lista) => lista.length > 0);
-    if (!algumaCoisa) { wrap.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhuma mensagem devida hoje.</p></div>'; return; }
 
-    wrap.innerHTML = Object.entries(devidas).filter(([, lista]) => lista.length > 0).map(([numero, lista]) => `
+    const avisoBloqueados = bloqueados > 0
+      ? `<div class="table__muted" style="font-size:0.82rem;margin-bottom:10px">⚠ ${bloqueados} pessoa(s) já deveriam receber alguma mensagem hoje, mas ainda estão em "Revisar" ou "Decidir" — resolva as pendências delas na lista abaixo pra elas aparecerem aqui.</div>`
+      : "";
+
+    const dataHoje = (() => { const d = hoje0(); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear(); })();
+    const titulo = `<div style="font-family:var(--font-title);font-size:1.15rem;font-weight:600;color:var(--navy);margin-bottom:10px">📅 Hoje — ${dataHoje}</div>`;
+
+    if (!algumaCoisa) {
+      wrap.innerHTML = titulo + avisoBloqueados + '<div class="empty-state empty-state--compact"><p>Nenhuma mensagem devida hoje.</p></div>';
+      return;
+    }
+
+    wrap.innerHTML = titulo + avisoBloqueados + Object.entries(devidas).filter(([, lista]) => lista.length > 0).map(([numero, lista]) => `
       <div class="card cvr-secao">
-        <div class="cvr-secao__header"><span>📅 Mensagem ${numero} — ${escHtml(TITULO_MSG[numero])}</span><span class="cv-secao__count">${lista.length}</span></div>
+        <div class="cvr-secao__header"><span>${escHtml(TITULO_MSG[numero])}</span><span class="cv-secao__count">${lista.length}</span></div>
         ${lista.map((p) => `
           <div class="cvr-item">
             <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
