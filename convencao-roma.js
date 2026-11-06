@@ -469,7 +469,23 @@
     return `📄 ${p.nome}, aqui está o guia completo da Convenção (pagamento, transporte, imigração, mala extraviada, seguro):\n${LINK_GUIA_PDF}`;
   }
 
-  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, pdf: montarMensagemPdf };
+  // Oferta de seguro pra quem comprou passagem com a gente mas não tem NENHUM seguro
+  // registrado (raw_seguro vazio — diferente de "tem seguro mas falta confirmar GTA ou
+  // Assist Card", que já é tratado como pendência normal em "Resolver pendências"). Todo
+  // peregrino dessa Convenção vai pra Europa, então a obrigatoriedade vale pra todo mundo
+  // aqui — por isso essa seção fica restrita a esse grupo, não é uma regra geral do sistema.
+  function candidatosSemSeguro(peregrinos) {
+    return peregrinos.filter((p) => p.data_voo_ida && p.decisao_participa !== "nao" && !p.raw_seguro);
+  }
+  function montarMensagemSeguro(p) {
+    return `Oi, ${p.nome}! 🙏 Aqui é a ${campo(p, "responsavel_lolek", "equipe")}, da Lolek.\n\n` +
+      `Vi aqui que sua passagem pra Convenção Shalom em Roma e Assis está confirmada, mas ainda não temos registro do seu *seguro viagem*. 🛡️\n\n` +
+      `O seguro viagem é *obrigatório* para entrar na Europa (cobertura médica mínima de €30 mil é exigida na imigração) — sem ele, você corre o risco de ter problema na entrada do país.\n\n` +
+      `A Lolek trabalha com seguro pela GTA e pela Assist Card, com ótima cobertura pra essa viagem. Quer que eu já providencie o seu? Me chama que eu te passo os valores. 💛`;
+  }
+
+  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
+  const TITULO_MENSAGEM_PREVIA = { seguro: "Oferta de seguro viagem" };
   const AVISO_CONEXAO_NAO_CONFIRMADA = "⚠ *A equipe ainda precisa confirmar se esse voo tem conexão* — essa mensagem não deveria estar sendo enviada ainda, avise a Lolek.";
 
   // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
@@ -716,7 +732,7 @@
     const p = peregrinosCache.find((x) => x.id === id);
     if (!p) return;
     const texto = MONTAR_MENSAGEM[numero](p);
-    gel("cvr-previa-titulo").textContent = `Mensagem ${numero} — ${p.nome}`;
+    gel("cvr-previa-titulo").textContent = `${TITULO_MENSAGEM_PREVIA[numero] || "Mensagem " + numero} — ${p.nome}`;
     gel("cvr-previa-texto").value = texto;
     gel("cvr-previa-enviar").dataset.id = id;
     gel("cvr-previa-enviar").dataset.numero = numero;
@@ -807,6 +823,27 @@
     btn.addEventListener("click", () => { gel(btn.dataset.cvrFechar).hidden = true; });
   });
 
+  function renderSemSeguro() {
+    const wrap = gel("cvr-seguro-wrap");
+    const candidatos = candidatosSemSeguro(peregrinosCache).filter((p) => !(p.mensagens_enviadas && p.mensagens_enviadas.seguro));
+    if (candidatos.length === 0) { wrap.innerHTML = ""; return; }
+
+    wrap.innerHTML = `
+      <div class="card cvr-secao" style="border-color:#d4a017;background:#fffaf0">
+        <div class="cvr-secao__header"><span>🛡️ Compraram passagem mas não têm seguro viagem</span><span class="cv-secao__count">${candidatos.length}</span></div>
+        <div class="table__muted" style="font-size:0.82rem;margin-bottom:8px">Seguro é obrigatório pra entrar na Europa — todo mundo dessa Convenção vai pra lá. Oferece antes da viagem.</div>
+        ${candidatos.map((p) => `
+          <div class="cvr-item">
+            <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}</span></div>
+            <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="seguro">👁 Prévia e enviar</button>
+          </div>`).join("")}
+      </div>`;
+
+    wrap.querySelectorAll("[data-cvr-previa]").forEach((btn) => btn.addEventListener("click", () => {
+      abrirPreviaMensagem(btn.dataset.cvrPrevia, btn.dataset.cvrNumero);
+    }));
+  }
+
   async function carregarTudo() {
     const statusEl = gel("cvr-status");
     statusEl.innerHTML = `<div class="notice">Carregando...</div>`;
@@ -816,6 +853,7 @@
       clientesCache = clientes || [];
       statusEl.innerHTML = "";
       renderResumo();
+      renderSemSeguro();
       renderDevidasHoje();
       renderLista();
     } catch (err) {
