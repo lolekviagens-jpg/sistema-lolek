@@ -187,6 +187,13 @@
   ];
   const PROD_LABEL = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.label]));
   const PROD_ICON  = Object.fromEntries(PROD_TIPOS.map((p) => [p.tipo, p.icon]));
+  // Só pro texto da zona de upload (qual documento a funcionária deve colar) — tipos sem
+  // entrada aqui caem no genérico "deste item".
+  const HINT_ARQUIVO_TIPO = {
+    hospedagem: "da reserva do hotel", trem: "do bilhete de trem", seguro: "da apólice do seguro",
+    carro: "da reserva da locadora", passeio: "do voucher/ingresso", transfer: "da reserva do transfer",
+    chip: "do comprovante do chip/eSIM", visto_americano: "do protocolo do visto",
+  };
 
   const DADOS_CFG = {
     // passagem não usa DADOS_CFG — cada perna (ida/volta) tem sua própria lista de
@@ -999,8 +1006,8 @@
 
           ${dadosSecaoHtml}
 
-          ${prod.tipo === "hospedagem" || prod.tipo === "trem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
-            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo ${prod.tipo === "hospedagem" ? "da reserva do hotel" : "do bilhete de trem"} pra IA ler os dados</div>
+          ${prod.tipo !== "passagem" ? `<div class="orc-foto-zone" id="emi-prod-${prod.id}-fotozone" tabindex="0">
+            <div class="orc-foto-hint">📎 Cole aqui (Ctrl+V) ou arraste um print/arquivo/voucher ${HINT_ARQUIVO_TIPO[prod.tipo] || "deste item"} pra IA ler os dados</div>
             <input type="file" id="emi-prod-${prod.id}-arquivo-input" accept="image/*,.pdf" hidden />
           </div>
           <div style="display:flex;justify-content:center;margin:6px 0 10px">
@@ -1175,7 +1182,7 @@
         });
       }
 
-      if (prod.tipo === "hospedagem" || prod.tipo === "trem") {
+      if (prod.tipo !== "passagem") {
         wireFotoZone(
           gel(`emi-prod-${prod.id}-fotozone`),
           gel(`emi-prod-${prod.id}-arquivo-input`),
@@ -1316,6 +1323,40 @@
   // Upload feito na zona da volta é tratado como um bilhete separado só dessa perna (ida e
   // volta às vezes são compradas em companhias diferentes, cada uma com seu próprio
   // documento) — não mexe na ida nem olha um eventual "volta" aninhado na resposta.
+  // Prompt genérico pra qualquer tipo sem leitura própria (seguro, carro, passeio,
+  // transfer, chip, visto, etc.) — montado a partir dos campos já cadastrados em
+  // DADOS_CFG daquele tipo, então funciona pra qualquer tipo novo sem precisar escrever
+  // prompt na mão: cada campo pede exatamente o que o formulário já pede.
+  function montarPromptGenerico(tipo) {
+    const campos = DADOS_CFG[tipo] || [];
+    const linhas = campos.map((f) => {
+      if (f.type === "date") return `  "${f.id}": "AAAA-MM-DD ou null — ${f.label}"`;
+      if (f.type === "select") return `  "${f.id}": "uma destas opções, exatamente como escrito: ${f.options.map((o) => `\"${o}\"`).join(", ")} — ou null — ${f.label}"`;
+      return `  "${f.id}": "${f.label}, ou null se não aparecer"`;
+    }).join(",\n");
+    return `${contextoDataAtual()}\n\nAnalise este documento/comprovante/voucher e extraia os dados abaixo. Se o documento mostrar um valor total pago, inclua em "custo" também. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n${linhas}${linhas ? ",\n" : ""}  "custo": valor_numerico_total_em_reais_ou_null\n}`;
+  }
+
+  // Aplica o resultado do prompt genérico de volta nos campos do formulário — 1:1 com
+  // DADOS_CFG[tipo], igual já faz hospedagem/trem na mão pros tipos com prompt próprio.
+  function aplicarDadosGenericos(prodId, tipo, ex) {
+    const campos = DADOS_CFG[tipo] || [];
+    campos.forEach((f) => {
+      const el = gel(`emi-prod-${prodId}-dados-${f.id}`);
+      if (!el || ex[f.id] == null || ex[f.id] === "") return;
+      if (f.type === "select" && !f.options.includes(ex[f.id])) return;
+      el.value = ex[f.id];
+    });
+    // Campos com showIf só aparecem depois do "change" do campo-gatilho — dispara pra
+    // revelar o que a IA já preencheu, igual já faz hospedagem (reembolsavel) e trem
+    // (tem_parada) pros prompts específicos.
+    campos.forEach((f) => {
+      if (!f.showIf) return;
+      gel(`emi-prod-${prodId}-dados-${f.showIf.field}`)?.dispatchEvent(new Event("change"));
+    });
+    if (ex.custo != null) { const el = gel(`emi-prod-${prodId}-custo`); if (el) el.value = ex.custo; }
+  }
+
   async function analisarDocumento(prodId, tipo, imageSrc, zone, pernaAlvo) {
     const match = imageSrc.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return;
@@ -1327,7 +1368,9 @@
       ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea (LATAM, GOL, Azul etc.) costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — você precisa agrupar as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:\n\n- Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo real: "Roma → São Paulo" seguida de "São Paulo → Fortaleza" são 2 trechos da MESMA viagem de ida (escala em São Paulo) — NÃO é ida e volta.\n- Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA (pode ter 1 ou mais trechos também). Exemplo real: "Fortaleza → Lisboa" é a ida; se depois tiver "Lisboa → Fortaleza", isso é a volta.\n\nColoque CADA linha da tabela como um item separado dentro do array "segmentos" da perna correspondente (ida ou volta) — não resuma trechos com escala num só, a funcionária quer ver o aeroporto e horário de CADA trecho, igual a companhia mostra. Na dúvida se é conexão ou volta, trate como conexão (tudo dentro de "segmentos" da ida, "volta": null) — é pior assumir uma volta que não existe. IMPORTANTE: preencha "data" (AAAA-MM-DD) em TODO segmento sempre que o documento mostrar ou permitir deduzir a data daquele voo especificamente — é o campo que permite calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; nunca deixe null só porque "parece" ser o mesmo dia da perna, INFIRA a partir do horário de chegada do trecho anterior + duração do voo quando o documento não disser explicitamente.\n\nRetorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "localizador": "código/localizador da reserva (da ida), ou null",\n  "segmentos": [\n    { "trecho": "SIGLA_ORIGEM → SIGLA_DESTINO", "companhia": "nome da companhia aérea", "voo": "número do voo", "data": "AAAA-MM-DD ou null", "horario_partida": "HH:MM", "horario_chegada": "HH:MM ou HH:MM (+1)" }\n  ],\n  "milhas": número_inteiro_ou_null,\n  "taxa_embarque": valor_numerico_em_reais_ou_null,\n  "bagagem": "descrição completa da franquia de bagagem desta perna (cabine e despachada), ou null se não aparecer",\n  "observacoes": "outras informações relevantes da tarifa desta perna (tipo de tarifa, número da passagem, regras de remarcação/reembolso), uma por linha, ou null",\n  "volta": {\n    "localizador": "código da volta, ou null (repita o da ida se for o mesmo PNR)",\n    "segmentos": [ { "trecho": "...", "companhia": "...", "voo": "...", "data": "AAAA-MM-DD ou null", "horario_partida": "...", "horario_chegada": "..." } ],\n    "milhas": número_inteiro_ou_null, "taxa_embarque": valor_numerico_em_reais_ou_null,\n    "bagagem": "idem, mas da volta, ou null", "observacoes": "idem, mas da volta, ou null"\n  } OU null — preencha SOMENTE se for genuinamente ida e volta pela regra acima. Uma viagem só de ida com escala continua com "volta": null, só que "segmentos" da ida vai ter mais de um item.\n}`
       : tipo === "trem"
       ? `${contextoDataAtual()}\n\nAnalise este documento/print de passagem de trem. Se houver troca de trem/baldeação no meio do trajeto (mais de um trecho), preencha "tem_parada" e os campos da parada com o PRIMEIRO ponto de troca. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "trecho": "CIDADE_ORIGEM → CIDADE_DESTINO (origem e destino finais da viagem)",\n  "companhia": "nome da companhia ferroviária (ex: SNCF, Trenitalia, Eurostar), ou null",\n  "data_viagem": "AAAA-MM-DD ou null",\n  "horario_partida": "HH:MM ou null",\n  "horario_chegada": "HH:MM ou null",\n  "tem_parada": true se o trajeto tiver alguma parada/baldeação/troca de trem no meio, false se for direto, ou null se não for possível saber,\n  "cidade_parada": "cidade onde troca de trem, se tem_parada for true, ou null",\n  "horario_parada": "horário da parada/conexão, se tem_parada for true, ou null",\n  "localizador": "código/localizador da reserva, ou null"\n}`
-      : `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "localizador": "código/localizador/número de confirmação da reserva, ou null se não aparecer",\n  "endereco": "endereço completo do hotel/pousada, ou null se não aparecer",\n  "horario_checkin": "horário de check-in informado na reserva (ex: \"A partir das 14h\"), ou null",\n  "horario_checkout": "horário de check-out informado na reserva (ex: \"Até 12h\"), ou null",\n  "reembolsavel": "\"Sim\" ou \"Não\", se a reserva mencionar política de cancelamento/reembolso, ou null se não estiver claro",\n  "reembolso_prazo": "AAAA-MM-DD do prazo limite pra reembolso (cancelamento gratuito), se houver, ou null",\n  "reembolso_percentual": "percentual reembolsável dentro do prazo, como texto (ex: \"80%\"), ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`;
+      : tipo === "hospedagem"
+      ? `${contextoDataAtual()}\n\nAnalise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE um JSON válido, sem nenhum texto adicional:\n{\n  "hotel": "nome do hotel/pousada",\n  "regime": "uma destas opções, exatamente como escrito: ${DADOS_CFG.hospedagem[1].options.map((o) => `\"${o}\"`).join(", ")} — ou null se não estiver claro",\n  "checkin": "AAAA-MM-DD ou null",\n  "checkout": "AAAA-MM-DD ou null",\n  "localizador": "código/localizador/número de confirmação da reserva, ou null se não aparecer",\n  "endereco": "endereço completo do hotel/pousada, ou null se não aparecer",\n  "horario_checkin": "horário de check-in informado na reserva (ex: \"A partir das 14h\"), ou null",\n  "horario_checkout": "horário de check-out informado na reserva (ex: \"Até 12h\"), ou null",\n  "reembolsavel": "\"Sim\" ou \"Não\", se a reserva mencionar política de cancelamento/reembolso, ou null se não estiver claro",\n  "reembolso_prazo": "AAAA-MM-DD do prazo limite pra reembolso (cancelamento gratuito), se houver, ou null",\n  "reembolso_percentual": "percentual reembolsável dentro do prazo, como texto (ex: \"80%\"), ou null",\n  "custo": valor_numerico_total_em_reais_ou_null\n}`
+      : montarPromptGenerico(tipo);
 
     const content = mime === "application/pdf"
       ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } }, { type: "text", text: prompt }]
@@ -1391,7 +1434,7 @@
         fill("cidade_parada", ex.cidade_parada);
         fill("horario_parada", ex.horario_parada);
         fill("localizador", ex.localizador);
-      } else {
+      } else if (tipo === "hospedagem") {
         const fill = (campo, val) => { const el = gel(`emi-prod-${prodId}-dados-${campo}`); if (el && val != null && val !== "") el.value = val; };
         fill("hotel", ex.hotel);
         if (ex.regime && DADOS_CFG.hospedagem[1].options.includes(ex.regime)) fill("regime", ex.regime);
@@ -1410,6 +1453,8 @@
         fill("reembolso_prazo", ex.reembolso_prazo);
         fill("reembolso_percentual", ex.reembolso_percentual);
         if (ex.custo != null) { const el = gel(`emi-prod-${prodId}-custo`); if (el) el.value = ex.custo; }
+      } else {
+        aplicarDadosGenericos(prodId, tipo, ex);
       }
       // Reconsulta a zona/hint pelo id — se detectou volta, o "voltaWrap" pode ter acabado
       // de ficar visível, então o "zone"/"hintEl" capturados no início continuam válidos
