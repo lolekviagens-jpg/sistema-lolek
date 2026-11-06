@@ -487,33 +487,30 @@
     const d = hoje0();
     return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   }
-  // SEM filtrar por status — usado tanto pra achar quem já pode receber (pronto) quanto pra
-  // contar quem está travado (revisar/decidir) mas já deveria estar recebendo mensagem hoje.
-  function gatilhosDeHoje(peregrinos) {
-    const hj = hojeIso();
-    const porMsg = { 1: [], 2: [], 3: [], 4: [] };
+  // Lista plana de "gatilhos" — um por (peregrino, mensagem) que ainda não foi enviada,
+  // com a data exata em que deveria sair. Sem filtrar por status: uma pessoa travada em
+  // "Revisar" ainda aparece no dia certo, só que marcada como pendente em vez de com botão
+  // de enviar — assim o calendário mostra o quadro completo, não só quem já está liberado.
+  function todosOsGatilhos(peregrinos) {
+    const itens = [];
     peregrinos.forEach((p) => {
       const ja = p.mensagens_enviadas || {};
       if (p.data_voo_ida) {
-        if (!ja["1"] && somarDias(p.data_voo_ida, -7) <= hj) porMsg[1].push(p);
-        if (!ja["2"] && somarDias(p.data_voo_ida, -1) <= hj) porMsg[2].push(p);
-        if (!ja["3"] && p.data_voo_ida <= hj) porMsg[3].push(p);
+        if (!ja["1"]) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
+        if (!ja["2"]) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
+        if (!ja["3"]) itens.push({ data: p.data_voo_ida, numero: 3, p });
       }
-      if (p.trem_data && !ja["4"] && somarDias(p.trem_data, -1) <= hj) porMsg[4].push(p);
+      if (p.trem_data && !ja["4"]) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
     });
-    return porMsg;
+    return itens;
   }
-  function mensagensDevidasHoje(peregrinos) {
-    const todos = gatilhosDeHoje(peregrinos);
-    const devidas = {};
-    Object.entries(todos).forEach(([n, lista]) => { devidas[n] = lista.filter((p) => p.status === "pronto"); });
-    return devidas;
-  }
-  function pendentesDeHoje(peregrinos) {
-    const todos = gatilhosDeHoje(peregrinos);
-    const vistos = new Set();
-    Object.values(todos).forEach((lista) => lista.forEach((p) => { if (p.status !== "pronto") vistos.add(p.id); }));
-    return vistos.size;
+  function rotuloData(iso) {
+    const hj = hojeIso();
+    const [, m, d] = iso.split("-");
+    const ddmm = `${d}/${m}`;
+    if (iso < hj) return `🔴 Atrasado — ${ddmm}`;
+    if (iso === hj) return `📅 Hoje — ${ddmm}`;
+    return `${ddmm}`;
   }
 
   // ===================================================================
@@ -543,34 +540,54 @@
       : `${peregrinosCache.length} peregrinos — ${porStatus.pronto || 0} pronto(s), ${porStatus.revisar || 0} pra revisar, ${porStatus.decidir || 0} pra decidir`;
   }
 
+  let diaSelecionado = ""; // "" = todas as datas
+
   function renderDevidasHoje() {
     const wrap = gel("cvr-hoje-wrap");
-    const devidas = mensagensDevidasHoje(peregrinosCache);
-    const bloqueados = pendentesDeHoje(peregrinosCache);
-    const algumaCoisa = Object.values(devidas).some((lista) => lista.length > 0);
-
-    const avisoBloqueados = bloqueados > 0
-      ? `<div class="table__muted" style="font-size:0.82rem;margin-bottom:10px">⚠ ${bloqueados} pessoa(s) já deveriam receber alguma mensagem hoje, mas ainda estão em "Revisar" ou "Decidir" — resolva as pendências delas na lista abaixo pra elas aparecerem aqui.</div>`
-      : "";
-
-    const dataHoje = (() => { const d = hoje0(); return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear(); })();
-    const titulo = `<div style="font-family:var(--font-title);font-size:1.15rem;font-weight:600;color:var(--navy);margin-bottom:10px">📅 Hoje — ${dataHoje}</div>`;
-
-    if (!algumaCoisa) {
-      wrap.innerHTML = titulo + avisoBloqueados + '<div class="empty-state empty-state--compact"><p>Nenhuma mensagem devida hoje.</p></div>';
+    const gatilhos = todosOsGatilhos(peregrinosCache);
+    if (gatilhos.length === 0) {
+      wrap.innerHTML = '<div class="empty-state empty-state--compact"><p>Nenhuma mensagem pendente de calendário (ninguém com voo ou trem cadastrado ainda).</p></div>';
       return;
     }
 
-    wrap.innerHTML = titulo + avisoBloqueados + Object.entries(devidas).filter(([, lista]) => lista.length > 0).map(([numero, lista]) => `
-      <div class="card cvr-secao">
-        <div class="cvr-secao__header"><span>${escHtml(TITULO_MSG[numero])}</span><span class="cv-secao__count">${lista.length}</span></div>
-        ${lista.map((p) => `
-          <div class="cvr-item">
-            <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
-            <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>
-          </div>`).join("")}
-      </div>`).join("");
+    const porData = {};
+    gatilhos.forEach((g) => (porData[g.data] || (porData[g.data] = [])).push(g));
+    const datas = Object.keys(porData).sort();
 
+    // Chips de data, pra escolher um dia específico sem precisar rolar por tudo — "Todas"
+    // continua mostrando o calendário inteiro, do atrasado pro mais distante.
+    const chips = `<div class="fin-filtros" style="margin-bottom:14px">
+      <button type="button" class="fin-filtro ${diaSelecionado === "" ? "is-active" : ""}" data-cvr-dia="">Todas as datas</button>
+      ${datas.map((d) => `<button type="button" class="fin-filtro ${diaSelecionado === d ? "is-active" : ""}" data-cvr-dia="${d}">${escHtml(rotuloData(d))} (${porData[d].length})</button>`).join("")}
+    </div>`;
+
+    const datasParaMostrar = diaSelecionado ? datas.filter((d) => d === diaSelecionado) : datas;
+
+    wrap.innerHTML = chips + datasParaMostrar.map((data) => {
+      const porMsg = {};
+      porData[data].forEach((g) => (porMsg[g.numero] || (porMsg[g.numero] = [])).push(g.p));
+      const prontos = porData[data].filter((g) => g.p.status === "pronto").length;
+      const pendentes = porData[data].length - prontos;
+      return `
+        <div class="card cvr-secao" style="${data < hojeIso() ? "border-color:#c0392b;background:#fdf1ef" : ""}">
+          <div class="cvr-secao__header"><span>${escHtml(rotuloData(data))}</span><span class="cv-secao__count">${prontos} pronto${prontos !== 1 ? "s" : ""}${pendentes ? ", " + pendentes + " pendente" + (pendentes !== 1 ? "s" : "") : ""}</span></div>
+          ${Object.entries(porMsg).map(([numero, lista]) => `
+            <div class="cv-subsecao__header">${escHtml(TITULO_MSG[numero])}</div>
+            ${lista.map((p) => `
+              <div class="cvr-item">
+                <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
+                ${p.status === "pronto"
+                  ? `<button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>`
+                  : `<span class="badge badge--pendente">${escHtml(LABEL_STATUS[p.status] || p.status)}</span>`}
+              </div>`).join("")}
+          `).join("")}
+        </div>`;
+    }).join("");
+
+    wrap.querySelectorAll("[data-cvr-dia]").forEach((btn) => btn.addEventListener("click", () => {
+      diaSelecionado = btn.dataset.cvrDia;
+      renderDevidasHoje();
+    }));
     wrap.querySelectorAll("[data-cvr-previa]").forEach((btn) => btn.addEventListener("click", () => {
       abrirPreviaMensagem(btn.dataset.cvrPrevia, Number(btn.dataset.cvrNumero));
     }));

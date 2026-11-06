@@ -4148,8 +4148,7 @@ textarea.input {
 .cvr-secao {
   margin-bottom: 18px;
   padding: 16px 18px;
-  border: 1px solid #d4a017;
-  background: #fffaf0;
+  border: 1px solid var(--border);
 }
 
 .cvr-secao__header {
