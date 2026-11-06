@@ -905,7 +905,11 @@
 
   function renderSemSeguro() {
     const wrap = gel("cvr-seguro-wrap");
-    const candidatos = candidatosSemSeguro(peregrinosCache).filter((p) => !(p.mensagens_enviadas && p.mensagens_enviadas.seguro));
+    // "seguro" = já mandou a oferta; "seguro_dispensado" = marcado como "não precisa" (ex:
+    // avisou que já tem seguro comprado por fora) — os dois tiram da lista, por motivos
+    // diferentes.
+    const candidatos = candidatosSemSeguro(peregrinosCache).filter((p) =>
+      !(p.mensagens_enviadas && (p.mensagens_enviadas.seguro || p.mensagens_enviadas.seguro_dispensado)));
     if (candidatos.length === 0) { wrap.innerHTML = ""; return; }
 
     const aberta = secaoEstaAberta("seguro", true);
@@ -917,7 +921,10 @@
           ${candidatos.map((p) => `
             <div class="cvr-item">
               <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}</span></div>
-              <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="seguro">👁 Prévia e enviar</button>
+              <div style="display:flex;gap:6px;flex:0 0 auto">
+                <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="seguro">👁 Prévia e enviar</button>
+                <button type="button" class="btn btn--ghost btn--icon" data-cvr-dispensar-seguro="${p.id}" title="Tirar da lista (ex: já tem seguro por fora)">✕</button>
+              </div>
             </div>`).join("")}
         </div>
       </div>`;
@@ -925,6 +932,14 @@
     ligarColapsaveis(wrap, renderSemSeguro);
     wrap.querySelectorAll("[data-cvr-previa]").forEach((btn) => btn.addEventListener("click", () => {
       abrirPreviaMensagem(btn.dataset.cvrPrevia, btn.dataset.cvrNumero);
+    }));
+    wrap.querySelectorAll("[data-cvr-dispensar-seguro]").forEach((btn) => btn.addEventListener("click", async () => {
+      const p = peregrinosCache.find((x) => x.id === btn.dataset.cvrDispensarSeguro);
+      if (!confirm(`Tirar ${p ? p.nome : "essa pessoa"} dessa lista? (ex: já avisou que tem seguro por fora). Não manda mensagem nenhuma, só some da lista.`)) return;
+      try {
+        await chamarConvencaoRoma("marcar_mensagem_enviada", { id: btn.dataset.cvrDispensarSeguro, numero: "seguro_dispensado" });
+        await carregarTudo();
+      } catch (err) { alert(err.message); }
     }));
   }
 
