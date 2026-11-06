@@ -111,15 +111,25 @@
     return HOTEIS_CONHECIDOS.find((h) => t.includes(h.chave)) || null;
   }
 
+  // Conexão: a planilha às vezes mostra o itinerário completo com "+" entre trechos (ex:
+  // "FOR→LIS 12/11 (LATAM) + LIS→FCO 15/11 (TAP)") — aí dá pra saber a cidade da conexão com
+  // confiança. Quando só aparece "FOR→FCO" (início e fim), isso NÃO significa voo direto —
+  // tem companhia (TAP, por ex.) que SEMPRE conecta no próprio hub e isso não aparece nesse
+  // resumo. Por segurança, fica "não confirmado" (null) em vez de assumir voo direto —
+  // vira pendência até alguém confirmar de olho no bilhete real.
   function parseVoo(texto) {
-    const out = { cia_aerea: null, data_voo_ida: null, aeroporto_saida: null, data_volta: null };
+    const out = { cia_aerea: null, data_voo_ida: null, aeroporto_saida: null, data_volta: null, voo_tem_conexao: null, conexao_cidade: null };
     if (!texto) return out;
-    const m = texto.match(/([A-Za-zÀ-ú]{2,6})\s*→\s*[A-Za-zÀ-ú]{2,6}\s+(\d{1,2}\/\d{1,2})(?:[^0-9]*volta\s*(\d{1,2}\/\d{1,2}))?[^(]*\(([^)]+)\)/i);
-    if (!m) return out;
-    out.aeroporto_saida = m[1];
-    out.data_voo_ida = dataBrParaIso(m[2]);
-    out.data_volta = m[3] ? dataBrParaIso(m[3]) : null;
-    out.cia_aerea = (m[4] || "").trim();
+    const segs = [...texto.matchAll(/([A-Za-zÀ-ú]{2,6})\s*→\s*([A-Za-zÀ-ú]{2,6})/g)];
+    if (segs.length === 0) return out;
+    out.aeroporto_saida = segs[0][1];
+    if (segs.length >= 2) { out.voo_tem_conexao = true; out.conexao_cidade = segs[0][2]; }
+    const m = texto.match(/(\d{1,2}\/\d{1,2})(?:[^0-9]*volta\s*(\d{1,2}\/\d{1,2}))?[^(]*\(([^)]+)\)/i);
+    if (m) {
+      out.data_voo_ida = dataBrParaIso(m[1]);
+      out.data_volta = m[2] ? dataBrParaIso(m[2]) : null;
+      out.cia_aerea = (m[3] || "").trim();
+    }
     return out;
   }
 
@@ -222,6 +232,7 @@
         whatsapp: cliente ? formatarTelWA(cliente.telefone) : null,
 
         cia_aerea: voo.cia_aerea, data_voo_ida: voo.data_voo_ida, aeroporto_saida: voo.aeroporto_saida, data_volta: voo.data_volta,
+        voo_tem_conexao: voo.voo_tem_conexao, conexao_cidade: voo.conexao_cidade,
 
         hotel_roma_nome: hotelRoma.nome,
         hotel_roma_endereco: !ehPendente(endRomaPlanilha) && typeof endRomaPlanilha === "string" ? endRomaPlanilha : hotelRoma.endereco,
@@ -262,6 +273,7 @@
         cliente_id: cliente ? cliente.id : null,
         whatsapp: cliente ? formatarTelWA(cliente.telefone) : null,
         cia_aerea: voo.cia_aerea, data_voo_ida: voo.data_voo_ida, aeroporto_saida: voo.aeroporto_saida, data_volta: voo.data_volta,
+        voo_tem_conexao: voo.voo_tem_conexao, conexao_cidade: voo.conexao_cidade,
         seguradora: seguro.seguradora, seguro_apolice: seguro.apolice,
         raw_pendencias: `Lead na planilha: ${porColuna(fora.header, linha, "Lead na planilha") || "—"} — ${consta}`,
       });
@@ -302,9 +314,11 @@
 
     partes.push(`✈️ *SEU VOO DE IDA*\n${campo(p, "cia_aerea", "—")} · ${campo(p, "voo_ida", "—")}\n` +
       `${fData(p.data_voo_ida)}, às ${campo(p, "hora_voo_ida", "—")}, saindo de ${campo(p, "aeroporto_saida", "—")}\n` +
-      (p.conexao_cidade
-        ? `Conexão em ${p.conexao_cidade}. É lá que você passa pela imigração europeia.`
-        : `Voo direto: a imigração é feita em Roma.`));
+      (p.voo_tem_conexao === true
+        ? `Conexão em ${p.conexao_cidade || "—"}. É lá que você passa pela imigração europeia.`
+        : p.voo_tem_conexao === false
+        ? `Voo direto: a imigração é feita em Roma.`
+        : AVISO_CONEXAO_NAO_CONFIRMADA));
 
     partes.push(`🧳 *SUA BAGAGEM*\nConfira no seu bilhete qual franquia você comprou:\n\n` +
       `👉 *Caso sua passagem tenha só mala de mão (até 10 kg)*\n` +
@@ -366,8 +380,6 @@
 
     partes.push(`Qualquer dúvida, é só me chamar. Estamos com você antes, durante e depois. 💛`);
 
-    partes.push(montarMensagem5(p)); // sempre junto com a 1, conforme o calendário
-
     return partes.join("\n\n");
   }
 
@@ -380,14 +392,15 @@
     partes.push(`💺 *SOBRE OS ASSENTOS*\nOs assentos são distribuídos *aleatoriamente pela companhia aérea* no check-in. Por isso, pode acontecer de você não ficar ao lado de quem viaja com você.\n` +
       `Se quiser um assento específico, ele é *pago* à parte. Se tiver interesse, me chame que eu verifico o valor para você.`);
     partes.push(`🛂 *IMIGRAÇÃO*\n` +
-      (p.conexao_cidade
-        ? `Em ${p.conexao_cidade}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
-        : `A imigração é feita na chegada em Roma.`) +
+      (p.voo_tem_conexao === true
+        ? `Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
+        : p.voo_tem_conexao === false
+        ? `A imigração é feita na chegada em Roma.`
+        : AVISO_CONEXAO_NAO_CONFIRMADA) +
       `\nA Europa agora registra digitais e foto de quem entra, então as filas podem demorar mais.\n` +
       `O oficial costuma perguntar o motivo da viagem, onde você vai ficar e quando volta. Responda com calma: você vai participar de um evento religioso em Roma e Assis. Tenha à mão passaporte, voucher do hotel, passagem de volta, seguro e inscrição.`);
     partes.push(`📱 Antes de sair de casa:\n• Ative o uso internacional dos cartões no app do banco\n• Ative o roaming ou instale seu eSIM\n• Leve um adaptador de tomada universal\n• Remédios, documentos e eletrônicos sempre na bagagem de mão`);
     partes.push(`Boa viagem! Que Deus abençoe cada passo. 🙏`);
-    partes.push(montarMensagem5(p)); // reenviada junto com a 2, conforme o calendário
     return partes.join("\n\n");
   }
 
@@ -452,6 +465,13 @@
   // o Digisac aqui nunca anexou arquivo de verdade, só manda link em texto (mesmo padrão já
   // usado em gerar-contrato.js pro link de assinatura).
   const LINK_GUIA_PDF = location.origin + "/orientacoes-convencao-shalom-2026.pdf";
+  const AVISO_CONEXAO_NAO_CONFIRMADA = "⚠ *A equipe ainda precisa confirmar se esse voo tem conexão* — essa mensagem não deveria estar sendo enviada ainda, avise a Lolek.";
+
+  // A Mensagem 5 vai "junto" com a 1 e reenviada na 2, mas como MENSAGEM SEPARADA — não
+  // concatenada no mesmo texto (isso já causou um caso real de mensagem gigante onde o link
+  // do PDF parecia ter desaparecido). Esses números indicam, pra cada mensagem principal,
+  // quais outras mensagens devem ser enviadas em seguida, automaticamente, no mesmo clique.
+  const MENSAGENS_EM_CADEIA = { 1: [5], 2: [5] };
 
   // ===================================================================
   // "Mensagens pra enviar hoje" — regras de gatilho do calendário
@@ -523,6 +543,8 @@
   function campoPendenteTag(p) {
     const faltas = [];
     if (!p.whatsapp) faltas.push("WhatsApp");
+    if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
+    if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
     if (p.raw_seguro && !p.seguradora) faltas.push("seguradora");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
     if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
@@ -590,6 +612,8 @@
     gel("cvr-r-hotel-assis-endereco").value = p.hotel_assis_endereco || "";
     gel("cvr-r-hotel-assis-taxa").value = p.hotel_assis_taxa || "";
     gel("cvr-r-hora-voo").value = p.hora_voo_ida || "";
+    gel("cvr-r-tem-conexao").value = p.voo_tem_conexao === true ? "sim" : p.voo_tem_conexao === false ? "nao" : "";
+    gel("cvr-r-conexao-wrap").hidden = p.voo_tem_conexao !== true;
     gel("cvr-r-conexao").value = p.conexao_cidade || "";
     gel("cvr-r-trem-horario").value = p.trem_horario || "";
     gel("cvr-r-trem-estacao").value = p.trem_estacao_saida || "";
@@ -598,6 +622,9 @@
     gel("cvr-r-raw").textContent = [p.raw_voos, p.raw_hotel_roma, p.raw_hotel_assis, p.raw_outras_hosp, p.raw_seguro, p.raw_trem, p.raw_outros_itens, p.raw_pendencias].filter(Boolean).join("\n") || "—";
     gel("cvr-modal-resolver").hidden = false;
   }
+  gel("cvr-r-tem-conexao").addEventListener("change", () => {
+    gel("cvr-r-conexao-wrap").hidden = gel("cvr-r-tem-conexao").value !== "sim";
+  });
   gel("cvr-resolver-salvar").addEventListener("click", async () => {
     if (!peregrinoEmEdicaoId) return;
     const dados = {
@@ -614,7 +641,8 @@
       hotel_assis_endereco: gel("cvr-r-hotel-assis-endereco").value.trim() || null,
       hotel_assis_taxa: gel("cvr-r-hotel-assis-taxa").value || null,
       hora_voo_ida: gel("cvr-r-hora-voo").value.trim() || null,
-      conexao_cidade: gel("cvr-r-conexao").value.trim() || null,
+      voo_tem_conexao: gel("cvr-r-tem-conexao").value === "sim" ? true : gel("cvr-r-tem-conexao").value === "nao" ? false : null,
+      conexao_cidade: gel("cvr-r-tem-conexao").value === "sim" ? (gel("cvr-r-conexao").value.trim() || null) : null,
       trem_horario: gel("cvr-r-trem-horario").value.trim() || null,
       trem_estacao_saida: gel("cvr-r-trem-estacao").value.trim() || null,
       transfer_info: gel("cvr-r-transfer").value.trim() || null,
@@ -649,6 +677,16 @@
     try {
       await enviarPeloDigisac(p.whatsapp, gel("cvr-previa-texto").value);
       await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero });
+
+      // Mensagem 5 vai "junto" com a 1 e reenviada na 2 — mas como mensagem SEPARADA no
+      // WhatsApp (ver MENSAGENS_EM_CADEIA), não colada no mesmo texto. Manda em seguida,
+      // automaticamente, sem abrir outra prévia (é sempre o mesmo aviso de emergência).
+      const emCadeia = MENSAGENS_EM_CADEIA[Number(numero)] || [];
+      for (const outroNumero of emCadeia) {
+        await enviarPeloDigisac(p.whatsapp, MONTAR_MENSAGEM[outroNumero](p));
+        await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero: outroNumero });
+      }
+
       gel("cvr-modal-previa").hidden = true;
       await carregarTudo();
     } catch (err) {

@@ -1154,7 +1154,14 @@
               </label>
               <label class="field"><span class="field__label">Apólice do seguro</span><input type="text" id="cvr-r-seguro-apolice" class="input" /></label>
               <label class="field"><span class="field__label">Horário do voo de ida</span><input type="text" id="cvr-r-hora-voo" class="input" placeholder="Ex: 23h55" /></label>
-              <label class="field"><span class="field__label">Cidade de conexão (vazio = voo direto)</span><input type="text" id="cvr-r-conexao" class="input" /></label>
+              <label class="field"><span class="field__label">Esse voo tem conexão? *</span>
+                <select id="cvr-r-tem-conexao" class="input">
+                  <option value="">Ainda não confirmei</option>
+                  <option value="nao">Não — voo direto</option>
+                  <option value="sim">Sim — tem conexão</option>
+                </select>
+              </label>
+              <label class="field" id="cvr-r-conexao-wrap" hidden><span class="field__label">Cidade da conexão</span><input type="text" id="cvr-r-conexao" class="input" /></label>
             </div>
             <div class="orc-extras-label" style="margin-top:10px">Hotel em Roma</div>
             <div class="form__grid">
