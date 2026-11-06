@@ -534,6 +534,36 @@
   const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 3: "Chegada em Roma", 4: "Véspera do trem p/ Assis" };
   const LABEL_STATUS = { pronto: "✅ Pronto para disparo", revisar: "⚠ Revisar", decidir: "❓ Decidir se entra" };
 
+  // ===== Seções recolhíveis — tanta gente numa lista só ficava difícil de achar qualquer
+  // coisa. Guarda só as EXCEÇÕES ao padrão de cada seção (clicar sempre inverte o padrão
+  // dela), assim cada seção pode ter um padrão próprio (atrasado/hoje já abertos, os demais
+  // fechados, por exemplo) sem precisar listar explicitamente o estado de cada uma. "aberta
+  // por padrão" OU não entra em volta, nunca implica em recriar o HTML de tudo de novo pra
+  // só abrir/fechar — o clique já chama a mesma função de render, que já é rápida (os dados
+  // já estão em memória, não tem requisição nenhuma envolvida).
+  const secoesComExcecao = new Set();
+  function secaoEstaAberta(id, abertaPorPadrao) {
+    return secoesComExcecao.has(id) ? !abertaPorPadrao : abertaPorPadrao;
+  }
+  function alternarSecao(id) {
+    if (secoesComExcecao.has(id)) secoesComExcecao.delete(id); else secoesComExcecao.add(id);
+  }
+  function cabecalhoColapsavel(id, abertaPorPadrao, tituloHtml, contagemHtml) {
+    const aberta = secaoEstaAberta(id, abertaPorPadrao);
+    return `<div class="cvr-secao__header" data-cvr-toggle="${escHtml(id)}" style="cursor:pointer;user-select:none">
+      <span>${aberta ? "▾" : "▸"} ${tituloHtml}</span>${contagemHtml || ""}
+    </div>`;
+  }
+  // Religa o clique nos cabeçalhos recolhíveis que ficam dentro de "wrap" — "rerender" é a
+  // função que desenha aquela seção de novo (chamada de novo após alternar, pra já nascer no
+  // estado certo em vez de só trocar o "hidden" por fora).
+  function ligarColapsaveis(wrap, rerender) {
+    wrap.querySelectorAll("[data-cvr-toggle]").forEach((el) => el.addEventListener("click", () => {
+      alternarSecao(el.dataset.cvrToggle);
+      rerender();
+    }));
+  }
+
   let peregrinosCache = [];
   let clientesCache = [];
   let filtroStatus = "";
@@ -583,21 +613,30 @@
       porData[data].forEach((g) => (porMsg[g.numero] || (porMsg[g.numero] = [])).push(g.p));
       const prontos = porData[data].filter((g) => g.p.status === "pronto").length;
       const pendentes = porData[data].length - prontos;
+      // Atrasado/hoje já abrem direto (é o que precisa de ação agora); dias futuros começam
+      // fechados, só com a contagem — ninguém precisa rolar passado isso pra achar hoje.
+      const id = "dia:" + data;
+      const abertaPorPadrao = data <= hojeIso();
+      const aberta = secaoEstaAberta(id, abertaPorPadrao);
       return `
         <div class="card cvr-secao" style="${data < hojeIso() ? "border-color:#c0392b;background:#fdf1ef" : ""}">
-          <div class="cvr-secao__header"><span>${escHtml(rotuloData(data))}</span><span class="cv-secao__count">${prontos} pronto${prontos !== 1 ? "s" : ""}${pendentes ? ", " + pendentes + " pendente" + (pendentes !== 1 ? "s" : "") : ""}</span></div>
-          ${Object.entries(porMsg).map(([numero, lista]) => `
-            <div class="cv-subsecao__header">${escHtml(TITULO_MSG[numero])}</div>
-            ${lista.map((p) => `
-              <div class="cvr-item">
-                <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
-                ${p.status === "pronto"
-                  ? `<button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>`
-                  : `<span class="badge badge--pendente">${escHtml(LABEL_STATUS[p.status] || p.status)}</span>`}
-              </div>`).join("")}
-          `).join("")}
+          ${cabecalhoColapsavel(id, abertaPorPadrao, escHtml(rotuloData(data)), `<span class="cv-secao__count">${prontos} pronto${prontos !== 1 ? "s" : ""}${pendentes ? ", " + pendentes + " pendente" + (pendentes !== 1 ? "s" : "") : ""}</span>`)}
+          <div ${aberta ? "" : "hidden"}>
+            ${Object.entries(porMsg).map(([numero, lista]) => `
+              <div class="cv-subsecao__header">${escHtml(TITULO_MSG[numero])}</div>
+              ${lista.map((p) => `
+                <div class="cvr-item">
+                  <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
+                  ${p.status === "pronto"
+                    ? `<button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>`
+                    : `<span class="badge badge--pendente">${escHtml(LABEL_STATUS[p.status] || p.status)}</span>`}
+                </div>`).join("")}
+            `).join("")}
+          </div>
         </div>`;
     }).join("");
+
+    ligarColapsaveis(wrap, renderDevidasHoje);
 
     wrap.querySelectorAll("[data-cvr-dia]").forEach((btn) => btn.addEventListener("click", () => {
       diaSelecionado = btn.dataset.cvrDia;
@@ -622,16 +661,9 @@
     return faltas;
   }
 
-  function renderLista() {
-    const wrap = gel("cvr-lista-wrap");
-    const lista = peregrinosFiltrados();
-    if (lista.length === 0) {
-      wrap.innerHTML = '<div class="empty-state"><p>Nenhum peregrino encontrado. Importe a planilha pelo botão acima.</p></div>';
-      return;
-    }
-    wrap.innerHTML = lista.map((p) => {
-      const faltas = campoPendenteTag(p);
-      return `
+  function pessoaCardHtml(p) {
+    const faltas = campoPendenteTag(p);
+    return `
       <div class="card cvr-pessoa">
         <div class="cvr-pessoa__topo">
           <div>
@@ -652,7 +684,41 @@
           <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 5 mensagens</button>
         </div>
       </div>`;
-    }).join("");
+  }
+
+  // Grupos por status (abertos por padrão: decidir/revisar — precisam de ação; pronto
+  // começa fechado, já que "pronto" não exige nada da equipe agora) — só quando nenhum
+  // filtro de status específico tá ativo, senão a lista já vem naturalmente pequena.
+  const GRUPOS_STATUS = [
+    { chave: "decidir", label: "❓ Decidir se entra", abertaPorPadrao: true },
+    { chave: "revisar", label: "⚠ Revisar", abertaPorPadrao: true },
+    { chave: "pronto", label: "✅ Pronto para disparo", abertaPorPadrao: false },
+  ];
+
+  function renderLista() {
+    const wrap = gel("cvr-lista-wrap");
+    const lista = peregrinosFiltrados();
+    if (lista.length === 0) {
+      wrap.innerHTML = '<div class="empty-state"><p>Nenhum peregrino encontrado. Importe a planilha pelo botão acima.</p></div>';
+      return;
+    }
+
+    if (filtroStatus) {
+      wrap.innerHTML = lista.map(pessoaCardHtml).join("");
+    } else {
+      wrap.innerHTML = GRUPOS_STATUS.map((g) => {
+        const doGrupo = lista.filter((p) => p.status === g.chave);
+        if (doGrupo.length === 0) return "";
+        const id = "status:" + g.chave;
+        const aberta = secaoEstaAberta(id, g.abertaPorPadrao);
+        return `
+          <div class="card cvr-secao">
+            ${cabecalhoColapsavel(id, g.abertaPorPadrao, g.label, `<span class="cv-secao__count">${doGrupo.length}</span>`)}
+            <div ${aberta ? "" : "hidden"}>${doGrupo.map(pessoaCardHtml).join("")}</div>
+          </div>`;
+      }).join("");
+      ligarColapsaveis(wrap, renderLista);
+    }
 
     wrap.querySelectorAll("[data-cvr-decidir]").forEach((btn) => btn.addEventListener("click", async () => {
       try { await chamarConvencaoRoma("decidir_participacao", { id: btn.dataset.cvrDecidir, decisao: btn.dataset.decisao }); await carregarTudo(); }
@@ -828,17 +894,21 @@
     const candidatos = candidatosSemSeguro(peregrinosCache).filter((p) => !(p.mensagens_enviadas && p.mensagens_enviadas.seguro));
     if (candidatos.length === 0) { wrap.innerHTML = ""; return; }
 
+    const aberta = secaoEstaAberta("seguro", false);
     wrap.innerHTML = `
       <div class="card cvr-secao" style="border-color:#d4a017;background:#fffaf0">
-        <div class="cvr-secao__header"><span>🛡️ Compraram passagem mas não têm seguro viagem</span><span class="cv-secao__count">${candidatos.length}</span></div>
-        <div class="table__muted" style="font-size:0.82rem;margin-bottom:8px">Seguro é obrigatório pra entrar na Europa — todo mundo dessa Convenção vai pra lá. Oferece antes da viagem.</div>
-        ${candidatos.map((p) => `
-          <div class="cvr-item">
-            <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}</span></div>
-            <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="seguro">👁 Prévia e enviar</button>
-          </div>`).join("")}
+        ${cabecalhoColapsavel("seguro", false, "🛡️ Compraram passagem mas não têm seguro viagem", `<span class="cv-secao__count">${candidatos.length}</span>`)}
+        <div ${aberta ? "" : "hidden"}>
+          <div class="table__muted" style="font-size:0.82rem;margin-bottom:8px">Seguro é obrigatório pra entrar na Europa — todo mundo dessa Convenção vai pra lá. Oferece antes da viagem.</div>
+          ${candidatos.map((p) => `
+            <div class="cvr-item">
+              <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}</span></div>
+              <button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="seguro">👁 Prévia e enviar</button>
+            </div>`).join("")}
+        </div>
       </div>`;
 
+    ligarColapsaveis(wrap, renderSemSeguro);
     wrap.querySelectorAll("[data-cvr-previa]").forEach((btn) => btn.addEventListener("click", () => {
       abrirPreviaMensagem(btn.dataset.cvrPrevia, btn.dataset.cvrNumero);
     }));
