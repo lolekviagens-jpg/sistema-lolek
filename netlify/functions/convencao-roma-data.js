@@ -22,6 +22,7 @@
 //
 //     cia_aerea text, voo_ida text, data_voo_ida date, hora_voo_ida text,
 //     aeroporto_saida text, conexao_cidade text, data_volta date, voo_tem_conexao boolean,
+//     pais_imigracao text,
 //
 //     hotel_roma_nome text, hotel_roma_endereco text, hotel_roma_estrelas int,
 //     hotel_roma_noites int, hotel_roma_checkin text,
@@ -57,6 +58,9 @@
 //   -- Se a tabela já existia antes do campo de conexão (2026-11-06), rodar uma vez:
 //   alter table convencao_roma_peregrinos add column if not exists voo_tem_conexao boolean;
 //
+//   -- Se a tabela já existia antes do país da imigração (2026-11-06), rodar uma vez:
+//   alter table convencao_roma_peregrinos add column if not exists pais_imigracao text;
+//
 // Ações (POST { action, data }):
 //   importar_peregrinos { peregrinos: [...] }  -> upsert em lote, recalcula status de cada um
 //   listar_peregrinos                          -> [{...}]
@@ -70,7 +74,7 @@ const SUPABASE_URL = "https://emadqnrylsqjmevxasup.supabase.co";
 
 const CAMPOS_EDITAVEIS = [
   "vendedora", "responsavel_lolek", "cliente_id", "whatsapp",
-  "cia_aerea", "voo_ida", "data_voo_ida", "hora_voo_ida", "aeroporto_saida", "voo_tem_conexao", "conexao_cidade", "data_volta",
+  "cia_aerea", "voo_ida", "data_voo_ida", "hora_voo_ida", "aeroporto_saida", "voo_tem_conexao", "conexao_cidade", "pais_imigracao", "data_volta",
   "hotel_roma_nome", "hotel_roma_endereco", "hotel_roma_estrelas", "hotel_roma_noites", "hotel_roma_checkin",
   "hotel_assis_nome", "hotel_assis_endereco", "hotel_assis_taxa", "hotel_assis_noites",
   "outras_hosp_nome", "outras_hosp_endereco",
@@ -113,7 +117,7 @@ function calcularStatus(p) {
   // (ex: dizer "imigração em Roma" pra alguém que na verdade entra na Europa por outro
   // país) — por isso bloqueia "pronto" até alguém confirmar, mesmo que o resto esteja ok.
   if (p.data_voo_ida && p.voo_tem_conexao == null) return "revisar";
-  if (p.voo_tem_conexao === true && !p.conexao_cidade) return "revisar";
+  if (p.voo_tem_conexao === true && !(p.conexao_cidade && p.pais_imigracao)) return "revisar";
   if (p.raw_seguro && !p.seguradora) return "revisar";
   if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) return "revisar";
   if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) return "revisar";

@@ -286,13 +286,13 @@
   // Mensagens — modelos de mensagens-pre-viagem-roma-2026.md
   // ===================================================================
 
-  function subtrairHoras(horaTxt, n) {
-    const m = String(horaTxt || "").match(/(\d{1,2})h(\d{2})?/);
-    if (!m) return null;
-    let h = Number(m[1]) - n;
-    const min = m[2] || "00";
-    if (h < 0) h += 24;
-    return String(h).padStart(2, "0") + "h" + min;
+  // País onde a pessoa passa pela imigração europeia — voo direto sempre entra pela Itália
+  // (é o destino final de todo mundo nessa convenção); com conexão, é o país confirmado na
+  // tela ("Resolver pendências"), nunca adivinhado por nome de cidade.
+  function paisImigracao(p) {
+    if (p.voo_tem_conexao === false) return "Itália";
+    if (p.voo_tem_conexao === true) return p.pais_imigracao || null;
+    return null;
   }
   const TABELA_TAXA_ROMA = { 3: 6, 4: 7.5, 5: 10 };
   function taxaRomaTotal(p) {
@@ -313,11 +313,11 @@
       `Falta pouco para a Convenção Shalom em Roma e Assis! Reuni aqui *tudo o que é seu* nessa viagem, para você embarcar tranquilo(a). Salve esta mensagem e o guia em PDF que vai logo abaixo.`);
 
     partes.push(`✈️ *SEU VOO DE IDA*\n${campo(p, "cia_aerea", "—")} · ${campo(p, "voo_ida", "—")}\n` +
-      `${fData(p.data_voo_ida)}, às ${campo(p, "hora_voo_ida", "—")}, saindo de ${campo(p, "aeroporto_saida", "—")}\n` +
+      `${fData(p.data_voo_ida)}, saindo de ${campo(p, "aeroporto_saida", "—")}\n` +
       (p.voo_tem_conexao === true
-        ? `Conexão em ${p.conexao_cidade || "—"}. É lá que você passa pela imigração europeia.`
+        ? `*Imigração:* ${paisImigracao(p) || "—"} (conexão em ${p.conexao_cidade || "—"}).`
         : p.voo_tem_conexao === false
-        ? `Voo direto: a imigração é feita em Roma.`
+        ? `*Imigração:* ${paisImigracao(p)}.`
         : AVISO_CONEXAO_NAO_CONFIRMADA));
 
     partes.push(`🧳 *SUA BAGAGEM*\nConfira no seu bilhete qual franquia você comprou:\n\n` +
@@ -384,18 +384,17 @@
   }
 
   function montarMensagem2(p) {
-    const horaChegada = subtrairHoras(p.hora_voo_ida, 3);
     const partes = [];
     partes.push(`${p.nome}, amanhã é o grande dia! ✈️`);
     partes.push(`✅ *SEU CHECK-IN*\nSegue abaixo seu cartão de embarque.`);
-    partes.push(`⏰ *CHEGUE AO AEROPORTO 3 HORAS ANTES*\nSeu voo: ${campo(p, "voo_ida", "—")}, às ${campo(p, "hora_voo_ida", "—")}. Esteja no aeroporto até as ${horaChegada || "—"}.`);
+    partes.push(`⏰ *CHEGUE AO AEROPORTO COM ANTECEDÊNCIA*\nSeu voo: ${campo(p, "voo_ida", "—")}. Chegue com pelo menos 3 horas de antecedência do horário de embarque.`);
     partes.push(`💺 *SOBRE OS ASSENTOS*\nOs assentos são distribuídos *aleatoriamente pela companhia aérea* no check-in. Por isso, pode acontecer de você não ficar ao lado de quem viaja com você.\n` +
       `Se quiser um assento específico, ele é *pago* à parte. Se tiver interesse, me chame que eu verifico o valor para você.`);
     partes.push(`🛂 *IMIGRAÇÃO*\n` +
       (p.voo_tem_conexao === true
-        ? `Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
+        ? `País: *${paisImigracao(p) || "—"}* (conexão em ${p.conexao_cidade || "—"}). Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
         : p.voo_tem_conexao === false
-        ? `A imigração é feita na chegada em Roma.`
+        ? `País: *${paisImigracao(p)}*. A imigração é feita na chegada.`
         : AVISO_CONEXAO_NAO_CONFIRMADA) +
       `\nA Europa agora registra digitais e foto de quem entra, então as filas podem demorar mais.\n` +
       `O oficial costuma perguntar o motivo da viagem, onde você vai ficar e quando volta. Responda com calma: você vai participar de um evento religioso em Roma e Assis. Tenha à mão passaporte, voucher do hotel, passagem de volta, seguro e inscrição.`);
@@ -598,6 +597,7 @@
     if (!p.whatsapp) faltas.push("WhatsApp");
     if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
     if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
+    if (p.voo_tem_conexao === true && !p.pais_imigracao) faltas.push("país da imigração");
     if (p.raw_seguro && !p.seguradora) faltas.push("seguradora");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
     if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
@@ -664,10 +664,11 @@
     gel("cvr-r-hotel-assis-nome").value = p.hotel_assis_nome || "";
     gel("cvr-r-hotel-assis-endereco").value = p.hotel_assis_endereco || "";
     gel("cvr-r-hotel-assis-taxa").value = p.hotel_assis_taxa || "";
-    gel("cvr-r-hora-voo").value = p.hora_voo_ida || "";
     gel("cvr-r-tem-conexao").value = p.voo_tem_conexao === true ? "sim" : p.voo_tem_conexao === false ? "nao" : "";
     gel("cvr-r-conexao-wrap").hidden = p.voo_tem_conexao !== true;
+    gel("cvr-r-pais-wrap").hidden = p.voo_tem_conexao !== true;
     gel("cvr-r-conexao").value = p.conexao_cidade || "";
+    gel("cvr-r-pais").value = p.pais_imigracao || "";
     gel("cvr-r-trem-horario").value = p.trem_horario || "";
     gel("cvr-r-trem-estacao").value = p.trem_estacao_saida || "";
     gel("cvr-r-transfer").value = p.transfer_info || "";
@@ -676,7 +677,9 @@
     gel("cvr-modal-resolver").hidden = false;
   }
   gel("cvr-r-tem-conexao").addEventListener("change", () => {
-    gel("cvr-r-conexao-wrap").hidden = gel("cvr-r-tem-conexao").value !== "sim";
+    const temConexao = gel("cvr-r-tem-conexao").value === "sim";
+    gel("cvr-r-conexao-wrap").hidden = !temConexao;
+    gel("cvr-r-pais-wrap").hidden = !temConexao;
   });
   gel("cvr-resolver-salvar").addEventListener("click", async () => {
     if (!peregrinoEmEdicaoId) return;
@@ -693,9 +696,9 @@
       hotel_assis_nome: gel("cvr-r-hotel-assis-nome").value.trim() || null,
       hotel_assis_endereco: gel("cvr-r-hotel-assis-endereco").value.trim() || null,
       hotel_assis_taxa: gel("cvr-r-hotel-assis-taxa").value || null,
-      hora_voo_ida: gel("cvr-r-hora-voo").value.trim() || null,
       voo_tem_conexao: gel("cvr-r-tem-conexao").value === "sim" ? true : gel("cvr-r-tem-conexao").value === "nao" ? false : null,
       conexao_cidade: gel("cvr-r-tem-conexao").value === "sim" ? (gel("cvr-r-conexao").value.trim() || null) : null,
+      pais_imigracao: gel("cvr-r-tem-conexao").value === "sim" ? (gel("cvr-r-pais").value.trim() || null) : null,
       trem_horario: gel("cvr-r-trem-horario").value.trim() || null,
       trem_estacao_saida: gel("cvr-r-trem-estacao").value.trim() || null,
       transfer_info: gel("cvr-r-transfer").value.trim() || null,
