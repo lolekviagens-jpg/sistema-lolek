@@ -894,10 +894,10 @@
     const candidatos = candidatosSemSeguro(peregrinosCache).filter((p) => !(p.mensagens_enviadas && p.mensagens_enviadas.seguro));
     if (candidatos.length === 0) { wrap.innerHTML = ""; return; }
 
-    const aberta = secaoEstaAberta("seguro", false);
+    const aberta = secaoEstaAberta("seguro", true);
     wrap.innerHTML = `
       <div class="card cvr-secao" style="border-color:#d4a017;background:#fffaf0">
-        ${cabecalhoColapsavel("seguro", false, "🛡️ Compraram passagem mas não têm seguro viagem", `<span class="cv-secao__count">${candidatos.length}</span>`)}
+        ${cabecalhoColapsavel("seguro", true, "🛡️ Compraram passagem mas não têm seguro viagem", `<span class="cv-secao__count">${candidatos.length}</span>`)}
         <div ${aberta ? "" : "hidden"}>
           <div class="table__muted" style="font-size:0.82rem;margin-bottom:8px">Seguro é obrigatório pra entrar na Europa — todo mundo dessa Convenção vai pra lá. Oferece antes da viagem.</div>
           ${candidatos.map((p) => `
