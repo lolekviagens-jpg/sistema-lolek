@@ -799,6 +799,7 @@
     if (!p) return;
     const texto = MONTAR_MENSAGEM[numero](p);
     gel("cvr-previa-titulo").textContent = `${TITULO_MENSAGEM_PREVIA[numero] || "Mensagem " + numero} — ${p.nome}`;
+    gel("cvr-previa-whatsapp").value = p.whatsapp || "";
     gel("cvr-previa-texto").value = texto;
     gel("cvr-previa-enviar").dataset.id = id;
     gel("cvr-previa-enviar").dataset.numero = numero;
@@ -810,10 +811,23 @@
     const id = btn.dataset.id, numero = btn.dataset.numero;
     const p = peregrinosCache.find((x) => x.id === id);
     const erroEl = gel("cvr-previa-erro");
-    if (!p || !p.whatsapp) { erroEl.textContent = "Esse peregrino não tem WhatsApp cadastrado."; erroEl.hidden = false; return; }
+    if (!p) return;
+
+    // Digita/corrige o número direto aqui — sem precisar abrir "Resolver pendências" só
+    // pra isso. Normaliza igual ao resto do sistema (10/11 dígitos brasileiros -> prefixa
+    // "55") e, se for diferente do que já estava salvo, atualiza o cadastro na hora, pra não
+    // precisar digitar de novo na próxima mensagem pra essa mesma pessoa.
+    const whatsapp = formatarTelWA(gel("cvr-previa-whatsapp").value);
+    if (!whatsapp) { erroEl.textContent = "Informe o WhatsApp antes de enviar."; erroEl.hidden = false; return; }
+
     btn.disabled = true;
     try {
-      await enviarPeloDigisac(p.whatsapp, gel("cvr-previa-texto").value);
+      if (whatsapp !== p.whatsapp) {
+        await chamarConvencaoRoma("atualizar_peregrino", { id, whatsapp });
+        p.whatsapp = whatsapp;
+      }
+
+      await enviarPeloDigisac(whatsapp, gel("cvr-previa-texto").value);
       await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero });
 
       // Mensagem 5 vai "junto" com a 1 e reenviada na 2 — mas como mensagem SEPARADA no
@@ -821,7 +835,7 @@
       // automaticamente, sem abrir outra prévia (é sempre o mesmo aviso de emergência).
       const emCadeia = MENSAGENS_EM_CADEIA[Number(numero)] || [];
       for (const outroNumero of emCadeia) {
-        await enviarPeloDigisac(p.whatsapp, MONTAR_MENSAGEM[outroNumero](p));
+        await enviarPeloDigisac(whatsapp, MONTAR_MENSAGEM[outroNumero](p));
         await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero: outroNumero });
       }
 
