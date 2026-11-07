@@ -165,7 +165,7 @@
   const CLIENTE_CAMPOS = ["nome", "nascimento", "rg", "cpf", "passaporte", "venc_passaporte", "email", "telefone", "endereco"];
   const CLIENTE_LABELS = {
     nome: "Nome completo", nascimento: "Nascimento", rg: "RG", cpf: "CPF",
-    passaporte: "Passaporte", venc_passaporte: "Venc. passaporte", email: "E-mail", telefone: "Telefone",
+    passaporte: "Passaporte", venc_passaporte: "Venc. passaporte", email: "E-mail", telefone: "Telefone *",
     endereco: "Endereço",
   };
 
@@ -452,7 +452,19 @@
           <button type="button" class="orc-produto-remove" data-remove-pax="${p.id}">✕ Remover</button>
         </div>
         <div class="orc-produto-body">
-          ${p.cliente_id ? "" : `
+          ${p.cliente_id ? (() => {
+            const cli = clientesCache.find((c) => c.id === p.cliente_id);
+            if (cli && cli.telefone) return "";
+            // Cliente já cadastrado, mas sem telefone — pede aqui mesmo em vez de deixar
+            // passar em branco. O valor digitado é salvo de volta no cadastro do cliente
+            // (ver salvarEmissao), não só nessa emissão, pra resolver a falta de vez.
+            return `<div class="form__grid" style="margin-bottom:10px">
+              <label class="field"><span class="field__label">Telefone / WhatsApp *</span>
+                <input type="text" class="input" id="emi-pax-${p.id}-telefone" placeholder="(85) 99999-9999" />
+              </label>
+            </div>
+            <div class="table__muted" style="font-size:0.78rem;margin-bottom:10px;color:#c0392b">⚠ Esse cliente não tem telefone cadastrado — preencha aqui pra conseguirmos falar com ele sobre a viagem.</div>`;
+          })() : `
             <div class="form__grid" style="margin-bottom:10px">
               <label class="field field--full">
                 <span class="field__label">Colar dados do passageiro</span>
@@ -1616,6 +1628,17 @@
     const payload = coletarPayload();
     if (payload.passageiros.length === 0) { alert("Adicione ao menos um passageiro."); return; }
     if (payload.produtos.length === 0) { alert("Adicione ao menos um produto."); return; }
+    // Telefone é obrigatório em toda emissão — sem isso a equipe não consegue avisar o
+    // passageiro de nada depois (check-in, remarcação, Convenção, etc.).
+    const telefonesParaSalvarNoCliente = [];
+    for (const p of passageiros) {
+      const cli = p.cliente_id ? clientesCache.find((c) => c.id === p.cliente_id) : null;
+      const telEl = gel(`emi-pax-${p.id}-telefone`);
+      const telDigitado = telEl ? telEl.value.trim() : "";
+      const tel = (cli && cli.telefone) || telDigitado;
+      if (!tel) { alert(`Informe o telefone/WhatsApp do passageiro "${p.nome || "novo"}" — é obrigatório em toda emissão.`); return; }
+      if (cli && !cli.telefone && telDigitado) telefonesParaSalvarNoCliente.push({ id: cli.id, telefone: telDigitado });
+    }
     for (const p of payload.produtos) {
       if (!p.valor_venda) { alert("Informe o valor de pelo menos uma forma de pagamento em todos os produtos."); return; }
       if (!p.fornecedor_id) { alert("Selecione o fornecedor em todos os produtos."); return; }
@@ -1648,6 +1671,21 @@
           }
         }
       }
+    }
+
+    // Telefone digitado pra um cliente que não tinha — grava no cadastro dele agora, não só
+    // nessa emissão, pra essa falta não voltar a aparecer na próxima venda pra essa pessoa.
+    // Falha aqui não deve travar a emissão (o telefone já vai junto no passageiro mesmo assim).
+    for (const { id, telefone } of telefonesParaSalvarNoCliente) {
+      try {
+        await fetch("/.netlify/functions/clientes-data", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(window.LolekAuth ? window.LolekAuth.headers() : {}) },
+          body: JSON.stringify({ action: "atualizar", data: { id, telefone } }),
+        });
+        const cli = clientesCache.find((c) => c.id === id);
+        if (cli) cli.telefone = telefone;
+      } catch { /* não bloqueia a emissão por isso */ }
     }
 
     const editando = !!emissaoEmEdicaoId;
