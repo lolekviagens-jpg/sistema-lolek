@@ -658,7 +658,12 @@
         </div>
         ${p.origem === "fora_do_filtro" && p.decisao_participa === "pendente" ? `
           <div class="cvr-decisao">
-            <span>Entra na Convenção?</span>
+            <div>
+              <div>Entra na Convenção?</div>
+              <div class="table__muted" style="font-size:0.76rem">${p.data_voo_ida
+                ? `✈️ ${fData(p.data_voo_ida)}${p.hora_voo_ida ? " às " + escHtml(p.hora_voo_ida) : ""} · saindo de ${escHtml(p.aeroporto_saida || "—")}`
+                : "Sem voo cadastrado ainda"}</div>
+            </div>
             <button type="button" class="btn btn--gold btn--sm" data-cvr-decidir="${p.id}" data-decisao="sim">Sim</button>
             <button type="button" class="btn btn--ghost btn--sm" data-cvr-decidir="${p.id}" data-decisao="nao">Não</button>
           </div>` : ""}
