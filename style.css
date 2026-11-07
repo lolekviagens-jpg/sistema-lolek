@@ -4118,7 +4118,12 @@ textarea.input {
 .cvr-decisao {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 0.82rem;
   margin: 6px 0;
+}
+
+.cvr-decisao > button {
+  flex-shrink: 0;
 }

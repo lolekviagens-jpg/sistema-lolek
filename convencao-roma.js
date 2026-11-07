@@ -658,11 +658,14 @@
         </div>
         ${p.origem === "fora_do_filtro" && p.decisao_participa === "pendente" ? `
           <div class="cvr-decisao">
-            <div>
+            <div style="flex:1 1 auto;min-width:0">
               <div>Entra na Convenção?</div>
-              <div class="table__muted" style="font-size:0.76rem">${p.data_voo_ida
+              <div class="table__muted" style="font-size:0.76rem;white-space:normal">${p.data_voo_ida
                 ? `✈️ ${fData(p.data_voo_ida)}${p.hora_voo_ida ? " às " + escHtml(p.hora_voo_ida) : ""} · saindo de ${escHtml(p.aeroporto_saida || "—")}`
-                : "Sem voo cadastrado ainda"}</div>
+                // Essas ~30 pessoas vêm da aba "Fora do filtro" sem voo estruturado — a única
+                // pista pra identificar quem são e o que compraram é o texto bruto da coluna
+                // "O que consta" da planilha original, salvo em raw_pendencias na importação.
+                : (p.raw_pendencias ? `📝 ${escHtml(p.raw_pendencias)}` : "Sem voo nem outro dado da planilha — confira o nome direto na planilha original.")}</div>
             </div>
             <button type="button" class="btn btn--gold btn--sm" data-cvr-decidir="${p.id}" data-decisao="sim">Sim</button>
             <button type="button" class="btn btn--ghost btn--sm" data-cvr-decidir="${p.id}" data-decisao="nao">Não</button>
