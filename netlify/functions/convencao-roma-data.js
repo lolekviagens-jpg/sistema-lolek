@@ -118,7 +118,6 @@ function calcularStatus(p) {
   // país) — por isso bloqueia "pronto" até alguém confirmar, mesmo que o resto esteja ok.
   if (p.data_voo_ida && p.voo_tem_conexao == null) return "revisar";
   if (p.voo_tem_conexao === true && !p.conexao_cidade) return "revisar";
-  if (p.raw_seguro && !p.seguradora) return "revisar";
   if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) return "revisar";
   if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) return "revisar";
   if (p.raw_outras_hosp && !(p.outras_hosp_nome && p.outras_hosp_endereco)) return "revisar";

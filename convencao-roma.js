@@ -422,6 +422,15 @@
     } else if (p.seguradora === "Assist Card") {
       partes.push(`🛡️ *SEGURO VIAGEM*\nAssist Card · WhatsApp +54 9 11 2703 9665 · Itália +39 06 9480 4324 · Apólice ${campo(p, "seguro_apolice", "—")}\n` +
         `1. Ligue para a seguradora *antes* de buscar atendimento: ela indica aonde ir\n2. Em emergência grave, vá direto ao hospital e avise a seguradora assim que puder\n3. Guarde recibos, laudos e receitas para o reembolso`);
+    } else {
+      // Seguradora não confirmada — em vez de travar a pessoa em "revisar" só por isso, a
+      // mensagem já traz as duas seguradoras que a Lolek usa nessa Convenção, pra pessoa
+      // conferir qual é a sua no próprio comprovante.
+      partes.push(`🛡️ *SEGURO VIAGEM*\nConfira no seu comprovante qual é a sua seguradora e use o contato correspondente:\n` +
+        `• GTA · WhatsApp +1 305 404 2167 · Europa +34 91 946 4416\n` +
+        `• Assist Card · WhatsApp +54 9 11 2703 9665 · Itália +39 06 9480 4324\n` +
+        `Apólice: ${campo(p, "seguro_apolice", "—")}\n` +
+        `1. Ligue para a seguradora *antes* de buscar atendimento: ela indica aonde ir\n2. Em emergência grave, vá direto ao hospital e avise a seguradora assim que puder\n3. Guarde recibos, laudos e receitas para o reembolso`);
     }
     partes.push(`📞 *QUEM CHAMAR*\n• Voo ou bagagem → balcão da companhia, depois a Lolek\n• Saúde → central do seguro, depois a Lolek\n• Problema no hotel → recepção, depois a Lolek\n• Dúvidas e bilhetes → Lolek`);
     partes.push(`💛 *LOLEK VIAGENS*: ${campo(p, "responsavel_lolek", "equipe")} · (85) 99632-7092\nEstamos com você durante toda a viagem.`);
@@ -638,7 +647,6 @@
     if (!p.whatsapp) faltas.push("WhatsApp");
     if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
     if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
-    if (p.raw_seguro && !p.seguradora) faltas.push("seguradora");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
     if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
     if (p.raw_outras_hosp && !(p.outras_hosp_nome && p.outras_hosp_endereco)) faltas.push("outra hospedagem");
