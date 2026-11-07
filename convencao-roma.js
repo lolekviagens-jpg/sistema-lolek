@@ -644,7 +644,6 @@
 
   function campoPendenteTag(p) {
     const faltas = [];
-    if (!p.whatsapp) faltas.push("WhatsApp");
     if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
     if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");

@@ -112,7 +112,9 @@ exports.handler = async (event) => {
 function calcularStatus(p) {
   if (p.origem === "fora_do_filtro" && (p.decisao_participa || "pendente") === "pendente") return "decidir";
   if (p.decisao_participa === "nao") return "revisar";
-  if (!p.whatsapp) return "revisar";
+  // Falta de WhatsApp não trava mais "pronto" — a pessoa aparece na lista "pra enviar hoje"
+  // com o campo vazio, pronta pra alguém digitar o número ali mesmo na hora de enviar (ver
+  // abrirPreviaMensagem) em vez de ficar represada em "revisar" só por isso.
   // Sem confirmar se tem conexão, a mensagem pode dar uma orientação de imigração errada
   // (ex: dizer "imigração em Roma" pra alguém que na verdade entra na Europa por outro
   // país) — por isso bloqueia "pronto" até alguém confirmar, mesmo que o resto esteja ok.
