@@ -359,7 +359,9 @@
       `Se quiser um assento específico, ele é *pago* à parte. Se tiver interesse, me chame que eu verifico o valor para você.`);
     partes.push(`🛂 *IMIGRAÇÃO*\n` +
       (p.voo_tem_conexao === true
-        ? `País: *${paisImigracao(p) || "—"}* (conexão em ${p.conexao_cidade || "—"}). Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
+        ? (paisImigracao(p)
+            ? `País: *${paisImigracao(p)}* (conexão em ${p.conexao_cidade || "—"}). Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
+            : `Conexão em *${p.conexao_cidade || "—"}*. Siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é feita lá, não em Roma.`)
         : p.voo_tem_conexao === false
         ? `País: *${paisImigracao(p)}*. A imigração é feita na chegada.`
         : AVISO_CONEXAO_NAO_CONFIRMADA) +
@@ -636,7 +638,6 @@
     if (!p.whatsapp) faltas.push("WhatsApp");
     if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
     if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
-    if (p.voo_tem_conexao === true && !p.pais_imigracao) faltas.push("país da imigração");
     if (p.raw_seguro && !p.seguradora) faltas.push("seguradora");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
     if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
