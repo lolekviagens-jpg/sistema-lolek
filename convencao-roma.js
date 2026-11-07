@@ -473,16 +473,21 @@
   // com a data exata em que deveria sair. Sem filtrar por status: uma pessoa travada em
   // "Revisar" ainda aparece no dia certo, só que marcada como pendente em vez de com botão
   // de enviar — assim o calendário mostra o quadro completo, não só quem já está liberado.
+  // "1" = já mandou; "1_dispensado" = marcou "não precisa enviar" (ex: voo já passou, pessoa
+  // cancelou por fora) — os dois tiram o gatilho da lista, igual já faz o seguro.
+  function tratada(ja, numero) {
+    return !!(ja[String(numero)] || ja[String(numero) + "_dispensado"]);
+  }
   function todosOsGatilhos(peregrinos) {
     const itens = [];
     peregrinos.forEach((p) => {
       const ja = p.mensagens_enviadas || {};
       if (p.data_voo_ida) {
-        if (!ja["1"]) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
-        if (!ja["2"]) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
-        if (!ja["3"]) itens.push({ data: p.data_voo_ida, numero: 3, p });
+        if (!tratada(ja, 1)) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
+        if (!tratada(ja, 2)) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
+        if (!tratada(ja, 3)) itens.push({ data: p.data_voo_ida, numero: 3, p });
       }
-      if (p.trem_data && !ja["4"]) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
+      if (p.trem_data && !tratada(ja, 4)) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
     });
     return itens;
   }
@@ -594,9 +599,12 @@
               ${lista.map((p) => `
                 <div class="cvr-item">
                   <div class="cvr-item__nome">${escHtml(p.nome)} <span class="table__muted">— voo ${fData(p.data_voo_ida)}${p.trem_data ? " · trem " + fData(p.trem_data) : ""}</span></div>
-                  ${p.status === "pronto"
-                    ? `<button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>`
-                    : `<span class="badge badge--pendente">${escHtml(LABEL_STATUS[p.status] || p.status)}</span>`}
+                  <div style="display:flex;gap:6px;flex:0 0 auto">
+                    ${p.status === "pronto"
+                      ? `<button type="button" class="btn btn--gold btn--sm" data-cvr-previa="${p.id}" data-cvr-numero="${numero}">👁 Prévia e enviar</button>`
+                      : `<span class="badge badge--pendente">${escHtml(LABEL_STATUS[p.status] || p.status)}</span>`}
+                    <button type="button" class="btn btn--ghost btn--icon" data-cvr-dispensar-msg="${p.id}" data-cvr-dispensar-numero="${numero}" title="Tirar da lista (ex: voo já passou)">✕</button>
+                  </div>
                 </div>`).join("")}
             `).join("")}
           </div>
@@ -611,6 +619,15 @@
     }));
     wrap.querySelectorAll("[data-cvr-previa]").forEach((btn) => btn.addEventListener("click", () => {
       abrirPreviaMensagem(btn.dataset.cvrPrevia, Number(btn.dataset.cvrNumero));
+    }));
+    wrap.querySelectorAll("[data-cvr-dispensar-msg]").forEach((btn) => btn.addEventListener("click", async () => {
+      const id = btn.dataset.cvrDispensarMsg, numero = btn.dataset.cvrDispensarNumero;
+      const p = peregrinosCache.find((x) => x.id === id);
+      if (!confirm(`Tirar a Mensagem ${numero} de ${p ? p.nome : "essa pessoa"} dessa lista? (ex: voo já passou). Não manda mensagem nenhuma, só some da lista.`)) return;
+      try {
+        await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero: `${numero}_dispensado` });
+        await carregarTudo();
+      } catch (err) { alert(err.message); }
     }));
   }
 
@@ -820,20 +837,22 @@
     gel("cvr-todas-nome").textContent = p.nome;
     const corpo = gel("cvr-todas-corpo");
     corpo.innerHTML = [1, 2, 3, 4, 5].map((n) => {
-      const enviado = p.mensagens_enviadas && p.mensagens_enviadas[String(n)];
+      const ja = p.mensagens_enviadas || {};
+      const enviado = ja[String(n)];
+      const dispensado = ja[String(n) + "_dispensado"];
       // Só deixa abrir a prévia pra enviar quando a pessoa está "pronto" — enviar com
       // pendência (seguradora/hotel/WhatsApp faltando) gera mensagem com dado errado ou
       // em branco. Mesma regra que já vale na lista "Mensagens pra enviar hoje", só que
       // antes essa tela (Ver as 5 mensagens) não aplicava, então dava pra mandar mesmo com
       // pendência — foi isso que causou a confusão de "duas formas de enviar".
-      const podeEnviar = n !== 5 && !enviado && p.status === "pronto";
+      const podeEnviar = n !== 5 && !enviado && !dispensado && p.status === "pronto";
       return `
         <div style="margin-bottom:16px">
-          <div style="font-weight:600;margin-bottom:4px">Mensagem ${n}${enviado ? ` <span class="table__muted" style="font-weight:400">— enviada</span>` : ""}</div>
+          <div style="font-weight:600;margin-bottom:4px">Mensagem ${n}${enviado ? ` <span class="table__muted" style="font-weight:400">— enviada</span>` : dispensado ? ` <span class="table__muted" style="font-weight:400">— dispensada</span>` : ""}</div>
           <textarea class="input" rows="6" readonly style="font-size:0.78rem">${escHtml(MONTAR_MENSAGEM[n](p))}</textarea>
           ${podeEnviar
             ? `<button type="button" class="btn btn--ghost btn--sm" style="margin-top:4px" data-cvr-previa-todas="${n}">👁 Abrir prévia pra enviar</button>`
-            : (n !== 5 && !enviado ? `<div class="table__muted" style="font-size:0.76rem;margin-top:4px">Resolva as pendências desta pessoa pra poder enviar.</div>` : "")}
+            : (n !== 5 && !enviado && !dispensado ? `<div class="table__muted" style="font-size:0.76rem;margin-top:4px">Resolva as pendências desta pessoa pra poder enviar.</div>` : "")}
         </div>`;
     }).join("");
     corpo.querySelectorAll("[data-cvr-previa-todas]").forEach((btn) => btn.addEventListener("click", () => {
