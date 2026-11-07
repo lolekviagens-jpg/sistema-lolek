@@ -307,18 +307,17 @@
     return (v == null || v === "") ? (fallback != null ? fallback : "") : v;
   }
 
+  // Só o primeiro nome, pro tom mais pessoal da Mensagem 1 — "Camila Pontes" -> "Camila".
+  function primeiroNome(nomeCompleto) {
+    return (nomeCompleto || "").trim().split(/\s+/)[0] || nomeCompleto || "";
+  }
+
   function montarMensagem1(p) {
     const partes = [];
-    partes.push(`Oi, ${p.nome}! 🙏 Aqui é a ${campo(p, "responsavel_lolek", "equipe")}, da Lolek.\n\n` +
-      `Falta pouco para a Convenção Shalom em Roma e Assis! Reuni aqui *tudo o que é seu* nessa viagem, para você embarcar tranquilo(a). Salve esta mensagem e o guia em PDF que vai logo abaixo.`);
+    partes.push(`Oi, ${primeiroNome(p.nome)}! A Convenção Shalom em Roma e Assis está chegando! 🙏\n\n` +
+      `Seguem abaixo algumas orientações importantes para você embarcar com tranquilidade. Salve esta mensagem e o guia em PDF que vai logo abaixo.`);
 
-    partes.push(`✈️ *SEU VOO DE IDA*\n${campo(p, "cia_aerea", "—")} · ${campo(p, "voo_ida", "—")}\n` +
-      `${fData(p.data_voo_ida)}, saindo de ${campo(p, "aeroporto_saida", "—")}\n` +
-      (p.voo_tem_conexao === true
-        ? `*Imigração:* ${paisImigracao(p) || "—"} (conexão em ${p.conexao_cidade || "—"}).`
-        : p.voo_tem_conexao === false
-        ? `*Imigração:* ${paisImigracao(p)}.`
-        : AVISO_CONEXAO_NAO_CONFIRMADA));
+    partes.push(`🛂 *IMIGRAÇÃO*\nSe o seu voo tiver conexão em algum país da Europa, a imigração é feita por lá, no aeroporto da conexão, e não quando você chegar em Roma. Deixe o passaporte e os documentos à mão já nessa parada.`);
 
     partes.push(`🧳 *SUA BAGAGEM*\nConfira no seu bilhete qual franquia você comprou:\n\n` +
       `👉 *Caso sua passagem tenha só mala de mão (até 10 kg)*\n` +
@@ -333,41 +332,9 @@
       `💡 Pese a mala antes de sair de casa. Saco a vácuo diminui o volume, não o peso.\n` +
       `💡 Líquidos na mão: frascos de até 100 ml, num saco transparente de 1 litro.`);
 
-    if (p.raw_hotel_roma) {
-      partes.push(p.hotel_roma_nome
-        ? `🏨 *SEU HOTEL EM ROMA*\n${p.hotel_roma_nome}\n📍 ${p.hotel_roma_endereco || "—"}\n` +
-          `Check-in a partir das ${campo(p, "hotel_roma_checkin", "14h")}\n` +
-          `Taxa de turismo: aproximadamente *€${taxaRomaTotal(p) || "—"}* (${p.hotel_roma_noites || "—"} noites), paga direto na recepção.`
-        : `🏨 *HOSPEDAGEM EM ROMA*\nLeve impresso e no celular o comprovante da sua hospedagem: a imigração pode pedir.`);
-    }
+    partes.push(`🛡️ *SEGURO VIAGEM*\nO seguro é *obrigatório* para entrar na Europa (cobertura médica mínima de €30 mil). Leve a apólice impressa e salve no celular a central 24h da sua seguradora. Em qualquer problema de saúde, fale primeiro com a seguradora: ela indica aonde ir.`);
 
-    if (p.hotel_assis_nome) {
-      partes.push(`🏨 *SEU HOTEL EM ASSIS*\n${p.hotel_assis_nome}\n📍 ${p.hotel_assis_endereco || "—"}\n` +
-        `Taxa de turismo: cerca de €${campo(p, "hotel_assis_taxa", "—")} por noite, paga na recepção.`);
-    }
-
-    if (p.seguradora === "GTA") {
-      partes.push(`🛡️ *SEU SEGURO VIAGEM: GTA*\nApólice: ${campo(p, "seguro_apolice", "—")}\n` +
-        `• WhatsApp 24h: *+1 305 404 2167* (só texto e foto, não mande áudio)\n• Central Europa: *+34 91 946 4416*\n• Central internacional: +1 305 404 2167\n` +
-        `Salve esses números no celular agora. Em qualquer problema de saúde, fale primeiro com a seguradora: ela indica aonde ir.`);
-    } else if (p.seguradora === "Assist Card") {
-      partes.push(`🛡️ *SEU SEGURO VIAGEM: ASSIST CARD*\nApólice: ${campo(p, "seguro_apolice", "—")}\n` +
-        `• WhatsApp 24h: *+54 9 11 2703 9665*\n• Central na Itália: *+39 06 9480 4324*\n• Ligação gratuita (de telefone fixo na Itália): 00 800 0825 8803\n• App ASSIST CARD: dá para pedir atendimento por lá também\n` +
-        `Salve esses números no celular agora. Em qualquer problema de saúde, fale primeiro com a seguradora: ela indica aonde ir.`);
-    } else {
-      partes.push(`🛡️ *SEGURO VIAGEM*\nO seguro é *obrigatório* para entrar na Europa (cobertura médica mínima de €30 mil). Leve a apólice impressa e salve a central 24h da sua seguradora no celular.`);
-    }
-
-    if (p.trem_data) {
-      partes.push(`🚆 *SEU TREM ROMA → ASSIS*\n${fData(p.trem_data)}, às ${campo(p, "trem_horario", "—")}, saindo de ${campo(p, "trem_estacao_saida", "—")}\n` +
-        `Seu bilhete já está com você no WhatsApp. Na véspera, mando as orientações da estação.`);
-    } else {
-      partes.push(`🚆 *ROMA → ASSIS*\nAinda não tem o trem para Assis? A gente emite o bilhete e envia aqui no WhatsApp. É só me chamar.`);
-    }
-
-    if (p.transfer_info) {
-      partes.push(`🚐 *SEU TRANSFER AEROPORTO → HOTEL*\n${p.transfer_info}`);
-    }
+    partes.push(`🚆 *ROMA → ASSIS*\nAinda não tem o trem para Assis? A gente emite o bilhete e envia aqui no WhatsApp. É só me chamar.`);
 
     partes.push(`📄 *DOCUMENTOS PARA LEVAR NA MÃO*\n• Passaporte (válido por pelo menos 3 meses após sua saída da Europa)\n` +
       `• Apólice do seguro viagem\n• Vouchers dos hotéis e passagem de volta\n• Comprovante de inscrição na Convenção\n` +
