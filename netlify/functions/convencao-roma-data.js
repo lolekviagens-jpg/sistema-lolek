@@ -66,7 +66,7 @@
 //   listar_peregrinos                          -> [{...}]
 //   atualizar_peregrino { id, ...campos }      -> PATCH parcial, recalcula status
 //   decidir_participacao { id, decisao }       -> 'sim' | 'nao', só pra fora_do_filtro
-//   marcar_mensagem_enviada { id, numero }     -> grava em mensagens_enviadas
+//   marcar_mensagem_enviada { id, numero, manual? } -> grava em mensagens_enviadas (manual=true: enviado por fora do Digisac)
 
 const https = require("https");
 
@@ -205,7 +205,11 @@ async function executarAcao(action, data, secretKey) {
     case "marcar_mensagem_enviada": {
       if (!data.id || !data.numero) throw new Error("id e numero são obrigatórios");
       const [p] = await supabaseRest("/convencao_roma_peregrinos?id=eq." + encodeURIComponent(data.id) + "&select=mensagens_enviadas", "GET", secretKey);
-      const mensagens = { ...(p && p.mensagens_enviadas), [String(data.numero)]: new Date().toISOString() };
+      // Prefixo "manual:" diferencia quem foi enviado por fora do Digisac (ex: WhatsApp não
+      // reconhece o número) e marcado manualmente, do envio normal — mesmo campo, histórico
+      // mais claro na tela.
+      const valor = (data.manual ? "manual:" : "") + new Date().toISOString();
+      const mensagens = { ...(p && p.mensagens_enviadas), [String(data.numero)]: valor };
       await supabaseRest("/convencao_roma_peregrinos?id=eq." + encodeURIComponent(data.id), "PATCH", secretKey,
         { mensagens_enviadas: mensagens, atualizado_em: new Date().toISOString() }, { "Prefer": "return=minimal" });
       return { ok: true };

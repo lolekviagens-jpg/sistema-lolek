@@ -835,6 +835,25 @@
     } finally { btn.disabled = false; }
   });
 
+  // Pra quando o Digisac não entrega (ex: WhatsApp não reconhece o número) e a mensagem foi
+  // mandada por outro canal (ligação, SMS, e-mail) — não chama o Digisac, só registra.
+  gel("cvr-previa-manual").addEventListener("click", async () => {
+    const btnEnviar = gel("cvr-previa-enviar");
+    const id = btnEnviar.dataset.id, numero = btnEnviar.dataset.numero;
+    const p = peregrinosCache.find((x) => x.id === id);
+    if (!p) return;
+    if (!confirm(`Marcar a Mensagem ${numero} de ${p.nome} como enviada manualmente (por fora do Digisac)? Use só se você já entregou o conteúdo por outro canal.`)) return;
+    const btn = gel("cvr-previa-manual");
+    btn.disabled = true;
+    try {
+      await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero, manual: true });
+      gel("cvr-modal-previa").hidden = true;
+      await carregarTudo();
+    } catch (err) {
+      gel("cvr-previa-erro").textContent = err.message; gel("cvr-previa-erro").hidden = false;
+    } finally { btn.disabled = false; }
+  });
+
   // ===== Modal: ver as 5 mensagens de uma vez =====
   function abrirTodasMensagens(id) {
     const p = peregrinosCache.find((x) => x.id === id);
@@ -853,7 +872,7 @@
       const podeEnviar = n !== 5 && !enviado && !dispensado && p.status === "pronto";
       return `
         <div style="margin-bottom:16px">
-          <div style="font-weight:600;margin-bottom:4px">Mensagem ${n}${enviado ? ` <span class="table__muted" style="font-weight:400">— enviada</span>` : dispensado ? ` <span class="table__muted" style="font-weight:400">— dispensada</span>` : ""}</div>
+          <div style="font-weight:600;margin-bottom:4px">Mensagem ${n}${enviado ? ` <span class="table__muted" style="font-weight:400">— ${enviado.startsWith("manual:") ? "enviada manualmente" : "enviada"}</span>` : dispensado ? ` <span class="table__muted" style="font-weight:400">— dispensada</span>` : ""}</div>
           <textarea class="input" rows="6" readonly style="font-size:0.78rem">${escHtml(MONTAR_MENSAGEM[n](p))}</textarea>
           ${podeEnviar
             ? `<button type="button" class="btn btn--ghost btn--sm" style="margin-top:4px" data-cvr-previa-todas="${n}">👁 Abrir prévia pra enviar</button>`
