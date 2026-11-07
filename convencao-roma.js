@@ -821,11 +821,19 @@
     const corpo = gel("cvr-todas-corpo");
     corpo.innerHTML = [1, 2, 3, 4, 5].map((n) => {
       const enviado = p.mensagens_enviadas && p.mensagens_enviadas[String(n)];
+      // Só deixa abrir a prévia pra enviar quando a pessoa está "pronto" — enviar com
+      // pendência (seguradora/hotel/WhatsApp faltando) gera mensagem com dado errado ou
+      // em branco. Mesma regra que já vale na lista "Mensagens pra enviar hoje", só que
+      // antes essa tela (Ver as 5 mensagens) não aplicava, então dava pra mandar mesmo com
+      // pendência — foi isso que causou a confusão de "duas formas de enviar".
+      const podeEnviar = n !== 5 && !enviado && p.status === "pronto";
       return `
         <div style="margin-bottom:16px">
           <div style="font-weight:600;margin-bottom:4px">Mensagem ${n}${enviado ? ` <span class="table__muted" style="font-weight:400">— enviada</span>` : ""}</div>
           <textarea class="input" rows="6" readonly style="font-size:0.78rem">${escHtml(MONTAR_MENSAGEM[n](p))}</textarea>
-          ${n !== 5 ? `<button type="button" class="btn btn--ghost btn--sm" style="margin-top:4px" data-cvr-previa-todas="${n}">👁 Abrir prévia pra enviar</button>` : ""}
+          ${podeEnviar
+            ? `<button type="button" class="btn btn--ghost btn--sm" style="margin-top:4px" data-cvr-previa-todas="${n}">👁 Abrir prévia pra enviar</button>`
+            : (n !== 5 && !enviado ? `<div class="table__muted" style="font-size:0.76rem;margin-top:4px">Resolva as pendências desta pessoa pra poder enviar.</div>` : "")}
         </div>`;
     }).join("");
     corpo.querySelectorAll("[data-cvr-previa-todas]").forEach((btn) => btn.addEventListener("click", () => {
