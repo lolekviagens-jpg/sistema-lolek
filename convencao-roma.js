@@ -379,7 +379,7 @@
   function montarMensagem6(p) {
     const partes = [];
     partes.push(`${p.nome}, chegou o dia! ✈️🙏 Fico muito feliz por você, de verdade. Boa viagem, uma linda Convenção Shalom e um encontro com o Papa Leão que fique guardado no coração pra sempre.`);
-    partes.push(`📸 *UM PEDIDO (BEM SINCERO) NOSSO*\nEm algum momento da viagem, tira uma foto, um story, o que for — e marca a gente: *@lolekviagens* no Instagram.\n` +
+    partes.push(`📸 *UM PEDIDO (BEM SINCERO) NOSSO*\nEm algum momento da viagem, tira uma foto, um story, o que for, e marca a gente: *@lolekviagens* no Instagram.\n` +
       `Pode parecer pequeno, mas pra uma agência do tamanho da Lolek é o que mais importa: é através da sua marcação que outras pessoas descobrem que a gente é real, que leva gente de verdade pra viagens de verdade. Sua foto de hoje pode ser exatamente o empurrão que alguém precisava pra realizar a viagem que só existia no sonho.`);
     partes.push(`Vai com Deus. Estamos na torcida e aqui pra qualquer coisa que precisar. 💛`);
     return partes.join("\n\n");
