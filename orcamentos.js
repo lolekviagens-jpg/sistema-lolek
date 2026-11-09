@@ -1331,6 +1331,16 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
   function gerarOrcamento() {
     if (destinos.length === 0) { alert("Adicione pelo menos um destino."); return; }
 
+    // "?" é o aeroporto de conexão que a IA não conseguiu identificar no print (ver
+    // analisarPassagem) — proibido gerar o orçamento assim, senão o cliente recebe um
+    // trecho com conexão em lugar nenhum.
+    const trechoIncompleto = Object.values(segmentosStore).some((segs) =>
+      (segs || []).some((s) => (s.trecho || "").includes("?")));
+    if (trechoIncompleto) {
+      alert('Tem um trecho de passagem com o aeroporto da conexão marcado como "?" — complete-o antes de gerar o orçamento.');
+      return;
+    }
+
     const d = coletarDados();
     const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
       (d.criancas > 0 ? " + " + d.criancas + " criança" + (d.criancas !== 1 ? "s" : "") : "") +
