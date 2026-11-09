@@ -286,14 +286,6 @@
   // Mensagens — modelos de mensagens-pre-viagem-roma-2026.md
   // ===================================================================
 
-  // País onde a pessoa passa pela imigração europeia — voo direto sempre entra pela Itália
-  // (é o destino final de todo mundo nessa convenção); com conexão, é o país confirmado na
-  // tela ("Resolver pendências"), nunca adivinhado por nome de cidade.
-  function paisImigracao(p) {
-    if (p.voo_tem_conexao === false) return "Itália";
-    if (p.voo_tem_conexao === true) return p.pais_imigracao || null;
-    return null;
-  }
   const TABELA_TAXA_ROMA = { 3: 6, 4: 7.5, 5: 10 };
   function taxaRomaTotal(p) {
     const valor = TABELA_TAXA_ROMA[p.hotel_roma_estrelas];
@@ -357,15 +349,8 @@
     partes.push(`⏰ *CHEGUE AO AEROPORTO COM ANTECEDÊNCIA*\nSeu voo: ${campo(p, "voo_ida", "—")}. Chegue com pelo menos 3 horas de antecedência do horário de embarque.`);
     partes.push(`💺 *SOBRE OS ASSENTOS*\nOs assentos são distribuídos *aleatoriamente pela companhia aérea* no check-in. Por isso, pode acontecer de você não ficar ao lado de quem viaja com você.\n` +
       `Se quiser um assento específico, ele é *pago* à parte. Se tiver interesse, me chame que eu verifico o valor para você.`);
-    partes.push(`🛂 *IMIGRAÇÃO*\n` +
-      (p.voo_tem_conexao === true
-        ? (paisImigracao(p)
-            ? `País: *${paisImigracao(p)}* (conexão em ${p.conexao_cidade || "—"}). Em ${p.conexao_cidade || "—"}, siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é lá.`
-            : `Conexão em *${p.conexao_cidade || "—"}*. Siga as placas de *Conexões / Flight connections*, nunca as de saída. A imigração é feita lá, não em Roma.`)
-        : p.voo_tem_conexao === false
-        ? `País: *${paisImigracao(p)}*. A imigração é feita na chegada.`
-        : AVISO_CONEXAO_NAO_CONFIRMADA) +
-      `\nA Europa agora registra digitais e foto de quem entra, então as filas podem demorar mais.\n` +
+    partes.push(`🛂 *IMIGRAÇÃO*\nSe o seu voo tiver conexão em algum país da Europa, a imigração é feita por lá, no aeroporto da conexão, e não quando você chegar em Roma. Siga as placas de *Conexões / Flight connections*, nunca as de saída, e deixe passaporte e documentos à mão já nessa parada.\n` +
+      `A Europa agora registra digitais e foto de quem entra, então as filas podem demorar mais.\n` +
       `O oficial costuma perguntar o motivo da viagem, onde você vai ficar e quando volta. Responda com calma: você vai participar de um evento religioso em Roma e Assis. Tenha à mão passaporte, voucher do hotel, passagem de volta, seguro e inscrição.`);
     partes.push(`📱 Antes de sair de casa:\n• Ative o uso internacional dos cartões no app do banco\n• Ative o roaming ou instale seu eSIM\n• Leve um adaptador de tomada universal\n• Remédios, documentos e eletrônicos sempre na bagagem de mão`);
     partes.push(`Boa viagem! Que Deus abençoe cada passo. 🙏`);
@@ -464,7 +449,6 @@
 
   const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
   const TITULO_MENSAGEM_PREVIA = { seguro: "Oferta de seguro viagem" };
-  const AVISO_CONEXAO_NAO_CONFIRMADA = "⚠ *A equipe ainda precisa confirmar se esse voo tem conexão* — essa mensagem não deveria estar sendo enviada ainda, avise a Lolek.";
 
   // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
   // como MENSAGEM SEPARADA — não concatenadas no mesmo texto (isso já causou um caso real de
@@ -644,8 +628,6 @@
 
   function campoPendenteTag(p) {
     const faltas = [];
-    if (p.data_voo_ida && p.voo_tem_conexao == null) faltas.push("confirmar se tem conexão");
-    if (p.voo_tem_conexao === true && !p.conexao_cidade) faltas.push("cidade da conexão");
     if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
     if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
     if (p.raw_outras_hosp && !(p.outras_hosp_nome && p.outras_hosp_endereco)) faltas.push("outra hospedagem");
