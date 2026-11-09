@@ -376,6 +376,15 @@
     return partes.join("\n\n");
   }
 
+  function montarMensagem6(p) {
+    const partes = [];
+    partes.push(`${p.nome}, hoje é o grande dia! ✈️🙏 Boa viagem — que esse embarque seja o início de uma experiência inesquecível em Roma e Assis.`);
+    partes.push(`📸 *UM PEDIDO (BEM SINCERO) NOSSO*\nEm algum momento da viagem, tira uma foto, um story, o que for — e marca a gente: *@lolekviagens* no Instagram.\n` +
+      `Pode parecer pequeno, mas pra uma agência do tamanho da Lolek é o que mais importa: é através da sua marcação que outras pessoas descobrem que a gente é real, que leva gente de verdade pra viagens de verdade. Sua foto de hoje pode ser exatamente o empurrão que alguém precisava pra realizar a viagem que só existia no sonho.`);
+    partes.push(`Vai com Deus. Estamos na torcida e aqui pra qualquer coisa que precisar. 💛`);
+    return partes.join("\n\n");
+  }
+
   function montarMensagem4(p) {
     const partes = [];
     partes.push(`${p.nome}, amanhã é dia de seguir para Assis! 🚆`);
@@ -447,7 +456,7 @@
       `A Lolek trabalha com seguro pela GTA e pela Assist Card, com ótima cobertura pra essa viagem. Quer que eu já providencie o seu? Me chama que eu te passo os valores. 💛`;
   }
 
-  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
+  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, 6: montarMensagem6, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
   const TITULO_MENSAGEM_PREVIA = { seguro: "Oferta de seguro viagem" };
 
   // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
@@ -481,6 +490,7 @@
         if (!tratada(ja, 1)) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
         if (!tratada(ja, 2)) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
         if (!tratada(ja, 3)) itens.push({ data: p.data_voo_ida, numero: 3, p });
+        if (!tratada(ja, 6)) itens.push({ data: p.data_voo_ida, numero: 6, p });
       }
       if (p.trem_data && !tratada(ja, 4)) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
     });
@@ -498,7 +508,7 @@
   // ===================================================================
   // Render
   // ===================================================================
-  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 3: "Chegada em Roma", 4: "Véspera do trem p/ Assis" };
+  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 3: "Chegada em Roma", 4: "Véspera do trem p/ Assis", 6: "Boa viagem + Instagram" };
   const LABEL_STATUS = { pronto: "✅ Pronto para disparo", revisar: "⚠ Revisar", decidir: "❓ Decidir se entra" };
 
   // ===== Seções recolhíveis — tanta gente numa lista só ficava difícil de achar qualquer
@@ -663,7 +673,7 @@
         ${faltas.length ? `<div class="table__muted" style="font-size:0.78rem;color:#c0392b">Falta: ${faltas.map(escHtml).join(", ")}</div>` : ""}
         <div class="cvr-pessoa__acoes">
           <button type="button" class="btn btn--ghost btn--sm" data-cvr-resolver="${p.id}">✏ Resolver pendências</button>
-          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 5 mensagens</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 6 mensagens</button>
         </div>
       </div>`;
   }
@@ -853,7 +863,7 @@
     if (!p) return;
     gel("cvr-todas-nome").textContent = p.nome;
     const corpo = gel("cvr-todas-corpo");
-    corpo.innerHTML = [1, 2, 3, 4, 5].map((n) => {
+    corpo.innerHTML = [1, 2, 3, 4, 5, 6].map((n) => {
       const ja = p.mensagens_enviadas || {};
       const enviado = ja[String(n)];
       const dispensado = ja[String(n) + "_dispensado"];
