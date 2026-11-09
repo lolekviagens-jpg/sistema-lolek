@@ -286,14 +286,6 @@
   // Mensagens — modelos de mensagens-pre-viagem-roma-2026.md
   // ===================================================================
 
-  const TABELA_TAXA_ROMA = { 3: 6, 4: 7.5, 5: 10 };
-  function taxaRomaTotal(p) {
-    const valor = TABELA_TAXA_ROMA[p.hotel_roma_estrelas];
-    if (!valor || !p.hotel_roma_noites) return null;
-    const total = valor * Math.min(p.hotel_roma_noites, 10);
-    return total.toFixed(2).replace(".", ",");
-  }
-
   function campo(p, chave, fallback) {
     const v = p[chave];
     return (v == null || v === "") ? (fallback != null ? fallback : "") : v;
@@ -354,25 +346,6 @@
       `O oficial costuma perguntar o motivo da viagem, onde você vai ficar e quando volta. Responda com calma: você vai participar de um evento religioso em Roma e Assis. Tenha à mão passaporte, voucher do hotel, passagem de volta, seguro e inscrição.`);
     partes.push(`📱 Antes de sair de casa:\n• Ative o uso internacional dos cartões no app do banco\n• Ative o roaming ou instale seu eSIM\n• Leve um adaptador de tomada universal\n• Remédios, documentos e eletrônicos sempre na bagagem de mão`);
     partes.push(`Boa viagem! Que Deus abençoe cada passo. 🙏`);
-    return partes.join("\n\n");
-  }
-
-  function montarMensagem3(p) {
-    const partes = [];
-    partes.push(`Bem-vindo(a) a Roma, ${p.nome}! 🇮🇹 Espero que a viagem tenha sido tranquila.`);
-    partes.push(p.transfer_info
-      ? `🚐 Seu motorista: ${p.transfer_info}`
-      : `🚕 *DO AEROPORTO AO HOTEL*\n• Táxi: só no ponto oficial (carro branco), com tarifa fixa para o centro histórico. Nunca aceite oferta de motorista dentro do saguão.\n• Uber funciona, mas com carros executivos. Vale a pena dividido entre 3 ou 4 pessoas.`);
-    if (p.hotel_roma_nome) {
-      partes.push(`🏨 ${p.hotel_roma_nome}\n📍 ${p.hotel_roma_endereco || "—"}\n💶 Taxa de turismo: cerca de €${taxaRomaTotal(p) || "—"}, paga na recepção. Alguns hotéis só aceitam em dinheiro, então tenha euros separados.`);
-    }
-    partes.push(`💳 *PAGAMENTOS*\n• Cartão de crédito internacional ou conta global (Wise) funcionam em quase todo lugar\n` +
-      `• Use euro em espécie para cafés, lembranças, banheiros e a taxa do hotel\n• Leve dois cartões de bandeiras diferentes, guardados em lugares separados\n` +
-      `• Na maquininha, se perguntarem, escolha pagar em *euro*, não em real: a conversão deles costuma sair mais cara`);
-    partes.push(`🚇 *COMO CIRCULAR*\n• O centro histórico é compacto e dá para fazer muito a pé\n• No metrô, você paga por aproximação com o cartão direto na catraca\n` +
-      `• Bilhetes de ônibus e metrô também são vendidos em máquinas e tabacarias\n• Táxi: só em pontos oficiais ou por aplicativo de táxi`);
-    partes.push(`⚠️ Roma tem muitos batedores de carteira em metrô, estações e pontos turísticos. Bolsa na frente, celular guardado e documentos longe do dinheiro.`);
-    partes.push(`Qualquer coisa, estou aqui. 💛`);
     return partes.join("\n\n");
   }
 
@@ -456,7 +429,7 @@
       `A Lolek trabalha com seguro pela GTA e pela Assist Card, com ótima cobertura pra essa viagem. Quer que eu já providencie o seu? Me chama que eu te passo os valores. 💛`;
   }
 
-  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 3: montarMensagem3, 4: montarMensagem4, 5: montarMensagem5, 6: montarMensagem6, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
+  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 4: montarMensagem4, 5: montarMensagem5, 6: montarMensagem6, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
   const TITULO_MENSAGEM_PREVIA = { seguro: "Oferta de seguro viagem" };
 
   // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
@@ -489,7 +462,6 @@
       if (p.data_voo_ida) {
         if (!tratada(ja, 1)) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
         if (!tratada(ja, 2)) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
-        if (!tratada(ja, 3)) itens.push({ data: p.data_voo_ida, numero: 3, p });
         if (!tratada(ja, 6)) itens.push({ data: p.data_voo_ida, numero: 6, p });
       }
       if (p.trem_data && !tratada(ja, 4)) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
@@ -508,7 +480,7 @@
   // ===================================================================
   // Render
   // ===================================================================
-  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 3: "Chegada em Roma", 4: "Véspera do trem p/ Assis", 6: "Boa viagem + Instagram" };
+  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 4: "Véspera do trem p/ Assis", 6: "Boa viagem + Instagram" };
   const LABEL_STATUS = { pronto: "✅ Pronto para disparo", revisar: "⚠ Revisar", decidir: "❓ Decidir se entra" };
 
   // ===== Seções recolhíveis — tanta gente numa lista só ficava difícil de achar qualquer
@@ -673,7 +645,7 @@
         ${faltas.length ? `<div class="table__muted" style="font-size:0.78rem;color:#c0392b">Falta: ${faltas.map(escHtml).join(", ")}</div>` : ""}
         <div class="cvr-pessoa__acoes">
           <button type="button" class="btn btn--ghost btn--sm" data-cvr-resolver="${p.id}">✏ Resolver pendências</button>
-          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 6 mensagens</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 5 mensagens</button>
         </div>
       </div>`;
   }
@@ -863,7 +835,7 @@
     if (!p) return;
     gel("cvr-todas-nome").textContent = p.nome;
     const corpo = gel("cvr-todas-corpo");
-    corpo.innerHTML = [1, 2, 3, 4, 5, 6].map((n) => {
+    corpo.innerHTML = [1, 2, 4, 5, 6].map((n) => {
       const ja = p.mensagens_enviadas || {};
       const enviado = ja[String(n)];
       const dispensado = ja[String(n) + "_dispensado"];
