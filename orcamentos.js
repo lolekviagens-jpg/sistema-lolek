@@ -832,6 +832,7 @@ Analise este documento/print de passagem aérea com atenção a TODA a tabela de
 - Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo: "GRU → LIS" seguida de "LIS → ROM" são 2 trechos da MESMA ida (escala em Lisboa) — NÃO é ida e volta.
 - Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA. Na dúvida se é conexão ou volta, trate como conexão — é pior assumir uma volta que não existe.
 - Se o print for um resultado de busca sem tabela (ex: só "1 parada em GRU"), divida mesmo assim em 2 trechos (origem→GRU, GRU→destino), preenchendo o que tiver de cada um.
+- Telas de busca de companhia aérea (ex: LATAM, Decolar) costumam mostrar só um selo "1 parada"/"2 paradas" com a duração TOTAL da viagem, SEM nomear o aeroporto da escala em lugar nenhum. Mesmo sem saber qual é a escala, SEMPRE divida em (paradas + 1) trechos — nunca trate como voo direto só porque o aeroporto da conexão não foi informado: preencha o 1º trecho com a origem real e "?" no destino, o último trecho com "?" na origem e o destino real (trechos do meio, se houver mais de 1 parada, ficam "? → ?"), horário de partida só no 1º trecho, horário de chegada só no último, e deixe os horários/tempo de parada do meio em branco — fica faltando só o aeroporto exato da escala, que alguém completa à mão.
 
 Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
 {
