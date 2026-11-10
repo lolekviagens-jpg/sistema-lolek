@@ -59,7 +59,7 @@
   function processaEmissoes(rows, mes, ano) {
     const porFunc       = {};
     const produtosTotal = {};
-    const leadsPassagem = {};
+    const origemVendas  = {};
     const porFornecedorCount = {};
     let faturamento = 0, lucroTotal = 0;
 
@@ -67,12 +67,15 @@
       const tipo     = TIPO_LABEL[r.tipo] || r.tipo;
       const paxCount = Math.max(1, (r.passageiro_ids || []).length);
 
-      // Venda conjunta (ex: "Letícia/Emily") — divide o lucro entre as funcionárias listadas,
-      // mas cada uma leva o crédito cheio dos produtos vendidos (mesma convenção de antes).
+      // Venda conjunta (ex: "Letícia/Emily") — divide lucro E faturamento entre as
+      // funcionárias listadas, mas cada uma leva o crédito cheio dos produtos vendidos
+      // (mesma convenção de antes) — faturamento entra aqui pra dar pra calcular a margem
+      // de cada uma (lucro/faturamento), não só o valor do lucro.
       const nomesFunc = (r.funcionaria || "").split("/").map((n) => n.trim()).filter(Boolean);
       nomesFunc.forEach((nome) => {
-        if (!porFunc[nome]) porFunc[nome] = { total: 0, count: 0, produtos: {} };
+        if (!porFunc[nome]) porFunc[nome] = { total: 0, faturamento: 0, count: 0, produtos: {} };
         porFunc[nome].total += (Number(r.lucro) || 0) / nomesFunc.length;
+        porFunc[nome].faturamento += (Number(r.valor_venda) || 0) / nomesFunc.length;
         porFunc[nome].count += paxCount;
         porFunc[nome].produtos[tipo] = (porFunc[nome].produtos[tipo] || 0) + paxCount;
       });
@@ -81,10 +84,10 @@
       faturamento += Number(r.valor_venda) || 0;
       lucroTotal  += Number(r.lucro) || 0;
 
-      if (r.tipo === "passagem") {
-        const lead = r.origem_lead || "Não informado";
-        leadsPassagem[lead] = (leadsPassagem[lead] || 0) + paxCount;
-      }
+      // Origem da venda (Orgânico/Shalom/Corporativo/etc.) — de todos os produtos, não só
+      // passagem, pra dar o quadro completo de onde vem a venda do mês.
+      const lead = r.origem_lead || "Não informado";
+      origemVendas[lead] = (origemVendas[lead] || 0) + paxCount;
 
       if (r.fornecedor_id) {
         const nomeForn = (fornecedoresCache.find((f) => f.id === r.fornecedor_id) || {}).nome || "Fornecedor removido";
@@ -98,7 +101,7 @@
       .sort((a, b) => b[1] - a[1])
       .map(([nome, count]) => ({ nome, count }));
 
-    return { porFunc, produtosTotal, leadsPassagem, porFornecedor, faturamento, lucroTotal, month: mes, year: ano };
+    return { porFunc, produtosTotal, origemVendas, porFornecedor, faturamento, lucroTotal, month: mes, year: ano };
   }
 
   // ===== Configuração (metas) =====
@@ -272,10 +275,11 @@
       return;
     }
     grid.innerHTML = cfg.funcs.map(f => {
-      const fd      = d.porFunc[f.nome] || { total: 0, count: 0, produtos: {} };
+      const fd      = d.porFunc[f.nome] || { total: 0, faturamento: 0, count: 0, produtos: {} };
       const total   = fd.total;
       const count   = fd.count;
       const prods   = fd.produtos;
+      const margem  = fd.faturamento > 0 ? (fd.total / fd.faturamento) * 100 : 0;
       const meta    = metas[f.nome] || 0;
       const pct     = meta > 0 ? Math.min(100, (total / meta) * 100) : 0;
       const falta   = Math.max(0, meta - total);
@@ -337,6 +341,7 @@
         <div class="vendas-func-card">
           <div class="vendas-func-nome">${escHtml(f.nome)}</div>
           <div class="vendas-func-valor">${fBRL(total)}</div>
+          ${fd.faturamento > 0 ? `<div class="vendas-func-margem">Margem: <strong>${fPct(margem)}</strong></div>` : ""}
           ${infoMeta}
           ${comissaoHtml}
           ${prodsHtml}
@@ -395,7 +400,7 @@
   const CORES_CATEGORICAS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 
   // Desenha um gráfico de rosca + legenda (nome, contagem e %) num par canvas/div — reusado
-  // pra Fornecedores e pra Origem das passagens.
+  // pra Fornecedores e pra Origem das vendas.
   function montarDonut(chartAnterior, canvasId, legendaId, itens, vazioMsg) {
     const canvas = gel(canvasId);
     const legenda = gel(legendaId);
@@ -449,12 +454,12 @@
   }
 
   function renderLeads(data) {
-    const itens = Object.entries(data.leadsPassagem || {})
+    const itens = Object.entries(data.origemVendas || {})
       .sort((a, b) => b[1] - a[1])
       .map(([nome, count]) => ({ nome, count }));
     chartLeads = montarDonut(
       chartLeads, "vendas-grafico-leads", "vendas-leads-legenda",
-      itens, "Nenhuma passagem vendida neste mês"
+      itens, "Nenhuma venda neste mês"
     );
   }
 

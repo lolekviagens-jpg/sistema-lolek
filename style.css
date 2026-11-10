@@ -2325,6 +2325,16 @@ textarea.input {
   color: var(--text-muted);
 }
 
+.vendas-func-margem {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.vendas-func-margem strong {
+  color: var(--navy);
+}
+
 .vendas-func-pct {
   font-size: 0.74rem;
   color: var(--text-muted);
