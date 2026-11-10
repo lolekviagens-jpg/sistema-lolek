@@ -334,21 +334,6 @@
     return partes.join("\n\n");
   }
 
-  function montarMensagem2(p) {
-    const partes = [];
-    partes.push(`${p.nome}, amanhã é o grande dia! ✈️`);
-    partes.push(`✅ *SEU CHECK-IN*\nSegue abaixo seu cartão de embarque.`);
-    partes.push(`⏰ *CHEGUE AO AEROPORTO COM ANTECEDÊNCIA*\nSeu voo: ${campo(p, "voo_ida", "—")}. Chegue com pelo menos 3 horas de antecedência do horário de embarque.`);
-    partes.push(`💺 *SOBRE OS ASSENTOS*\nOs assentos são distribuídos *aleatoriamente pela companhia aérea* no check-in. Por isso, pode acontecer de você não ficar ao lado de quem viaja com você.\n` +
-      `Se quiser um assento específico, ele é *pago* à parte. Se tiver interesse, me chame que eu verifico o valor para você.`);
-    partes.push(`🛂 *IMIGRAÇÃO*\nSe o seu voo tiver conexão em algum país da Europa, a imigração é feita por lá, no aeroporto da conexão, e não quando você chegar em Roma. Siga as placas de *Conexões / Flight connections*, nunca as de saída, e deixe passaporte e documentos à mão já nessa parada.\n` +
-      `A Europa agora registra digitais e foto de quem entra, então as filas podem demorar mais.\n` +
-      `O oficial costuma perguntar o motivo da viagem, onde você vai ficar e quando volta. Responda com calma: você vai participar de um evento religioso em Roma e Assis. Tenha à mão passaporte, voucher do hotel, passagem de volta, seguro e inscrição.`);
-    partes.push(`📱 Antes de sair de casa:\n• Ative o uso internacional dos cartões no app do banco\n• Ative o roaming ou instale seu eSIM\n• Leve um adaptador de tomada universal\n• Remédios, documentos e eletrônicos sempre na bagagem de mão`);
-    partes.push(`Boa viagem! Que Deus abençoe cada passo. 🙏`);
-    return partes.join("\n\n");
-  }
-
   function montarMensagem6(p) {
     const partes = [];
     partes.push(`${p.nome}, chegou o dia! ✈️🙏 Fico muito feliz por você, de verdade. Boa viagem, uma linda Convenção Shalom e um encontro com o Papa Leão que fique guardado no coração pra sempre.`);
@@ -429,15 +414,15 @@
       `A Lolek trabalha com seguro pela GTA e pela Assist Card, com ótima cobertura pra essa viagem. Quer que eu já providencie o seu? Me chama que eu te passo os valores. 💛`;
   }
 
-  const MONTAR_MENSAGEM = { 1: montarMensagem1, 2: montarMensagem2, 4: montarMensagem4, 5: montarMensagem5, 6: montarMensagem6, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
+  const MONTAR_MENSAGEM = { 1: montarMensagem1, 4: montarMensagem4, 5: montarMensagem5, 6: montarMensagem6, pdf: montarMensagemPdf, seguro: montarMensagemSeguro };
   const TITULO_MENSAGEM_PREVIA = { seguro: "Oferta de seguro viagem" };
 
-  // A Mensagem 5 e o guia em PDF vão "junto" com a 1 (5 também reenviada na 2), mas cada uma
+  // A Mensagem 5 e o guia em PDF vão "junto" com a 1, mas cada uma
   // como MENSAGEM SEPARADA — não concatenadas no mesmo texto (isso já causou um caso real de
   // mensagem gigante onde o link do PDF parecia ter desaparecido). Esses valores indicam, pra
   // cada mensagem principal, quais outras devem ser enviadas em seguida, automaticamente, no
   // mesmo clique.
-  const MENSAGENS_EM_CADEIA = { 1: ["pdf", 5], 2: [5] };
+  const MENSAGENS_EM_CADEIA = { 1: ["pdf", 5] };
 
   // ===================================================================
   // "Mensagens pra enviar hoje" — regras de gatilho do calendário
@@ -461,7 +446,6 @@
       const ja = p.mensagens_enviadas || {};
       if (p.data_voo_ida) {
         if (!tratada(ja, 1)) itens.push({ data: somarDias(p.data_voo_ida, -7), numero: 1, p });
-        if (!tratada(ja, 2)) itens.push({ data: somarDias(p.data_voo_ida, -1), numero: 2, p });
         if (!tratada(ja, 6)) itens.push({ data: p.data_voo_ida, numero: 6, p });
       }
       if (p.trem_data && !tratada(ja, 4)) itens.push({ data: somarDias(p.trem_data, -1), numero: 4, p });
@@ -480,7 +464,7 @@
   // ===================================================================
   // Render
   // ===================================================================
-  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 2: "Véspera do voo (D-1)", 4: "Véspera do trem p/ Assis", 6: "Boa viagem + Instagram" };
+  const TITULO_MSG = { 1: "Documentos e mala (D-7)", 4: "Véspera do trem p/ Assis", 6: "Boa viagem + Instagram" };
   const LABEL_STATUS = { pronto: "✅ Pronto para disparo", revisar: "⚠ Revisar", decidir: "❓ Decidir se entra" };
 
   // ===== Seções recolhíveis — tanta gente numa lista só ficava difícil de achar qualquer
@@ -608,17 +592,7 @@
     }));
   }
 
-  function campoPendenteTag(p) {
-    const faltas = [];
-    if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) faltas.push("hotel Roma");
-    if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) faltas.push("hotel Assis");
-    if (p.raw_outras_hosp && !(p.outras_hosp_nome && p.outras_hosp_endereco)) faltas.push("outra hospedagem");
-    if (p.raw_outros_itens && !p.itens_identificados) faltas.push("itens a identificar");
-    return faltas;
-  }
-
   function pessoaCardHtml(p) {
-    const faltas = campoPendenteTag(p);
     return `
       <div class="card cvr-pessoa">
         <div class="cvr-pessoa__topo">
@@ -642,10 +616,9 @@
             <button type="button" class="btn btn--gold btn--sm" data-cvr-decidir="${p.id}" data-decisao="sim">Sim</button>
             <button type="button" class="btn btn--ghost btn--sm" data-cvr-decidir="${p.id}" data-decisao="nao">Não</button>
           </div>` : ""}
-        ${faltas.length ? `<div class="table__muted" style="font-size:0.78rem;color:#c0392b">Falta: ${faltas.map(escHtml).join(", ")}</div>` : ""}
         <div class="cvr-pessoa__acoes">
           <button type="button" class="btn btn--ghost btn--sm" data-cvr-resolver="${p.id}">✏ Resolver pendências</button>
-          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 5 mensagens</button>
+          <button type="button" class="btn btn--ghost btn--sm" data-cvr-mensagens="${p.id}">💬 Ver as 4 mensagens</button>
         </div>
       </div>`;
   }
@@ -794,7 +767,7 @@
       await enviarPeloDigisac(whatsapp, gel("cvr-previa-texto").value);
       await chamarConvencaoRoma("marcar_mensagem_enviada", { id, numero });
 
-      // Mensagem 5 vai "junto" com a 1 e reenviada na 2 — mas como mensagem SEPARADA no
+      // Mensagem 5 vai "junto" com a 1 — mas como mensagem SEPARADA no
       // WhatsApp (ver MENSAGENS_EM_CADEIA), não colada no mesmo texto. Manda em seguida,
       // automaticamente, sem abrir outra prévia (é sempre o mesmo aviso de emergência).
       const emCadeia = MENSAGENS_EM_CADEIA[Number(numero)] || [];
@@ -835,7 +808,7 @@
     if (!p) return;
     gel("cvr-todas-nome").textContent = p.nome;
     const corpo = gel("cvr-todas-corpo");
-    corpo.innerHTML = [1, 2, 4, 5, 6].map((n) => {
+    corpo.innerHTML = [1, 4, 5, 6].map((n) => {
       const ja = p.mensagens_enviadas || {};
       const enviado = ja[String(n)];
       const dispensado = ja[String(n) + "_dispensado"];

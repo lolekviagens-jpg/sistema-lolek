@@ -105,23 +105,14 @@ exports.handler = async (event) => {
   }
 };
 
-// "Pendência" é só considerada quando o campo BRUTO correspondente diz que a pessoa comprou
-// aquilo (senão, quem nunca comprou seguro ficaria pra sempre em "revisar" por falta de
-// seguradora, por exemplo). decisao_participa='nao' nunca vira "pronto" — a pessoa foi
-// excluída da conta, não faz sentido disparar mensagem pra ela.
+// Sem tempo hábil pra revisar pendência por pendência antes do prazo de cada mensagem —
+// WhatsApp, conexão/imigração, hotel/hospedagem e itens não identificados pararam de
+// travar "pronto" (as mensagens já são genéricas o bastante pra sair com o que tiver
+// disponível). Só ficam de fora: quem ainda não decidiu se participa ("decidir") e quem foi
+// marcado como "não" (excluído da conta, não faz sentido mandar mensagem pra ele).
 function calcularStatus(p) {
   if (p.origem === "fora_do_filtro" && (p.decisao_participa || "pendente") === "pendente") return "decidir";
   if (p.decisao_participa === "nao") return "revisar";
-  // Falta de WhatsApp não trava mais "pronto" — a pessoa aparece na lista "pra enviar hoje"
-  // com o campo vazio, pronta pra alguém digitar o número ali mesmo na hora de enviar (ver
-  // abrirPreviaMensagem) em vez de ficar represada em "revisar" só por isso.
-  // Conexão/país de imigração não trava mais "pronto" — não dá tempo da equipe confirmar
-  // isso pra todo mundo antes do prazo de cada mensagem. A Mensagem 2 agora traz uma
-  // orientação de imigração genérica, que vale com ou sem conexão confirmada.
-  if (p.raw_hotel_roma && !(p.hotel_roma_nome && p.hotel_roma_endereco)) return "revisar";
-  if (p.raw_hotel_assis && !(p.hotel_assis_nome && p.hotel_assis_endereco)) return "revisar";
-  if (p.raw_outras_hosp && !(p.outras_hosp_nome && p.outras_hosp_endereco)) return "revisar";
-  if (p.raw_outros_itens && !p.itens_identificados) return "revisar";
   return "pronto";
 }
 
