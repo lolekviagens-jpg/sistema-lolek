@@ -1153,15 +1153,17 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
           const { dest: destIata } = parseTrecho(ultimoSeg.trecho);
           nomeItem = (origIata && destIata) ? (origIata + " → " + destIata) : "Passagem aérea";
 
-          // Resumo textual das conexões + duração total — usados nos exports em texto puro
-          // (copiarTexto), que continuam mostrando 1 linha por perna. O cartão visual
-          // (renderFlightCard) usa "segmentos" direto pra mostrar cada trecho separado.
-          const conexoesTexto = segmentos.length <= 1 ? "Voo direto" : segmentos.slice(0, -1).map((s, i) => {
-            const prox = segmentos[i + 1];
-            const dur = s.tempo_parada || calcularDuracaoOrc(s.data, s.horario_chegada, prox.data, prox.horario_partida);
-            const { dest: escalaIata } = parseTrecho(s.trecho);
-            return "Escala em " + (escalaIata || "—") + (dur ? " (" + dur + ")" : "");
-          }).join(", ");
+          // Resumo textual da conexão — usado nos exports em texto puro (copiarTexto). O
+          // cliente não precisa saber ONDE é a escala, só quanto tempo de parada tem — mesmo
+          // espírito do cartão visual (renderFlightCard), sem nomear o aeroporto.
+          const nParadasTexto = segmentos.length - 1;
+          const conexoesTexto = nParadasTexto <= 0 ? "Voo direto" : (() => {
+            const dur = nParadasTexto === 1
+              ? (primeiroSeg.tempo_parada || calcularDuracaoOrc(primeiroSeg.data, primeiroSeg.horario_chegada, ultimoSeg.data, ultimoSeg.horario_partida))
+              : "";
+            const label = nParadasTexto === 1 ? "1 parada" : `${nParadasTexto} paradas`;
+            return label + (dur ? " (" + dur + ")" : "");
+          })();
           const duracaoTotal = calcularDuracaoOrc(primeiroSeg.data, primeiroSeg.horario_partida, ultimoSeg.data, ultimoSeg.horario_chegada);
 
           const flightLabel = FLIGHT_LABELS[passagemIdx] || ("TRECHO " + (passagemIdx + 1));
@@ -1234,33 +1236,6 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
   }
 
   // ===== Cartão visual de voo =====
-  // Um trecho isolado dentro do cartão de voo — usado quando há conexão (2+ trechos), pra
-  // mostrar cada perna com seu próprio aeroporto/horário, igual a companhia mostra.
-  function segmentoFlightHtml(seg, cidadeOrig, cidadeDest) {
-    const iata = parseTrecho(seg.trecho);
-    return `
-      <div class="orc-prev-flight-card-body">
-        <div class="orc-prev-airport">
-          <div class="orc-prev-iata">${escapeHtml(iata.orig || "—")}</div>
-          ${seg.horario_partida ? `<div class="orc-prev-time">${escapeHtml(seg.horario_partida)}</div>` : ""}
-          ${cidadeOrig ? `<div class="orc-prev-city">${escapeHtml(cidadeOrig)}</div>` : ""}
-        </div>
-        <div class="orc-prev-flight-middle">
-          <div class="orc-prev-dash-line">
-            <span class="orc-prev-dash-seg"></span>
-            <span class="orc-prev-plane-icon">✈</span>
-            <span class="orc-prev-dash-seg"></span>
-          </div>
-          ${seg.companhia || seg.voo ? `<div class="orc-prev-direto">${escapeHtml([seg.companhia, seg.voo].filter(Boolean).join(" · "))}</div>` : ""}
-        </div>
-        <div class="orc-prev-airport orc-prev-airport--right">
-          <div class="orc-prev-iata">${escapeHtml(iata.dest || "—")}</div>
-          ${seg.horario_chegada ? `<div class="orc-prev-time">${escapeHtml(seg.horario_chegada)}</div>` : ""}
-          ${cidadeDest ? `<div class="orc-prev-city">${escapeHtml(cidadeDest)}</div>` : ""}
-        </div>
-      </div>`;
-  }
-
   function renderFlightCard(it) {
     const segmentos = (it.segmentos && it.segmentos.length) ? it.segmentos : [];
 
@@ -1302,44 +1277,56 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
         </div>`;
     }
 
-    // Com conexão: um bloco por trecho, com "Conexão em X — Yh de espera" entre eles.
-    const corpoHtml = segmentos.map((seg, i) => {
-      const cidadeOrig = i === 0 ? (it.cidadeOrigem || "") : "";
-      const cidadeDest = i === segmentos.length - 1 ? (it.cidadeDestino || "") : "";
-      let html = segmentoFlightHtml(seg, cidadeOrig, cidadeDest);
-      if (i < segmentos.length - 1) {
-        const prox = segmentos[i + 1];
-        const duracao = seg.tempo_parada || calcularDuracaoOrc(seg.data, seg.horario_chegada, prox.data, prox.horario_partida);
-        const { dest } = parseTrecho(seg.trecho);
-        html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-muted);margin:2px 0 10px">✈ Conexão em ${escapeHtml(dest || "—")}${duracao ? " — " + escapeHtml(duracao) + " de espera" : ""}</div>`;
-      }
-      return html;
-    }).join("");
+    // Com conexão: o cliente não precisa saber ONDE é a escala, só quanto tempo de espera
+    // tem — mostra só a origem e o destino reais, como um voo direto, com "1 parada" (ou
+    // "N paradas") e o tempo de conexão no meio, sem nomear o aeroporto da escala.
+    const primeiroSeg = segmentos[0] || {};
+    const ultimoSeg    = segmentos[segmentos.length - 1] || primeiroSeg;
+    const iataOrig = parseTrecho(primeiroSeg.trecho).orig;
+    const iataDest = parseTrecho(ultimoSeg.trecho).dest;
+    const origCity = it.cidadeOrigem  || "";
+    const destCity = it.cidadeDestino || "";
+    const nParadas = segmentos.length - 1;
+    const labelParadas = nParadas === 1 ? "1 parada" : `${nParadas} paradas`;
+    // Só dá pra mostrar 1 tempo de conexão sem ambiguidade quando tem exatamente 1 parada —
+    // com 2+ paradas, seriam vários tempos diferentes, então mostra só a contagem.
+    const tempoConexao = nParadas === 1
+      ? (primeiroSeg.tempo_parada || calcularDuracaoOrc(primeiroSeg.data, primeiroSeg.horario_chegada, ultimoSeg.data, ultimoSeg.horario_partida))
+      : "";
 
     return `
       <div class="orc-prev-flight-card">
         <div class="orc-prev-flight-card-header">
           <span class="orc-prev-flight-label">${escapeHtml(it.flightLabel || "VOO")}</span>
           ${it.flightDate ? `<span class="orc-prev-flight-card-date">${escapeHtml(it.flightDate)}</span>` : ""}
-          ${it.duracao ? `<span class="orc-prev-flight-card-voo">Duração total: ${escapeHtml(it.duracao)}</span>` : ""}
         </div>
-        <div style="padding:14px 0 2px">${corpoHtml}</div>
+        <div class="orc-prev-flight-card-body">
+          <div class="orc-prev-airport">
+            <div class="orc-prev-iata">${escapeHtml(iataOrig || "—")}</div>
+            ${primeiroSeg.horario_partida ? `<div class="orc-prev-time">${escapeHtml(primeiroSeg.horario_partida)}</div>` : ""}
+            ${origCity ? `<div class="orc-prev-city">${escapeHtml(origCity)}</div>` : ""}
+          </div>
+          <div class="orc-prev-flight-middle">
+            ${it.duracao ? `<div class="orc-prev-duration">${escapeHtml(it.duracao)}</div>` : ""}
+            <div class="orc-prev-dash-line">
+              <span class="orc-prev-dash-seg"></span>
+              <span class="orc-prev-plane-icon">✈</span>
+              <span class="orc-prev-dash-seg"></span>
+            </div>
+            <div class="orc-prev-direto">${escapeHtml(labelParadas)}${tempoConexao ? " · " + escapeHtml(tempoConexao) : ""}</div>
+          </div>
+          <div class="orc-prev-airport orc-prev-airport--right">
+            <div class="orc-prev-iata">${escapeHtml(iataDest || "—")}</div>
+            ${ultimoSeg.horario_chegada ? `<div class="orc-prev-time">${escapeHtml(ultimoSeg.horario_chegada)}</div>` : ""}
+            ${destCity ? `<div class="orc-prev-city">${escapeHtml(destCity)}</div>` : ""}
+          </div>
+        </div>
       </div>`;
   }
 
   // ===== Preview =====
   function gerarOrcamento() {
     if (destinos.length === 0) { alert("Adicione pelo menos um destino."); return; }
-
-    // "?" é o aeroporto de conexão que a IA não conseguiu identificar no print (ver
-    // analisarPassagem) — proibido gerar o orçamento assim, senão o cliente recebe um
-    // trecho com conexão em lugar nenhum.
-    const trechoIncompleto = Object.values(segmentosStore).some((segs) =>
-      (segs || []).some((s) => (s.trecho || "").includes("?")));
-    if (trechoIncompleto) {
-      alert('Tem um trecho de passagem com o aeroporto da conexão marcado como "?" — complete-o antes de gerar o orçamento.');
-      return;
-    }
 
     const d = coletarDados();
     const paxStr = d.adultos + " adulto" + (d.adultos !== 1 ? "s" : "") +
