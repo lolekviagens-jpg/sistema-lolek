@@ -381,12 +381,15 @@ async function executarAcao(action, data, secretKey, sessao) {
 
     case "listar_produtos_periodo": {
       if (!data.de || !data.ate) throw new Error("de e ate são obrigatórios");
-      return supabaseRest(
+      // Período de ano inteiro (ex: Dashboard/comparativos) facilmente passa de 1000 linhas,
+      // o limite padrão de 1 página do PostgREST — sem paginação, isso cortava os meses mais
+      // recentes em silêncio (dados "sumiam" sem erro nenhum). Ver supabaseRestPaginado.
+      return supabaseRestPaginado(
         "/venda_emissoes_produtos?select=*,venda_emissoes(destino)" +
           "&data_venda=gte." + encodeURIComponent(data.de) +
           "&data_venda=lte." + encodeURIComponent(data.ate) +
           "&order=data_venda.asc",
-        "GET", secretKey
+        secretKey
       );
     }
 
