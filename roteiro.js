@@ -64,6 +64,33 @@
     });
   }
 
+  // Print de tela em resolução alta (retina) manda muito mais pixel do que o necessário pra
+  // IA ler o texto — isso é cobrado em tokens de imagem. Redimensiona pro maior lado caber em
+  // FOTO_MAX_DIM e reexporta como JPEG antes de mandar pra IA (o texto continua perfeitamente
+  // legível nesse tamanho; mesmo padrão já usado em emissoes.js/orcamentos.js). Só se aplica a
+  // imagem — PDF continua indo pelo fileToBase64 normal.
+  const FOTO_MAX_DIM = 1800;
+  const FOTO_JPEG_QUALIDADE = 0.85;
+
+  function redimensionarImagem(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const escala = Math.min(1, FOTO_MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * escala);
+        const h = Math.round(img.height * escala);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", FOTO_JPEG_QUALIDADE));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
+      img.src = url;
+    });
+  }
+
   // Junta todos os blocos de texto da resposta (com busca na web, vêm intercalados
   // com blocos de server_tool_use / web_search_tool_result que não são texto).
   function getResponseText(content) {
@@ -107,12 +134,14 @@ Analise o texto/print abaixo sobre a viagem de um cliente e retorne SOMENTE um J
       let content;
 
       if (temArquivo) {
-        const file  = files[0];
-        const b64   = await fileToBase64(file);
+        const file = files[0];
+        const isPdf = file.type === "application/pdf";
+        const b64 = isPdf ? await fileToBase64(file)
+          : await redimensionarImagem(file).catch(() => fileToBase64(file));
         const match = b64.match(/^data:([^;]+);base64,(.+)$/);
         const mediaType = match[1];
 
-        content = mediaType === "application/pdf"
+        content = isPdf
           ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: match[2] } }, { type: "text", text: prompt }]
           : [{ type: "image", source: { type: "base64", media_type: mediaType, data: match[2] } }, { type: "text", text: prompt }];
       } else {

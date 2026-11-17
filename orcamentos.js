@@ -10,6 +10,33 @@
 
   function getModel()    { return localStorage.getItem(LS_MODEL) || "claude-sonnet-4-6"; }
 
+  // Print de tela em resolução alta (retina) manda muito mais pixel do que o necessário pra
+  // IA ler o texto do bilhete/reserva — isso é cobrado em tokens de imagem. Redimensiona pro
+  // maior lado caber em FOTO_MAX_DIM e reexporta como JPEG antes de guardar/mandar pra IA (o
+  // texto continua perfeitamente legível nesse tamanho; essas fotos não vão pro cliente, são
+  // só pra extração — mesmo padrão já usado em emissoes.js).
+  const FOTO_MAX_DIM = 1800;
+  const FOTO_JPEG_QUALIDADE = 0.85;
+
+  function redimensionarImagem(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const escala = Math.min(1, FOTO_MAX_DIM / Math.max(img.width, img.height));
+        const w = Math.round(img.width * escala);
+        const h = Math.round(img.height * escala);
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", FOTO_JPEG_QUALIDADE));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
+      img.src = url;
+    });
+  }
+
   // Contexto pra IA não "chutar" um ano errado (ex: 2024) quando o print não mostra o ano da data.
   function contextoDataAtual() {
     const hoje = new Date();
@@ -815,19 +842,10 @@
       if (!match) throw new Error("Imagem inválida");
       const [, mime, b64] = match;
 
-      const resp = await fetch("/.netlify/functions/anthropic", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          model: getModel(),
-          max_tokens: 1024,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
-              { type: "text", text: `${contextoDataAtual()}
-
-Analise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — agrupe as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:
+      // Texto fixo da instrução (idêntico em toda chamada) vai em "system" com cache_control;
+      // a data de hoje muda todo dia, então fica separada, direto no conteúdo da mensagem,
+      // pra não quebrar o cache do texto fixo por causa de um detalhe que muda.
+      const instrucoes = `Analise este documento/print de passagem aérea com atenção a TODA a tabela de itinerário/voos, que pode ter mais de uma linha. Bilhetes oficiais de companhia aérea costumam listar TODOS os voos da reserva numa única tabela "Itinerário", uma linha por trecho, SEM escrever "IDA"/"VOLTA"/"CONEXÃO" em lugar nenhum — agrupe as linhas em até duas viagens (ida e, se houver, volta) pela sequência de origem/destino:
 
 - Linhas que se ENCADEIAM na mesma direção (destino de uma linha = origem da próxima) são TRECHOS DA MESMA VIAGEM, com conexão/escala no aeroporto onde encadeiam. Exemplo: "GRU → LIS" seguida de "LIS → ROM" são 2 trechos da MESMA ida (escala em Lisboa) — NÃO é ida e volta.
 - Se em algum ponto a sequência INVERTE e volta pro ponto de partida original, dali em diante são os trechos da VOLTA. Na dúvida se é conexão ou volta, trate como conexão — é pior assumir uma volta que não existe.
@@ -851,7 +869,20 @@ Retorne SOMENTE um JSON válido, sem nenhum texto adicional:
   } OU null — preencha "volta" SOMENTE se este mesmo print mostrar claramente os dois trechos (ida E volta) de uma reserva de ida e volta. Se mostrar só um trecho (ainda que com escala), "volta" deve ser null e "segmentos" da ida tem mais de um item.
 
 IMPORTANTE: preencha "data" em TODO segmento sempre que o documento permitir — é o que dá pra calcular o tempo de conexão quando a escala vira a noite ou passa pra outro dia; quando o documento não disser explicitamente, INFIRA a partir da data + horário de chegada do trecho anterior.
-}` },
+}`;
+
+      const resp = await fetch("/.netlify/functions/anthropic", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: getModel(),
+          max_tokens: 1024,
+          system: [{ type: "text", text: instrucoes, cache_control: { type: "ephemeral" } }],
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mime || "image/png", data: b64 } },
+              { type: "text", text: contextoDataAtual() },
             ],
           }],
         }),
@@ -985,18 +1016,23 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     });
   }
 
-  function readFoto(pid, file, zoneId, tipo, destId) {
-    const r = new FileReader();
-    r.onload = (e) => {
-      if (!fotoStore[pid]) fotoStore[pid] = [];
-      fotoStore[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
-      renderFotos(pid, zoneId, tipo, destId);
-      // Para passagem: aciona análise automaticamente ao colar o print
-      if (tipo === "passagem") {
-        analisarPassagem(pid, destId, e.target.result);
-      }
-    };
-    r.readAsDataURL(file);
+  async function readFoto(pid, file, zoneId, tipo, destId) {
+    let src;
+    try { src = await redimensionarImagem(file); }
+    catch { src = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = (e) => resolve(e.target.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    }); }
+
+    if (!fotoStore[pid]) fotoStore[pid] = [];
+    fotoStore[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src });
+    renderFotos(pid, zoneId, tipo, destId);
+    // Para passagem: aciona análise automaticamente ao colar o print
+    if (tipo === "passagem") {
+      analisarPassagem(pid, destId, src);
+    }
   }
 
   function removeFoto(pid, fid, zoneId, tipo, destId) {
@@ -1061,15 +1097,20 @@ Analise este print de reserva/confirmação de hotel ou pousada. Retorne SOMENTE
     });
   }
 
-  function readFotoPrintHotel(pid, file, zoneId, destId) {
-    const r = new FileReader();
-    r.onload = (e) => {
-      if (!fotoStorePrint[pid]) fotoStorePrint[pid] = [];
-      fotoStorePrint[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src: e.target.result });
-      renderFotosPrintHotel(pid, zoneId, destId);
-      analisarHospedagem(pid, destId, e.target.result);
-    };
-    r.readAsDataURL(file);
+  async function readFotoPrintHotel(pid, file, zoneId, destId) {
+    let src;
+    try { src = await redimensionarImagem(file); }
+    catch { src = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = (e) => resolve(e.target.result);
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    }); }
+
+    if (!fotoStorePrint[pid]) fotoStorePrint[pid] = [];
+    fotoStorePrint[pid].push({ fid: "f" + Date.now() + Math.random().toString(36).slice(2), src });
+    renderFotosPrintHotel(pid, zoneId, destId);
+    analisarHospedagem(pid, destId, src);
   }
 
   function removeFotoPrintHotel(pid, fid, zoneId, destId) {
