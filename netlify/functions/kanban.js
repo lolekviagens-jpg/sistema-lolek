@@ -552,14 +552,23 @@ async function diagnosticarDuplicados(sessao, secretKey) {
   return { porPessoa, porTicket };
 }
 
-// Apaga um card definitivamente (cascata apaga os eventos dele também). Antes, desvincula
-// qualquer outro card que aponte pra esse em "venda_vinculada_id" (o link Suporte/Follow-up
-// ⇄ Venda gerada) — sem isso o Supabase recusa o DELETE com 23503 (foreign key), porque esse
-// card ainda estaria referenciado por outro.
-async function apagarCardDefinitivo(id, secretKey) {
-  await supabaseRest("/kanban_cards?venda_vinculada_id=eq." + encodeURIComponent(id), "PATCH", secretKey,
+// Apaga um ou mais cards definitivamente (cascata apaga os eventos deles também). Antes,
+// desvincula qualquer outro card que aponte pra algum desses em "venda_vinculada_id" (o link
+// Suporte/Follow-up ⇄ Venda gerada) — sem isso o Supabase recusa o DELETE com 23503 (foreign
+// key), porque o card ainda estaria referenciado por outro. Sempre em UMA chamada só pro
+// grupo inteiro (não uma por card) — com muitos cards pra apagar de uma vez (ex.: limpeza em
+// lote), fazer 2-3 chamadas sequenciais PRA CADA card facilmente passa do tempo limite da
+// function e vira 502.
+async function apagarCardsDefinitivo(ids, secretKey) {
+  if (!ids || ids.length === 0) return;
+  const lista = ids.join(",");
+  await supabaseRest("/kanban_cards?venda_vinculada_id=in.(" + lista + ")", "PATCH", secretKey,
     { venda_vinculada_id: null }, { "Prefer": "return=minimal" });
-  await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+  await supabaseRest("/kanban_cards?id=in.(" + lista + ")", "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+}
+
+async function apagarCardDefinitivo(id, secretKey) {
+  await apagarCardsDefinitivo([id], secretKey);
 }
 
 // Usado pela tela de "Verificar duplicados" pra remover a cópia errada depois de ela
@@ -589,6 +598,7 @@ async function limparDuplicadosAutomatico(d, sessao, secretKey) {
   const { todosGrupos } = await listarGruposDuplicados(secretKey);
   const idsJaTratados = new Set();
   const resumo = [];
+  const idsParaApagar = [];
 
   for (const grupo of todosGrupos) {
     const restante = grupo.filter((c) => !idsJaTratados.has(c.id));
@@ -614,16 +624,15 @@ async function limparDuplicadosAutomatico(d, sessao, secretKey) {
       apagou: apagar.map((c) => ({ id: c.id, quadro: c.quadro, etapa: c.etapa, responsavel_id: c.responsavel_id })),
     });
 
-    if (d.confirmar) {
-      for (const c of apagar) {
-        await apagarCardDefinitivo(c.id, secretKey);
-        await registrarAtividade(secretKey, {
-          usuarioNome: sessao.nome, acao: "excluir", area: "kanban",
-          descricao: "Limpeza automática de duplicados — apagou card de " + (manter.cliente_nome || manter.cliente_telefone || "—"),
-          registroId: c.id,
-        });
-      }
-    }
+    apagar.forEach((c) => idsParaApagar.push(c.id));
+  }
+
+  if (d.confirmar && idsParaApagar.length > 0) {
+    await apagarCardsDefinitivo(idsParaApagar, secretKey);
+    await registrarAtividade(secretKey, {
+      usuarioNome: sessao.nome, acao: "excluir", area: "kanban",
+      descricao: "Limpeza automática de duplicados — apagou " + idsParaApagar.length + " card(s) de " + resumo.length + " pessoa(s)/grupo(s)",
+    });
   }
 
   return { executado: !!d.confirmar, gruposTratados: resumo.length, resumo };
