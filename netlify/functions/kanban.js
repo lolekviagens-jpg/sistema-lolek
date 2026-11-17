@@ -552,14 +552,23 @@ async function diagnosticarDuplicados(sessao, secretKey) {
   return { porPessoa, porTicket };
 }
 
-// Apaga um card definitivamente (cascata apaga os eventos dele também) — só admin, usado
-// pela tela de "Verificar duplicados" pra remover a cópia errada depois de ela confirmar
-// qual card é o certo pra manter. Sem recuperação — por isso só admin, e a tela pede
-// confirmação antes de chamar isso.
+// Apaga um card definitivamente (cascata apaga os eventos dele também). Antes, desvincula
+// qualquer outro card que aponte pra esse em "venda_vinculada_id" (o link Suporte/Follow-up
+// ⇄ Venda gerada) — sem isso o Supabase recusa o DELETE com 23503 (foreign key), porque esse
+// card ainda estaria referenciado por outro.
+async function apagarCardDefinitivo(id, secretKey) {
+  await supabaseRest("/kanban_cards?venda_vinculada_id=eq." + encodeURIComponent(id), "PATCH", secretKey,
+    { venda_vinculada_id: null }, { "Prefer": "return=minimal" });
+  await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+}
+
+// Usado pela tela de "Verificar duplicados" pra remover a cópia errada depois de ela
+// confirmar qual card é o certo pra manter. Sem recuperação — por isso só admin, e a tela
+// pede confirmação antes de chamar isso.
 async function excluirCard(d, sessao, secretKey) {
   if (!sessao.admin) throw new Error("Só a administradora pode apagar um card.");
   if (!d.id) throw new Error("id é obrigatório");
-  await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(d.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+  await apagarCardDefinitivo(d.id, secretKey);
   await registrarAtividade(secretKey, { usuarioNome: sessao.nome, acao: "excluir", area: "kanban", descricao: "Apagou card duplicado", registroId: d.id });
   return { ok: true };
 }
@@ -607,7 +616,7 @@ async function limparDuplicadosAutomatico(d, sessao, secretKey) {
 
     if (d.confirmar) {
       for (const c of apagar) {
-        await supabaseRest("/kanban_cards?id=eq." + encodeURIComponent(c.id), "DELETE", secretKey, null, { "Prefer": "return=minimal" });
+        await apagarCardDefinitivo(c.id, secretKey);
         await registrarAtividade(secretKey, {
           usuarioNome: sessao.nome, acao: "excluir", area: "kanban",
           descricao: "Limpeza automática de duplicados — apagou card de " + (manter.cliente_nome || manter.cliente_telefone || "—"),
