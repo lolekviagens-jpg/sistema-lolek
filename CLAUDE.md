@@ -47,3 +47,22 @@ Arquivo único `style.css`. Identidade visual fica em variáveis no `:root` — 
 - `--sidebar-w`, `--radius`, `--shadow` para layout
 
 Componentes reutilizáveis já existentes: `.btn` (`.btn--gold`, `.btn--ghost`, `.btn--icon`), `.input`, `.field`, `.card`, `.table`, `.badge` (`.badge--<status>`), `.stat`, `.modal`, `.empty-state`. Preferir compor com essas classes ao criar novas telas.
+
+## Estrutura do projeto (resumo — não precisa re-explorar a cada sessão)
+
+- `index.html` — casca da aplicação (sidebar + um `.panel` por aba) + lista de `<script>` no final.
+- Um `<aba>.js` na raiz por aba (IIFE isolada) — ex.: `checkin.js`, `kanban.js`, `orcamentos.js`, `emissoes.js`, `clientes.js`, `vendas.js`, `financeiro.js`, `financeiro-fornecedores.js`, `contratos.js`, `empresas.js`, `usuarios.js`, `followup.js`, `roteiro.js`, `convencao-roma.js`, `auth.js`, `navigation.js`.
+- `style.css` — CSS único, variáveis de marca no `:root`. `sw.js`/`manifest.json` — PWA/cache do navegador.
+- `portal.html` + `portal.js` — Portal Corporativo (tela separada do `index.html`).
+- `netlify/functions/*.js` — backend (Node puro, sem framework), um arquivo por endpoint; navegador nunca acessa o Supabase direto. `_auth.js` tem os helpers compartilhados (`supabaseRest`, `validarSessao`, `registrarAtividade`). `anthropic.js` concentra as chamadas à API da Anthropic.
+- Supabase (Postgres) é o banco único, mesmo projeto do Portal Corporativo.
+- `netlify.toml` define os cron jobs (`*-cron.js`): `zapsign-reconciliar`, `orcamentos-recentes-limpeza`, `kanban-retomada`.
+
+## Regras para você (Claude Code) economizar tokens nesta sessão
+
+- Antes de abrir um arquivo, usar busca (grep/glob) pra achar só o trecho relevante — não ler arquivo grande inteiro sem necessidade.
+- Não reler um arquivo já lido na mesma conversa, a não ser que tenha mudado.
+- Ignorar `node_modules`, `dist`, `build`, `.netlify`, arquivos de log e lockfiles.
+- Respostas curtas e diretas, em português. Sem resumos longos do que foi feito.
+- Tarefa grande: mostrar um plano curto antes de sair executando.
+- Ao terminar uma tarefa, lembrar o usuário de rodar `/clear` antes da próxima.
