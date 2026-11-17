@@ -513,17 +513,18 @@ const CAMPOS_DUPLICADOS = "id,cliente_nome,cliente_telefone,quadro,etapa,tipo,di
 
 // Monta os dois agrupamentos de possível duplicação, reaproveitado tanto pelo diagnóstico
 // (só mostra) quanto pela limpeza automática (decide e apaga):
-//  1) a MESMA pessoa (nome+telefone) com mais de um card "ativo" (não arquivado, não
-//     encerrado/resolvido) ao mesmo tempo — isso sim seria duplicação de verdade.
+//  1) a MESMA pessoa (nome+telefone) com mais de um card não arquivado — inclui card já
+//     encerrado/resolvido (ex.: cards criados em lote por confirmação de check-in que acabam
+//     duplicando a mesma pessoa e já foram encerrados antes de alguém notar a duplicação).
 //  2) o mesmo ticket do Digisac virando mais de um card — indicaria falha na proteção
 //     contra reenvio (ver tratarTicketCriado em digisac-webhook.js).
 async function listarGruposDuplicados(secretKey) {
-  const ativos = await supabaseRest(
-    "/kanban_cards?select=" + CAMPOS_DUPLICADOS + "&arquivado=eq.false&etapa=not.in.(encerrado,resolvido)&order=criado_em.asc",
+  const candidatos = await supabaseRest(
+    "/kanban_cards?select=" + CAMPOS_DUPLICADOS + "&arquivado=eq.false&order=criado_em.asc",
     "GET", secretKey
   );
   const porPessoaMap = {};
-  (ativos || []).forEach((c) => {
+  (candidatos || []).forEach((c) => {
     // Pessoa sem nome nem telefone não dá pra agrupar com segurança — ignora (não é
     // possível afirmar que é a mesma pessoa só porque os dois campos estão vazios).
     if (!c.cliente_nome && !c.cliente_telefone) return;

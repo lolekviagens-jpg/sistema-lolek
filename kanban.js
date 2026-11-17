@@ -732,12 +732,12 @@
 
       corpo.innerHTML = `
         <div class="table__muted" style="font-size:0.82rem;margin-bottom:12px">
-          "Mesma pessoa com mais de um card ativo" é o que de fato conta como duplicação — card já
-          encerrado/resolvido ou arquivado não entra nessa conta (histórico normal, não duplicado).
-          Confira qual card tem mais informação (dono, histórico) antes de apagar o outro — apagar
-          remove o card inteiro e não dá pra desfazer.
+          "Mesma pessoa com mais de um card" é o que de fato conta como duplicação — inclui card já
+          encerrado/resolvido (ex.: criados em lote por confirmação de check-in). Card arquivado
+          (contato errado, spam) não entra nessa conta. Confira qual card tem mais informação (dono,
+          histórico) antes de apagar o outro — apagar remove o card inteiro e não dá pra desfazer.
         </div>
-        <div style="font-weight:600;margin-bottom:8px">👤 Mesma pessoa com mais de um card ativo</div>
+        <div style="font-weight:600;margin-bottom:8px">👤 Mesma pessoa com mais de um card</div>
         ${blocoPessoa}
         <div style="font-weight:600;margin:16px 0 8px">📡 Mesmo ticket do Digisac virando mais de um card</div>
         ${blocoTicket}`;
