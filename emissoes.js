@@ -2251,7 +2251,10 @@
   // ===== Listagem =====
   async function carregarListaEmissoes() {
     try {
-      const resp = await fetch("/.netlify/functions/emissoes-data");
+      // cache: "no-store" — sem isso, o navegador às vezes devolve uma resposta antiga
+      // guardada em cache pra essa mesma URL, e o botão "Atualizar" parece não funcionar
+      // (mesmo bug que já aconteceu antes com checkin.js/style.css — ver sw.js).
+      const resp = await fetch("/.netlify/functions/emissoes-data", { cache: "no-store" });
       emissoesSalvas = resp.ok ? await resp.json() : null;
     } catch { emissoesSalvas = null; }
   }
